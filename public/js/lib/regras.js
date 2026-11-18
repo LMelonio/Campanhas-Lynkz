@@ -167,6 +167,35 @@ export function dataBR(v) {
 
 export const hojeCivil = (agora = new Date()) => dataCivil(agora);
 
+// Soma dias a uma data civil "AAAA-MM-DD" (conta pura de calendário, sem fuso).
+export function somaDias(civil, n) {
+  const [y, m, d] = civil.split('-').map(Number);
+  return new Date(Date.UTC(y, m - 1, d + n)).toISOString().slice(0, 10);
+}
+
+// [primeiro dia, último dia] do mês de "hoje" deslocado (0 = este mês, 1 = próximo).
+export function periodoMes(hoje = hojeCivil(), deslocamento = 0) {
+  const [y, m] = hoje.split('-').map(Number);
+  const iso = t => new Date(t).toISOString().slice(0, 10);
+  return [iso(Date.UTC(y, m - 1 + deslocamento, 1)), iso(Date.UTC(y, m + deslocamento, 0))];
+}
+
+const fmtHora = new Intl.DateTimeFormat('pt-BR', { timeZone: FUSO, hour: '2-digit', minute: '2-digit' });
+// "10:32" no fuso do app.
+export function horaBR(v = new Date()) {
+  const d = v instanceof Date ? v : new Date(v);
+  return Number.isNaN(d.getTime()) ? '' : fmtHora.format(d);
+}
+
+// "hoje, 10:32" · "ontem, 10:32" · "15/11/2026, 10:32" (no fuso do app).
+export function quandoBR(v, agora = new Date()) {
+  if (!v) return '';
+  const dia = dataCivil(v), hoje = dataCivil(agora);
+  if (!dia) return '';
+  const rotulo = dia === hoje ? 'hoje' : dia === somaDias(hoje, -1) ? 'ontem' : dataBR(dia);
+  return `${rotulo}, ${horaBR(v)}`;
+}
+
 // Duração em dias, contando o primeiro e o último.
 export function dias(a, b) {
   const ca = dataCivil(a), cb = dataCivil(b);

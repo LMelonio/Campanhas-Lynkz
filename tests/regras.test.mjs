@@ -118,3 +118,17 @@ test('errosRecebedor aplica a régua dos 5 dados', () => {
                              email: 'x', telefone: '123' }, '2026-11-18');
   assert.deepEqual(Object.keys(e).sort(), ['cpf', 'data_nascimento', 'email', 'nome_completo', 'telefone']);
 });
+
+test('datas: soma de dias, mês inteiro e hora no fuso', async () => {
+  const { somaDias, periodoMes, horaBR, quandoBR } = await import('../public/js/lib/regras.js');
+  assert.equal(somaDias('2026-11-18', 29), '2026-12-17');
+  assert.equal(somaDias('2026-03-01', -1), '2026-02-28');
+  assert.deepEqual(periodoMes('2026-11-18'), ['2026-11-01', '2026-11-30']);
+  assert.deepEqual(periodoMes('2026-12-05', 1), ['2027-01-01', '2027-01-31']);
+  assert.deepEqual(periodoMes('2028-01-31', 1), ['2028-02-01', '2028-02-29']);
+  assert.equal(horaBR('2026-11-19T01:30:00Z'), '22:30');
+  const agora = new Date('2026-11-18T15:00:00Z');
+  assert.equal(quandoBR('2026-11-18T13:32:00Z', agora), 'hoje, 10:32');
+  assert.equal(quandoBR('2026-11-17T13:32:00Z', agora), 'ontem, 10:32');
+  assert.equal(quandoBR('2026-11-10T13:32:00Z', agora), '10/11/2026, 10:32');
+});

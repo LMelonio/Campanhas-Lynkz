@@ -123,9 +123,11 @@ function corpo(c, ctx) {
           ${linha('Data da decisão', dataBR(c.data_decisao))}` : ''}`)}
     </div>
 
-    ${c.status === STATUS.REPROVADA && minha ? html`<div class="acoes det-reenviar">
-      <a class="btn btn-primario" href="#/nova/de/${c.id}">${icone('repetir')} Reenviar com ajustes</a>
-    </div>` : ''}
+    <div class="acoes det-reenviar">
+      ${c.status === STATUS.REPROVADA && minha
+        ? html`<a class="btn btn-primario" href="#/nova/de/${c.id}">${icone('repetir')} Reenviar com ajustes</a>`
+        : html`<a class="btn btn-fantasma" href="#/nova/de/${c.id}" data-modelo>${icone('repetir')} Usar como modelo</a>`}
+    </div>
   </article>`;
 }
 

@@ -54,9 +54,10 @@ const igual = (a, b, msg) => afirma(a === b, `${msg} — esperado ${JSON.stringi
 const relatorio = { inicio: new Date().toISOString(), testes: [], acessibilidade: [], overflow: [] };
 
 const navegador = await chromium.launch();
-async function novaPagina({ largura = 1440, altura = 900, sw = 'block', escuro = false } = {}) {
+async function novaPagina({ largura = 1440, altura = 900, sw = 'block', escuro = false, toque = false } = {}) {
   const contexto = await navegador.newContext({
     viewport: { width: largura, height: altura }, locale: 'pt-BR', timezoneId: 'America/Fortaleza',
+    isMobile: toque, hasTouch: toque,
     serviceWorkers: sw, acceptDownloads: true, colorScheme: escuro ? 'dark' : 'light',
   });
   // Sem internet nos testes: fonte vazia, SheetJS servido local.
@@ -933,6 +934,57 @@ teste('lote D: atalhos A, R, J, K e ? no desktop; nada acontece digitando num ca
   await toastCom(page, 'desfeita');
   await page.keyboard.press('Shift+?');
   await page.locator('dialog.dialogo', { hasText: 'Atalhos de teclado' }).waitFor();
+});
+
+// ============================================================
+//  v2.1 — LOTE E: nova campanha
+// ============================================================
+teste('lote E: no celular com toque, a Nova abre sem campo focado', async ({ page }) => {
+  await abrir(page, { rota: '#/nova' });
+  await page.waitForTimeout(300);
+  const foco = await page.evaluate(() => document.activeElement?.tagName);
+  afirma(!['INPUT', 'SELECT', 'TEXTAREA'].includes(foco), 'nenhum campo focado: ' + foco);
+}, { largura: 390, altura: 844, toque: true });
+
+teste('lote E: "Rascunho salvo às hh:mm" aparece depois de digitar', async ({ page }) => {
+  await abrir(page, { rota: '#/nova' });
+  afirma(await page.locator('#rs-form').isHidden(), 'sem rascunho, sem texto');
+  await page.fill('#n-campanha', 'Rascunho com hora');
+  await page.waitForTimeout(600);
+  afirma(/^Rascunho salvo às \d{2}:\d{2}$/.test(await page.locator('#rs-form').innerText()), 'texto com a hora');
+  igual(await page.locator('#rs-form').getAttribute('role'), 'status', 'anunciado por leitor de tela');
+  await page.reload(); await page.waitForSelector('#app:not([hidden])'); await page.locator('#n-campanha').waitFor();
+  afirma((await page.locator('#rs-form').innerText()).startsWith('Rascunho salvo às'), 'hora volta com o rascunho');
+});
+
+teste('lote E: atalhos de período preenchem as datas e mostram a duração', async ({ page }) => {
+  await abrir(page, { rota: '#/nova' });
+  const hoje = await page.evaluate(() => new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Fortaleza' }).format(new Date()));
+  const [y, m] = hoje.split('-').map(Number);
+  const ultimo = new Date(Date.UTC(y, m, 0)).toISOString().slice(0, 10);
+  await page.click('[data-periodo="este"]');
+  igual(await page.inputValue('#n-inicio'), `${hoje.slice(0, 7)}-01`, 'dia 1 do mês');
+  igual(await page.inputValue('#n-fim'), ultimo, 'último dia do mês');
+  igual(await page.getAttribute('[data-periodo="este"]', 'aria-pressed'), 'true', 'chip marcado');
+  await page.click('[data-periodo="30"]');
+  igual(await page.inputValue('#n-inicio'), hoje, 'começa hoje');
+  igual(await page.locator('#n-duracao').innerText(), '30 dias', 'duração ao lado do Fim');
+  igual(await page.getAttribute('[data-periodo="este"]', 'aria-pressed'), 'false', 'outro chip desmarca');
+  await page.fill('#n-fim', '');
+  await page.locator('#n-fim').dispatchEvent('change');
+  igual(await page.getAttribute('[data-periodo="30"]', 'aria-pressed'), 'false', 'mudar a data à mão desmarca');
+});
+
+teste('lote E: "Usar como modelo" numa aprovada copia os campos, sem as datas', async ({ page }) => {
+  await abrir(page, { papel: 'coordenador', rota: '#/campanhas/4' });
+  await page.locator('[data-modelo]').click();
+  await page.waitForFunction(() => location.hash === '#/nova/de/4');
+  igual(await titulo(page), 'Nova campanha', 'é campanha nova, não reenvio');
+  afirma((await page.locator('#conteudo').innerText()).includes('como modelo'), 'nota de origem');
+  igual(await page.inputValue('#n-campanha'), 'Combo Vermífugos', 'nome copiado');
+  igual(await page.inputValue('#n-laboratorio'), 'Vansil', 'laboratório copiado');
+  igual(await page.inputValue('#n-inicio'), '', 'início não copiado');
+  igual(await page.inputValue('#n-fim'), '', 'fim não copiado');
 });
 
 // ============================================================

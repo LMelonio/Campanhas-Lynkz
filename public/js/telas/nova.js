@@ -11,7 +11,7 @@
 import { html, pintar, $, $$, ao, debounce, armazenamento } from '../lib/dom.js';
 import {
   calc, banda, brl, pct, lerValor, valorCampo, soDigitos, normaliza, maskCPF, maskTelefone,
-  errosRecebedor, hojeCivil, STATUS,
+  errosRecebedor, hojeCivil, horaBR, somaDias, periodoMes, dias, STATUS,
 } from '../lib/regras.js';
 import { icone } from '../ui/icones.js';
 import { regua, FAIXAS } from '../ui/pecas.js';
@@ -246,8 +246,11 @@ function salvarRascunho() {
   r.laboratorio = st.comboLab.valor();
   r.pessoa = st.pessoa;
   if (r.empresaId || r.laboratorio) algum = true;
-  if (algum) armazenamento.gravar(CHAVE_RASCUNHO, r);
-  else armazenamento.remover(CHAVE_RASCUNHO);
+  if (algum) {
+    r.salvoEm = new Date().toISOString();
+    armazenamento.gravar(CHAVE_RASCUNHO, r);
+  } else armazenamento.remover(CHAVE_RASCUNHO);
+  mostrarRascunhoSalvo(algum ? r.salvoEm : null);
 }
 
 function lerRascunho() {
@@ -255,8 +258,39 @@ function lerRascunho() {
   return r && typeof r === 'object' && r.versao === 2 ? r : null;
 }
 
-// Valores iniciais a partir de uma campanha (Reenviar com ajustes).
-function valoresDaCampanha(c, ctx) {
+// "Rascunho salvo às 10:32" no rodapé do formulário e na barra de envio.
+function mostrarRascunhoSalvo(quando) {
+  if (!st) return;
+  const texto = quando ? `Rascunho salvo às ${horaBR(quando)}` : '';
+  ['#rs-form', '#rs-barra'].forEach(sel => { const e = $(sel, st.el); if (e) e.textContent = texto; });
+}
+
+// ---------- atalhos de período e duração ----------
+function periodosRapidos() {
+  const hoje = hojeCivil();
+  return {
+    este: periodoMes(hoje, 0),
+    proximo: periodoMes(hoje, 1),
+    '30': [hoje, somaDias(hoje, 29)],
+  };
+}
+
+function atualizarPeriodo() {
+  if (!st) return;
+  const ini = v('n-inicio'), fim = v('n-fim');
+  const d = ini && fim && fim >= ini ? dias(ini, fim) : null;
+  const dur = $('#n-duracao', st.el);
+  if (dur) dur.textContent = d ? `${d} ${d === 1 ? 'dia' : 'dias'}` : '';
+  const p = periodosRapidos();
+  $$('[data-periodo]', st.el).forEach(b => {
+    const [a, z] = p[b.dataset.periodo];
+    b.setAttribute('aria-pressed', String(ini === a && fim === z));
+  });
+}
+
+// Valores iniciais a partir de uma campanha (reenviar reprovada ou usar como modelo).
+// comoModelo: não copia as datas (o período de outra campanha quase nunca serve).
+function valoresDaCampanha(c, ctx, { comoModelo = false } = {}) {
   const empresa = c.empresa_id ? ctx.cadastros.empresa(c.empresa_id)
     : ctx.cadastros.empresas().find(e => normaliza(e.nome) === normaliza(c.cliente));
   const rb = +c.rebate_pct > 0;
@@ -264,7 +298,7 @@ function valoresDaCampanha(c, ctx) {
     empresaId: empresa?.id ?? null,
     laboratorio: c.laboratorio,
     'n-campanha': c.campanha, 'n-tipo': c.tipo || '', 'n-mecanica': c.mecanica || '',
-    'n-inicio': c.data_inicio || '', 'n-fim': c.data_fim || '',
+    'n-inicio': comoModelo ? '' : c.data_inicio || '', 'n-fim': comoModelo ? '' : c.data_fim || '',
     'n-inv-lynkz': +c.investimento_lynkz ? valorCampo(c.investimento_lynkz) : '',
     'n-inv-industria': +c.investimento_industria ? valorCampo(c.investimento_industria) : '',
     'n-pagamento': c.forma_pagamento || '', 'n-tipo-meta': c.tipo_meta || '',
@@ -359,8 +393,10 @@ async function enviar() {
 // ---------- montagem ----------
 export function montar(el, ctx, params) {
   const origem = params.de ? ctx.campanhas.porId(params.de) : null;
+  // Reprovada e minha = reenvio (copia tudo). Qualquer outra = modelo (sem as datas).
+  const reenvio = !!origem && origem.status === STATUS.REPROVADA && origem.solicitante_id === ctx.perfil.id;
   const rascunho = origem ? null : lerRascunho();
-  let ini = origem ? valoresDaCampanha(origem, ctx) : (rascunho || {});
+  let ini = origem ? valoresDaCampanha(origem, ctx, { comoModelo: !reenvio }) : (rascunho || {});
   // "Nova campanha" na ficha da empresa: já vem com ela escolhida.
   let sugerida = null;
   try { sugerida = sessionStorage.getItem(CHAVE_EMPRESA_SUGERIDA); sessionStorage.removeItem(CHAVE_EMPRESA_SUGERIDA); } catch { /* sem armazenamento */ }
@@ -370,14 +406,15 @@ export function montar(el, ctx, params) {
   st = { el, ctx, pessoa: ini.pessoa ?? null, enviando: false, enviado: false, desligar: [],
          rascunhoSemPessoais: !!(rascunho && rascunho.pessoa === 'outra') };
 
-  ctx.cabecalho({ titulo: origem ? 'Reenviar campanha' : 'Nova campanha', voltar: origem ? `#/campanhas/${origem.id}` : '#/inicio' });
+  ctx.cabecalho({ titulo: reenvio ? 'Reenviar campanha' : 'Nova campanha', voltar: origem ? `#/campanhas/${origem.id}` : '#/inicio' });
   ctx.barraDeAcao(true);
 
   const val = id => ini[id] ?? '';
   const rbOn = ini['n-rebate'] === true;
   pintar(el, html`<div class="nova">
     <form id="form-nova" class="nova-form" novalidate>
-      ${origem ? html`<p class="nota">${icone('repetir')}<span>Copiado de ${origem.codigo}${origem.motivo ? html` — reprovada por: “${origem.motivo}”` : ''}. Ajuste e envie de novo.</span></p>` : ''}
+      ${reenvio ? html`<p class="nota">${icone('repetir')}<span>Copiado de ${origem.codigo}${origem.motivo ? html` — reprovada por: “${origem.motivo}”` : ''}. Ajuste e envie de novo.</span></p>` : ''}
+      ${origem && !reenvio ? html`<p class="nota">${icone('repetir')}<span>Copiado de ${origem.codigo} como modelo. Confira o período e envie.</span></p>` : ''}
       ${rascunho ? html`<p class="nota">${icone('rascunho')}<span>Rascunho recuperado.</span><button type="button" class="btn btn-texto" id="descartar">Descartar</button></p>` : ''}
       ${ini.clienteSemCadastro ? html`<p class="nota nota-alerta">${icone('info')}<span>A campanha original era de “${ini.clienteSemCadastro}”, que ainda não está no cadastro. Escolha ou cadastre a empresa.</span></p>` : ''}
 
@@ -392,7 +429,13 @@ export function montar(el, ctx, params) {
         ${areaTexto({ id: 'n-mecanica', rotulo: 'Como funciona', valor: val('n-mecanica'), opcional: true, atributos: { placeholder: 'Ex.: 5% de desconto acima de 200 un. e 8% acima de 400 un.' } })}
         <div class="grade-2">
           ${campo({ id: 'n-inicio', rotulo: 'Início', tipo: 'date', valor: val('n-inicio') })}
-          ${campo({ id: 'n-fim', rotulo: 'Fim', tipo: 'date', valor: val('n-fim'), atributos: { min: val('n-inicio') || false } })}
+          ${campo({ id: 'n-fim', rotulo: 'Fim', tipo: 'date', valor: val('n-fim'), atributos: { min: val('n-inicio') || false },
+                    depois: html`<span class="duracao" id="n-duracao" aria-live="polite"></span>` })}
+        </div>
+        <div class="chips chips-periodo" role="group" aria-label="Atalhos de período">
+          <button type="button" class="chip" data-periodo="este" aria-pressed="false">Este mês</button>
+          <button type="button" class="chip" data-periodo="proximo" aria-pressed="false">Próximo mês</button>
+          <button type="button" class="chip" data-periodo="30" aria-pressed="false">30 dias a partir de hoje</button>
         </div>
       </div></section>
 
@@ -430,6 +473,7 @@ export function montar(el, ctx, params) {
         ${areaTexto({ id: 'n-observacoes', rotulo: 'Observações para o aprovador', valor: val('n-observacoes'), opcional: true })}
       </div></section>
       <p class="campo-dica"><span class="campo-obrig" aria-hidden="true">*</span> Campos obrigatórios. O investimento LYNKZ também é obrigatório com Depósito / verba ou Swile.</p>
+      <p class="rascunho-status rascunho-status-form" id="rs-form" role="status">${rascunho?.salvoEm ? `Rascunho salvo às ${horaBR(rascunho.salvoEm)}` : ''}</p>
     </form>
 
     <aside class="nova-resumo" aria-label="Resumo do custo">
@@ -442,6 +486,7 @@ export function montar(el, ctx, params) {
         <span class="barra-envio-rotulo">Custo total</span>
         <strong class="num-display valor" id="be-total">R$ 0,00</strong>
         <span class="barra-envio-pct" id="be-pct"></span>
+        <span class="rascunho-status rascunho-status-barra" id="rs-barra" role="status">${rascunho?.salvoEm ? `Rascunho salvo às ${horaBR(rascunho.salvoEm)}` : ''}</span>
       </div>
       <button type="submit" form="form-nova" class="btn btn-primario" data-enviar>Enviar</button>
     </div>
@@ -512,6 +557,17 @@ export function montar(el, ctx, params) {
       const fim = $('#n-fim', el);
       if (i.value) fim.min = i.value; else fim.removeAttribute('min');
     }),
+    ao(form, 'change', '#n-inicio, #n-fim', atualizarPeriodo),
+    ao(form, 'input', '#n-inicio, #n-fim', atualizarPeriodo),
+    ao(form, 'click', '[data-periodo]', (e, b) => {
+      const [a, z] = periodosRapidos()[b.dataset.periodo];
+      for (const [id, valor] of [['n-inicio', a], ['n-fim', z]]) {
+        const i = $('#' + id, el);
+        i.value = valor;
+        i.dispatchEvent(new Event('change', { bubbles: true }));
+      }
+      limparErro(form, 'n-fim');
+    }),
     ao(form, 'change', '#n-fim', () => {
       if (v('n-inicio') && v('n-fim') && v('n-fim') < v('n-inicio')) marcarErro(form, 'n-fim', 'O fim está antes do início.');
     }),
@@ -528,7 +584,9 @@ export function montar(el, ctx, params) {
   document.addEventListener('visibilitychange', aoEsconder);
   st.desligar.push(() => document.removeEventListener('visibilitychange', aoEsconder));
 
-  if (!origem && !rascunho) setTimeout(() => $('#n-empresa', el)?.focus({ preventScroll: true }), 0);
+  // Foco automático só com mouse: no celular o teclado e a lista não sobem sozinhos.
+  if (!origem && !rascunho && matchMedia('(pointer: fine)').matches) setTimeout(() => $('#n-empresa', el)?.focus({ preventScroll: true }), 0);
+  atualizarPeriodo();
 
   const meu = st;
   return () => {
