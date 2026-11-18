@@ -16,7 +16,8 @@
 --     e as permissões por coluna a partir das colunas atuais. Os dados
 --     Swile (swile_*) continuam visíveis só ao aprovador e ao solicitante.
 --
---  Pré-requisitos: migrações 01 (parte A) e 02 (parte B) aplicadas.
+--  Pré-requisito: migração 01 (parte A) aplicada. A parte B (02) não é
+--  obrigatória: esta migração inclui as funções dela.
 --  Não altera nenhuma campanha existente (as colunas novas nascem vazias).
 --  Para desfazer: 04-rollback.sql.
 -- ============================================================
@@ -153,6 +154,40 @@ drop trigger if exists ao_vincular_campanha on public.campanhas;
 create trigger ao_vincular_campanha
   before insert on public.campanhas
   for each row execute function public.vincular_campanha();
+
+-- ---------- DADOS SWILE (mesmo conteúdo da migração 02, parte B) ----------
+-- Repetido aqui para a 04 funcionar também em banco onde a parte B nunca
+-- foi aplicada (sem isso, a view abaixo falha com "swile_da_campanha does
+-- not exist"). Em banco que já tem a parte B, só regrava igual.
+alter table public.campanhas add column if not exists swile_nome_completo   text;
+alter table public.campanhas add column if not exists swile_cpf             text;
+alter table public.campanhas add column if not exists swile_data_nascimento date;
+alter table public.campanhas add column if not exists swile_email           text;
+alter table public.campanhas add column if not exists swile_telefone        text;
+
+create or replace function public.pode_ver_swile(p_solicitante uuid)
+returns boolean language sql stable security definer set search_path = public as $$
+  select public.eh_aprovador() or (p_solicitante = auth.uid() and public.eh_ativo());
+$$;
+
+create or replace function public.swile_da_campanha(p_id bigint)
+returns table (
+  swile_nome_completo   text,
+  swile_cpf             text,
+  swile_data_nascimento date,
+  swile_email           text,
+  swile_telefone        text
+)
+language sql stable security definer set search_path = public as $$
+  select c.swile_nome_completo, c.swile_cpf, c.swile_data_nascimento, c.swile_email, c.swile_telefone
+  from campanhas c
+  where c.id = p_id and public.pode_ver_swile(c.solicitante_id);
+$$;
+
+revoke execute on function public.pode_ver_swile(uuid)      from public, anon;
+revoke execute on function public.swile_da_campanha(bigint) from public, anon;
+grant  execute on function public.pode_ver_swile(uuid)      to authenticated;
+grant  execute on function public.swile_da_campanha(bigint) to authenticated;
 
 -- ---------- VIEW E PERMISSÕES POR COLUNA, A PARTIR DAS COLUNAS ATUAIS ----------
 -- Coluna nova em campanhas? Basta rodar:  select public.reaplicar_permissoes_campanhas();
