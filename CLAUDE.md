@@ -6,9 +6,12 @@ Tudo fica registrado e exporta para Excel.
 
 ## Stack
 
-HTML, CSS e JavaScript puros, em módulos ESM. **Sem framework, sem build, sem npm.**
-Banco e autenticação: Supabase (`js/lib/supabase.js`, versão fixa via esm.sh).
-Publicação: arrastar a pasta no Netlify Drop.
+HTML, CSS e JavaScript puros, em módulos ESM. **Sem framework e sem etapa de build:** o que está em
+`public/` é exatamente o que vai para o ar. O `package.json` da raiz só traz ferramentas (wrangler para
+publicar, scripts de teste); o app não depende de nenhum pacote npm.
+Banco e autenticação: Supabase (`public/js/lib/supabase.js`, versão fixa via esm.sh).
+Publicação: GitHub → Cloudflare Workers (só arquivos estáticos, `wrangler.jsonc`). Ver `PUBLICAR.md`.
+Servidor próprio da empresa: qualquer servidor web servindo `public/` (ver `deploy/nginx.conf`).
 
 Essa simplicidade é proposital: quem mantém o projeto não é desenvolvedor.
 **Não introduza React, Vue, Tailwind, bundler ou etapa de build sem que seja pedido.**
@@ -16,19 +19,22 @@ Essa simplicidade é proposital: quem mantém o projeto não é desenvolvedor.
 ## Arquivos
 
 ```
-index.html          só a casca: #splash, #acesso, #app (topo, menu, conteúdo, barra inferior)
-config.js           chaves do Supabase, marca, VERSAO e listas dos menus. O usuário edita este.
-manifest.json  sw.js  _headers (CSP)  _redirects (bloqueia sql/, tests/, dev/, .md)
-assets/             logo.png, logo-branca.png, icon-*.png
-css/  tokens.css (ÚNICO lugar com cor)  base.css (casca)  componentes.css  telas.css
-js/   app.js (rotas e ctx)  acesso.js (login e senha)  exportar.js (Excel)
-      lib/    regras.js (funções puras)  dom.js (html``)  supabase.js  url-auth.js
-      dados/  campanhas.js  cadastros.js  erros.js
-      ui/     icones.js  avisos.js  campos.js  combo.js  pecas.js  cadastro-dialogos.js
-      telas/  inicio.js  campanhas.js  detalhe.js  nova.js  historico.js  gestao.js  perfil.js
-sql/  schema.sql (instalação nova)  migracoes/ (00–06, com rollback e validação)
-tests/regras.test.mjs        node --test tests/regras.test.mjs
-dev/supabase-simulado.js     roda o app sem banco (ver topo do arquivo)
+public/                  ← TUDO que vai para o ar (raiz do site)
+  index.html             só a casca: #splash, #acesso, #app (topo, menu, conteúdo, barra inferior)
+  config.js              chaves do Supabase, marca, VERSAO e listas dos menus. O usuário edita este.
+  manifest.json  sw.js  _headers (CSP e cache; lido pelo Cloudflare)
+  assets/                logo.png, logo-branca.png, icon-*.png
+  css/  tokens.css (ÚNICO lugar com cor)  base.css (casca)  componentes.css  telas.css
+  js/   app.js (rotas e ctx)  acesso.js (login e senha)  exportar.js (Excel)
+        lib/    regras.js (funções puras)  dom.js (html``)  supabase.js  url-auth.js
+        dados/  campanhas.js  cadastros.js  erros.js
+        ui/     icones.js  avisos.js  campos.js  combo.js  pecas.js  cadastro-dialogos.js
+        telas/  inicio.js  campanhas.js  detalhe.js  nova.js  historico.js  gestao.js  perfil.js
+sql/          schema.sql (instalação nova)  migracoes/ (00–06, com rollback e validação)
+tests/        regras.test.mjs (unidade) · banco/ (Postgres) · e2e/ (navegador)   → TESTES.md
+dev/          servidor.mjs (servidor local) · supabase-simulado.js (banco falso em memória)
+deploy/       nginx.conf (servidor próprio)
+wrangler.jsonc  package.json  .github/workflows/testes.yml
 ```
 
 ## Rotas
@@ -62,9 +68,12 @@ histórico do app quando existe.
 - Datas: `dataBR()`/`dataCivil()` no fuso `America/Fortaleza` (`FUSO` em regras.js). Nunca `toISOString().slice(0,10)`.
 - Valores digitados: `lerValor()` (aceita `1.234,56`, `2.000`, `1234.56`). Exibição: `brl()`, `brl0()`, `pct()`.
 - Formulário nunca é redesenhado por evento externo (tempo real). Listas redesenham só a lista.
-- Depois de mexer em `js/lib/regras.js`, rode `node --test tests/regras.test.mjs`.
-- Para ver no navegador: `python3 -m http.server` (ESM não funciona por `file://`). Sem banco: veja `dev/supabase-simulado.js`.
-- Subiu versão? Troque `VERSAO` no `config.js` **e** no `sw.js` (as duas iguais).
+- Ver no navegador: `node dev/servidor.mjs` (banco simulado) ou `node dev/servidor.mjs --real`. ESM não funciona por `file://`.
+- **Nunca** copie `dev/supabase-simulado.js` para dentro de `public/`.
+- Antes de enviar mudança: `npm test`, `npm run test:e2e` e, se mexeu no banco, `npm run test:banco` (ver `TESTES.md`).
+- Tela, botão ou fluxo novo: acrescente o teste em `tests/e2e/rodar.mjs`.
+- Subiu versão? Troque `VERSAO` em `public/config.js` **e** em `public/sw.js` (as duas iguais).
+- Endereço externo novo (CDN, API)? Libere no CSP de `public/_headers` **e** de `deploy/nginx.conf`.
 
 ## Design
 

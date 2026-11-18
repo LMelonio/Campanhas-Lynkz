@@ -226,8 +226,16 @@ function montarAtual() {
   s.desligar = [];
   window.scrollTo(0, 0);
   if (s.params.empresa) montarFicha(); else montarLista();
-  // Redesenha ao vivo, mas nunca com um diálogo aberto por cima.
-  const ao_vivo = () => { if (!document.querySelector('dialog[open]')) s?.redesenhar?.(); };
+  // Redesenha ao vivo, mas nunca com um diálogo aberto por cima: se houver
+  // um, espera ele fechar (senão a edição feita no diálogo não aparecia).
+  let adiado = false;
+  const ao_vivo = () => {
+    const d = document.querySelector('dialog[open]');
+    if (!d) { s?.redesenhar?.(); return; }
+    if (adiado) return;
+    adiado = true;
+    d.addEventListener('close', () => { adiado = false; s?.redesenhar?.(); }, { once: true });
+  };
   s.desligar.push(s.ctx.cadastros.assinar(ao_vivo), s.ctx.campanhas.assinar(ao_vivo));
 }
 

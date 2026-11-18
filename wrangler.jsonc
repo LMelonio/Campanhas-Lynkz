@@ -1,0 +1,13 @@
+// Cloudflare Workers — só arquivos estáticos (sem código no servidor).
+// Publica a pasta public/. Os cabeçalhos de segurança vêm de public/_headers.
+// Documentação: PUBLICAR.md
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "lynkz-campanhas",
+  "compatibility_date": "2025-11-01",
+  "assets": {
+    "directory": "./public",
+    "not_found_handling": "none"
+  },
+  "observability": { "enabled": true }
+}

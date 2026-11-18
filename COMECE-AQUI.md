@@ -1,7 +1,8 @@
 # Comece aqui
 
-App de aprovação de campanhas promocionais. Leva uns **30 minutos** para colocar no ar.
-Não precisa saber programar e não precisa instalar nada no computador.
+App de aprovação de campanhas promocionais. Leva uns **40 minutos** para colocar no ar.
+Não precisa saber programar. O código fica no **GitHub** e o site no **Cloudflare**; o passo a passo
+técnico completo (inclusive a mudança do Netlify) está em **`PUBLICAR.md`**.
 
 Custo: **R$ 0**. O volume de 5 coordenadores cabe folgado nos planos gratuitos.
 
@@ -22,16 +23,17 @@ Depois, no **SQL Editor**, rode um arquivo por vez, na ordem (abra no bloco de n
 4. (Recomendado) `sql/migracoes/03-validacao.sql` — testa as regras fingindo ser cada tipo de usuário
    e desfaz tudo no final. Todas as linhas `ok = true`.
 
-A v1 continua funcionando depois disso (as colunas novas são opcionais). Então publique a pasta nova
-no Netlify (Parte 3, arrastando por cima do site que já existe) e abra o app no celular: o rodapé do
-menu e do Perfil deve mostrar **Versão 2.0.0**. Se não mudar, feche e abra o app de novo.
+A v1 continua funcionando depois disso (as colunas novas são opcionais). Então publique a v2 no
+Cloudflare (Parte 3) e abra o app no celular: o rodapé do menu e do Perfil deve mostrar
+**Versão 2.0.1**. Se não mudar, feche e abra o app de novo.
 
-**Deu errado? Volta atrás:** publique de novo a pasta da v1 e rode, nesta ordem,
+**Deu errado? Volta atrás:** no Cloudflare, *Deployments* → versão anterior → *Rollback* (ou volte a
+usar o endereço antigo do Netlify) e rode, nesta ordem,
 `sql/migracoes/05-rollback.sql` e `sql/migracoes/04-rollback.sql`. Atenção: o rollback da 04 apaga as
 empresas e balconistas cadastrados (as campanhas ficam intactas, com o nome em "cliente").
 
 **Se alguma tela não carregar depois de publicar**, abra o console do navegador (F12): erro de
-"Content Security Policy" quer dizer que falta liberar um endereço no arquivo `_headers`.
+"Content Security Policy" quer dizer que falta liberar um endereço no arquivo `public/_headers`.
 
 ---
 
@@ -54,7 +56,7 @@ empresas e balconistas cadastrados (as campanhas ficam intactas, com o nome em "
 1. Menu da esquerda → **Project Settings** (a engrenagem) → **Data API**.
 2. Copie a **Project URL**. É algo como `https://abcdefgh.supabase.co`.
 3. Ainda em Project Settings, vá em **API Keys** e copie a chave **anon** (às vezes aparece como *publishable*). É um texto longo.
-4. Abra o arquivo **`config.js`** num bloco de notas e cole os dois valores nos lugares indicados:
+4. Abra o arquivo **`public/config.js`** num bloco de notas e cole os dois valores nos lugares indicados:
 
 ```js
 SUPABASE_URL: "https://abcdefgh.supabase.co",
@@ -68,24 +70,25 @@ Salve o arquivo.
 
 ---
 
-## Parte 3 — Publicar o app (5 min)
+## Parte 3 — Publicar o app (15 min)
 
-1. Junte todos os arquivos desta pasta num único ZIP, ou deixe a pasta pronta.
-2. Entre em **app.netlify.com/drop**.
-3. **Arraste a pasta inteira** para dentro da página. Só isso.
-4. Em segundos ele devolve um endereço tipo `https://algo-aleatorio.netlify.app`.
-5. Clique em **Site configuration → Change site name** para trocar por algo decente, tipo
-   `campanhas-suaempresa`. O endereço vira `https://campanhas-suaempresa.netlify.app`.
+Resumo (detalhes e prints em `PUBLICAR.md`):
 
-Guarde esse endereço: é o seu app.
+1. **GitHub:** crie um repositório **privado** `lynkz-campanhas` e envie esta pasta.
+2. **Cloudflare:** *Workers & Pages* → *Create* → *Import a repository* → escolha o repositório.
+   Build command: *(vazio)*. Deploy command: `npx wrangler deploy`. Clique em *Deploy*.
+3. Em segundos sai um endereço tipo `https://lynkz-campanhas.<sua-conta>.workers.dev`.
+   Para usar um domínio da empresa (ex.: `campanhas.lynkz.com.br`): *Settings* → *Domains & Routes*.
+
+Guarde esse endereço: é o seu app. A partir daí, **cada mudança enviada ao GitHub publica sozinha.**
 
 ---
 
 ## Parte 4 — Liberar o login por e-mail (3 min)
 
 1. Volte no Supabase → **Authentication** → **URL Configuration**.
-2. Em **Site URL**, cole o endereço do Netlify (`https://campanhas-suaempresa.netlify.app`).
-3. Em **Redirect URLs**, adicione o mesmo endereço.
+2. Em **Site URL**, cole o endereço do app no Cloudflare (ex.: `https://campanhas.lynkz.com.br`), **sem barra no final**.
+3. Em **Redirect URLs**, adicione o mesmo endereço e também `https://campanhas.lynkz.com.br/**`.
 4. Salve.
 5. Vá em **Authentication** → **Sign In / Providers** e **desligue "Allow new users to sign up"**.
    Salve.
@@ -165,16 +168,16 @@ uma senha provisória e ele troca depois em "Esqueci minha senha"). Ele entra co
 `ativo` na linha dele. Ele perde o acesso na hora — o banco recusa consultas e solicitações de
 quem está desativado, não só a tela (desde a Parte A da migração de segurança, aplicada em 27/10/2026).
 
-**Quero mudar as faixas de cor.** Abra o `config.js`, mude `FAIXA_VERDE` e `FAIXA_AMARELA`
-(`0.08` é 8%) e publique de novo arrastando a pasta no Netlify.
+**Quero mudar as faixas de cor.** Abra o `public/config.js`, mude `FAIXA_VERDE` e `FAIXA_AMARELA`
+(`0.08` é 8%) em `public/config.js` e envie a mudança ao GitHub (publica sozinho).
 
 **A marca oficial já está aplicada.** O vermelho do sistema é o `#E11F1C`, amostrado do arquivo
-original da logo. Se a marca mudar, troque o `assets/logo.png` e rode de novo o passo que gera os ícones.
+original da logo. Se a marca mudar, troque o `public/assets/logo.png` e rode de novo o passo que gera os ícones.
 
-**Quero mudar as cores da marca.** Abra o `css/tokens.css`. Ele concentra todas as cores (claro
+**Quero mudar as cores da marca.** Abra o `public/css/tokens.css`. Ele concentra todas as cores (claro
 e escuro), cantos arredondados e sombras. Mudar `--red` ali troca a cor de ação do app inteiro.
 
-**Quero adicionar um laboratório.** Mesma coisa: `config.js`, lista `LABORATORIOS`.
+**Quero adicionar um laboratório.** Mesma coisa: `public/config.js`, lista `LABORATORIOS`.
 
 **Perdi tudo?** Não. Os dados ficam no Supabase, não no app. Republicar o site não apaga nada.
 
@@ -203,7 +206,7 @@ ignore este e-mail: sua senha atual continua valendo.</p>
 ```
 
 Salve. Para funcionar, o **Site URL** (Authentication → URL Configuration) precisa ser
-exatamente `https://lynkz-campanhas.netlify.app`, **sem barra no final**. O app entende
+exatamente o endereço do app (ex.: `https://campanhas.lynkz.com.br`), **sem barra no final**. O app entende
 os dois formatos de link, o padrão e este.
 
 ---
@@ -212,13 +215,14 @@ os dois formatos de link, o padrão e este.
 
 | Arquivo | O que é |
 |---|---|
-| `config.js` | **O que você edita no dia a dia:** chaves, marca, versão e listas |
-| `index.html` | A casca das telas |
-| `css/` | O sistema visual (`tokens.css` tem todas as cores) |
-| `js/` | A lógica: login, telas, cálculos, aprovação, cadastro, Excel |
+| `public/` | **O site.** Só o que está aqui vai para o ar |
+| `public/config.js` | **O que você edita no dia a dia:** chaves, marca, versão e listas |
+| `public/css/`, `public/js/` | Visual (`tokens.css` tem todas as cores) e lógica |
+| `public/_headers` | Segurança (CSP) e cache, lidos pelo Cloudflare |
 | `sql/schema.sql` | O banco de dados completo, para instalação nova |
 | `sql/migracoes/` | Atualizações do banco, com volta atrás e validação |
-| `manifest.json`, `sw.js` | O que faz virar app instalável |
-| `_headers`, `_redirects` | Segurança no Netlify (não publicam `sql/`, `tests/`, `dev/` nem os `.md`) |
-| `assets/` | Logo e ícones |
+| `PUBLICAR.md` | GitHub, Cloudflare, mudança do Netlify e servidor próprio |
+| `TESTES.md` | Como rodar os testes e o que eles cobrem |
+| `wrangler.jsonc`, `package.json` | Configuração de publicação no Cloudflare |
+| `deploy/nginx.conf` | Modelo para o TI hospedar no servidor da empresa |
 | `tests/`, `dev/` | Testes e simulador para quem mexe no código (ver `CLAUDE.md`) |

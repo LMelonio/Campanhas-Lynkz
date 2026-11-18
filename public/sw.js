@@ -6,10 +6,10 @@
 //  - Supabase: nunca passa pelo cache.
 //  Só guarda respostas OK. VERSAO tem de ser igual à do config.js.
 // ============================================================
-const VERSAO = '2.0.0';
+const VERSAO = '2.0.1';
 const CACHE = 'campanhas-' + VERSAO;
 const CASCA = [
-  './', 'index.html', 'config.js', 'manifest.json',
+  './', 'config.js', 'manifest.json',          // './' e não 'index.html': o Cloudflare redireciona /index.html → /
   'css/tokens.css', 'css/base.css', 'css/componentes.css', 'css/telas.css',
   'assets/logo.png', 'assets/icon-192.png',
 ];
@@ -48,6 +48,6 @@ self.addEventListener('fetch', e => {
 
   e.respondWith(
     fetch(req).then(r => guardar(req, r))
-      .catch(() => caches.match(req).then(achou => achou || (req.mode === 'navigate' ? caches.match('index.html') : undefined))),
+      .catch(() => caches.match(req).then(achou => achou || (req.mode === 'navigate' ? caches.match('./') : undefined))),
   );
 });

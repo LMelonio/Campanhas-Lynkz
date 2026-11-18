@@ -71,7 +71,7 @@ export function regua(c, { titulo = 'Custo total', compacta = false } = {}) {
 }
 
 // Mini régua do cartão.
-export function miniRegua(c) {
+function miniRegua(c) {
   const k = calc(c), b = banda(k.pctMeta, FAIXAS);
   return html`<div class="mini nivel-${b.nivel}">
     <span class="mini-trilho" aria-hidden="true"><i class="nivel-${b.nivel}" ${largura(posRegua(k.pctMeta))}></i></span>

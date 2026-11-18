@@ -1,11 +1,11 @@
 // ============================================================
 //  SUPABASE SIMULADO — para rodar o app sem banco (só desenvolvimento).
 //
-//  Como usar:
-//  1. Copie a pasta do app para outro lugar (não publique isto).
-//  2. Copie este arquivo por cima de js/lib/supabase.js.
-//  3. Na pasta copiada:  python3 -m http.server 8000
-//  4. Abra  http://localhost:8000/?papel=aprovador   ou  ?papel=coordenador
+//  Como usar (da raiz do projeto):
+//     node dev/servidor.mjs
+//  e abra  http://localhost:8000/?papel=aprovador   ou  ?papel=coordenador
+//  O servidor entrega este arquivo no lugar de public/js/lib/supabase.js.
+//  Nunca copie este arquivo para dentro de public/.
 //
 //  Imita as regras principais do banco: só o aprovador decide, decisão só
 //  sai de Pendente, carimbos de quem decidiu, dados Swile só para o

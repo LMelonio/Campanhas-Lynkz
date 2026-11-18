@@ -5,7 +5,7 @@ import {
   calc, banda, posRegua, lerValor, valorCampo, pct, brl, contem, cpfValido, maskCPF, maskCNPJ,
   maskTelefone, telefoneValido, dataCivil, dataBR, dias, dataExcel, colunaExcel, errosRecebedor,
   nomeCompleto, emailValido,
-} from '../js/lib/regras.js';
+} from '../public/js/lib/regras.js';
 
 const FAIXAS = { verde: 0.08, amarela: 0.15 };
 

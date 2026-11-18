@@ -1,0 +1,3 @@
+# Mantém LF em todos os arquivos de texto (o patch e os testes dependem disso).
+* text=auto eol=lf
+*.png binary

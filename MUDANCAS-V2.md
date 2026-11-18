@@ -1,3 +1,18 @@
+# Mudanças da v2.0.1 (18/11/2026)
+
+- **Publicação no Cloudflare** a partir do GitHub (`wrangler.jsonc`, `PUBLICAR.md`). O Netlify sai.
+- O site agora é **só a pasta `public/`**: `sql/`, `tests/`, `dev/` e documentação nunca vão para o ar,
+  em qualquer hospedagem. Modelo de **nginx** para o servidor da empresa (`deploy/`).
+- **Correção:** editar empresa ou balconista na Gestão não atualizava a ficha na tela.
+- **Correção:** sem internet, o app instalado não abriria depois da mudança para o Cloudflare
+  (o service worker guardava `index.html`, que o Cloudflare redireciona).
+- **Testes automáticos** em quatro camadas, rodando no GitHub a cada push (`TESTES.md`).
+- Servidor local sem instalar nada: `node dev/servidor.mjs`.
+- Removidos o `app.js` da v1 que tinha ficado na raiz e o `_redirects` do Netlify.
+- Testes de navegador: rodam também no Windows (`import()` com URL `file://`), e o teste do Excel
+  deixou de ser pulado (o pacote `xlsx` não exporta `package.json`).
+- `.gitattributes` mantém LF em todos os arquivos de texto.
+
 # Mudanças da v2.0.0
 
 ## Novidades

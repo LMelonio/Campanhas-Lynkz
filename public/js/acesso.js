@@ -69,7 +69,7 @@ const ocupar = (botao, texto) => {
   return () => { botao.disabled = false; botao.removeAttribute('aria-busy'); botao.textContent = antes; };
 };
 
-export function telaAcessoVisivel() { return !el().hidden; }
+function telaAcessoVisivel() { return !el().hidden; }
 
 // ---------- login ----------
 function mostrarLogin(msgOk = '', email = '') {

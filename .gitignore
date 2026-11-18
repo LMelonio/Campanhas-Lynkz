@@ -1,4 +1,13 @@
-# Arquivos internos - não publicar no repositório público
+# Dependências e saídas de ferramentas
+node_modules/
+tests/e2e/node_modules/
+tests/e2e/saida/
+.wrangler/
+.dev.vars
+*.log
+.DS_Store
+
+# Arquivos internos que nunca vão para o repositório
 .git.zip
 sql/migracoes/ROTEIRO-PRODUCAO.md
 sql/migracoes/D10-PARA-EXECUTAR.sql

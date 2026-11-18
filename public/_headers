@@ -1,6 +1,7 @@
-# Cabeçalhos de segurança (Netlify). Se algo deixar de carregar depois de
-# publicar, abra o console do navegador: erro de "Content Security Policy"
-# diz qual endereço falta liberar aqui.
+# Cabeçalhos de segurança. Lidos pelo Cloudflare (Workers/Pages) e pelo
+# Netlify; no servidor próprio, ver deploy/nginx.conf (mesmos valores).
+# Se algo deixar de carregar depois de publicar, abra o console do
+# navegador: o erro de "Content Security Policy" diz o endereço que falta.
 /*
   X-Content-Type-Options: nosniff
   Referrer-Policy: strict-origin-when-cross-origin
@@ -13,3 +14,6 @@
 
 /config.js
   Cache-Control: no-cache
+
+/assets/*
+  Cache-Control: public, max-age=86400

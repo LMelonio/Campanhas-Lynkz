@@ -1,0 +1,19 @@
+{
+  "name": "lynkz-campanhas",
+  "version": "2.0.1",
+  "private": true,
+  "description": "LYNKZ Campanhas — solicitação e aprovação de campanhas promocionais (app estático + Supabase). O app não tem build: estas dependências são só ferramentas de publicação.",
+  "type": "module",
+  "scripts": {
+    "dev": "node dev/servidor.mjs",
+    "dev:real": "node dev/servidor.mjs --real",
+    "test": "node --test tests/regras.test.mjs",
+    "test:banco": "bash tests/banco/rodar.sh",
+    "test:e2e": "node tests/e2e/rodar.mjs",
+    "cf:dev": "wrangler dev",
+    "deploy": "wrangler deploy"
+  },
+  "devDependencies": {
+    "wrangler": "^4.0.0"
+  }
+}
