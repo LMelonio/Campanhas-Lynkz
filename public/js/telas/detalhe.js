@@ -4,9 +4,10 @@
 //  Reprovar abre diálogo com motivos rápidos; motivo é obrigatório.
 // ============================================================
 import { html, pintar, $, ao } from '../lib/dom.js';
-import { calc, brl, dataBR, dias, maskCPF, maskTelefone, STATUS } from '../lib/regras.js';
+import { calc, banda, pct, brl, dataBR, dias, maskCPF, maskTelefone, soDigitos, STATUS } from '../lib/regras.js';
 import { icone } from '../ui/icones.js';
-import { selo, regua, vazio, carregando } from '../ui/pecas.js';
+import { selo, regua, vazio, carregando, FAIXAS } from '../ui/pecas.js';
+import { botaoCopiar, ligarCopiar } from '../ui/copiar.js';
 import { abrirDialogo, erroNoDialogo } from '../ui/avisos.js';
 import { areaTexto, aplicarErros } from '../ui/campos.js';
 import { estadoLista } from '../ui/estado.js';
@@ -44,13 +45,31 @@ function painelRecebedor(c, ctx) {
   const d = ehSwile
     ? { nome: c.swile_nome_completo, cpf: c.swile_cpf, nasc: c.swile_data_nascimento, email: c.swile_email, tel: c.swile_telefone }
     : { nome: balc.nome_completo, cpf: balc.cpf, nasc: balc.data_nascimento, email: balc.email, tel: balc.telefone };
-  return painel('Quem recebe a premiação', html`
-    ${linha('Nome completo', d.nome)}
-    ${linha('CPF', d.cpf ? maskCPF(d.cpf) : '')}
-    ${linha('Nascimento', d.nasc ? dataBR(d.nasc) : '')}
-    ${linha('E-mail', d.email)}
-    ${linha('Telefone', d.tel ? maskTelefone(d.tel) : '')}
-    ${ehSwile ? linkBalc : ''}`, ehSwile ? html`<span class="selo selo-neutro">${icone('cadeado')}Swile</span>` : '');
+  const comCopiar = (texto, valorCopia, rotulo) => (texto ? html`<span class="dd-copiar">${texto}${botaoCopiar(valorCopia, rotulo)}</span>` : '');
+  // Tudo o que o financeiro precisa para lançar o pagamento, de uma vez.
+  const pagamento = [
+    `Nome: ${d.nome || ''}`,
+    `CPF: ${d.cpf ? maskCPF(d.cpf) : ''}`,
+    `Nascimento: ${d.nasc ? dataBR(d.nasc) : ''}`,
+    `E-mail: ${d.email || ''}`,
+    `Telefone: ${d.tel ? maskTelefone(d.tel) : ''}`,
+    `Valor: R$ ${brl(calc(c).invL)}`,
+    `Campanha: ${c.codigo} – ${c.campanha}`,
+  ].join('\n');
+  return html`<section class="painel">
+    <h3 class="painel-titulo">Quem recebe a premiação${ehSwile ? html`<span class="selo selo-neutro">${icone('cadeado')}Swile</span>` : ''}</h3>
+    <dl class="linhas">
+      ${linha('Nome completo', d.nome)}
+      ${linha('CPF', comCopiar(d.cpf ? maskCPF(d.cpf) : '', soDigitos(d.cpf), 'CPF'))}
+      ${linha('Nascimento', d.nasc ? dataBR(d.nasc) : '')}
+      ${linha('E-mail', comCopiar(d.email, d.email, 'E-mail'))}
+      ${linha('Telefone', comCopiar(d.tel ? maskTelefone(d.tel) : '', d.tel ? maskTelefone(d.tel) : '', 'Telefone'))}
+      ${ehSwile ? linkBalc : ''}
+    </dl>
+    <div class="painel-corpo painel-acoes">
+      <button type="button" class="btn btn-fantasma btn-pequeno" data-copiar="${pagamento}" data-copiar-aviso="Dados do pagamento copiados">${icone('copiar')} Copiar dados do pagamento</button>
+    </div>
+  </section>`;
 }
 
 function corpo(c, ctx) {
@@ -68,7 +87,7 @@ function corpo(c, ctx) {
         ${selo(c.status)}
       </div>
       <h2 class="det-titulo">${c.campanha}</h2>
-      <p class="det-sub">${c.laboratorio} · ${c.codigo}</p>
+      <p class="det-sub">${c.laboratorio} · <span class="dd-copiar">${c.codigo}${botaoCopiar(c.codigo, 'código', 'Código copiado')}</span></p>
     </header>
 
     <section class="painel"><div class="painel-corpo painel-regua">${regua(c)}</div></section>
@@ -110,17 +129,28 @@ function corpo(c, ctx) {
   </article>`;
 }
 
+// Custo e faixa ao lado dos botões: quem decide vê o número sem rolar a tela.
+function custoDecisao(c) {
+  const k = calc(c), b = banda(k.pctMeta, FAIXAS);
+  return html`<div class="decisao-custo">
+    <strong class="num-display valor">R$ ${brl(k.total)}</strong>
+    <span class="decisao-pct nivel-${b.nivel}">${k.pctMeta == null ? 'sem meta informada' : `${pct(k.pctMeta)} da meta · ${b.txt}`}</span>
+  </div>`;
+}
+
 function barra(c, ctx) {
   if (!ctx.ehAprovador || c.status !== STATUS.PENDENTE) return '';
   if (emEspera && String(emEspera.id) === String(c.id)) {
     return html`<div class="barra-decisao" role="region" aria-label="Decisão">
+      ${custoDecisao(c)}
       <p class="barra-decisao-msg" role="status">${icone('historico')} Aprovando em instantes…</p>
       <button type="button" class="btn btn-fantasma" data-desfazer>Desfazer</button>
     </div>`;
   }
   return html`<div class="barra-decisao" role="region" aria-label="Decisão">
-    <button type="button" class="btn btn-perigo" data-reprovar>${icone('x')} Reprovar</button>
-    <button type="button" class="btn btn-primario" data-aprovar>${icone('check')} Aprovar</button>
+    ${custoDecisao(c)}
+    <button type="button" class="btn btn-perigo" data-reprovar aria-keyshortcuts="R">${icone('x')} Reprovar <kbd class="atalho" aria-hidden="true">R</kbd></button>
+    <button type="button" class="btn btn-primario" data-aprovar aria-keyshortcuts="A">${icone('check')} Aprovar <kbd class="atalho" aria-hidden="true">A</kbd></button>
   </div>`;
 }
 
@@ -136,7 +166,7 @@ function desenhar() {
       : carregando(2));
     return;
   }
-  ctx.cabecalho({ titulo: c.cliente, voltar: '#/campanhas' });
+  ctx.cabecalho({ titulo: c.campanha, voltar: '#/campanhas' });
   const b = barra(c, ctx);
   ctx.barraDeAcao(!!b);
   const rolagem = window.scrollY;
@@ -241,8 +271,51 @@ document.addEventListener('visibilitychange', () => {
   if (document.hidden && emEspera && atual) gravarAprovacao(atual.ctx, emEspera);
 });
 
-export function montar(el, ctx, { id }) {
-  atual = { el, ctx, id, desligar: [] };
+// ---------- atalhos de teclado (só ≥ 900 px) ----------
+const ATALHOS = [
+  ['A', 'Aprovar (com 5 s para desfazer)'],
+  ['R', 'Reprovar'],
+  ['J', 'Próxima campanha da lista'],
+  ['K', 'Campanha anterior da lista'],
+  ['?', 'Mostrar estes atalhos'],
+];
+
+function mostrarAtalhos() {
+  abrirDialogo({
+    titulo: 'Atalhos de teclado',
+    descricao: 'Valem no detalhe da campanha, no computador, fora dos campos de texto.',
+    corpo: html`<dl class="atalhos">${ATALHOS.map(([k, t]) => html`<div><dt><kbd>${k}</kbd></dt><dd>${t}</dd></div>`)}</dl>`,
+    acoes: [{ rotulo: 'Fechar', valor: null, tipo: 'primario', principal: true }],
+  });
+}
+
+function aoTeclar(e) {
+  if (!atual || e.ctrlKey || e.metaKey || e.altKey || e.defaultPrevented) return;
+  if (!matchMedia('(min-width: 900px)').matches) return;
+  if (e.target instanceof Element && e.target.closest('input, textarea, select, [contenteditable="true"]')) return;
+  if (document.querySelector('dialog[open]')) return;
+  const { el, ctx, id, lista } = atual;
+  const tecla = e.key.toLowerCase();
+  if (tecla === 'a' || tecla === 'r') {
+    const b = $(tecla === 'a' ? '[data-aprovar]' : '[data-reprovar]', el);
+    if (b) { e.preventDefault(); b.click(); }
+  } else if ((tecla === 'j' || tecla === 'k') && lista) {
+    const ids = lista();
+    if (!ids.length) return;
+    const i = ids.indexOf(String(id));
+    const alvo = tecla === 'j' ? ids[i + 1] ?? (i < 0 ? ids[0] : null) : ids[i - 1] ?? (i < 0 ? ids.at(-1) : null);
+    if (alvo) { e.preventDefault(); ctx.navegar(`#/campanhas/${alvo}`, { substituir: true }); }
+  } else if (e.key === '?') {
+    e.preventDefault();
+    mostrarAtalhos();
+  }
+}
+
+// lista: () => ids da lista filtrada (para J/K), quando o detalhe está ao lado dela.
+export function montar(el, ctx, { id, lista = null }) {
+  atual = { el, ctx, id, lista, desligar: [] };
+  document.addEventListener('keydown', aoTeclar);
+  atual.desligar.push(() => document.removeEventListener('keydown', aoTeclar), ligarCopiar(el, ctx.toast));
   atual.desligar.push(
     ao(el, 'click', '[data-aprovar]', () => {
       const c = ctx.campanhas.porId(id);

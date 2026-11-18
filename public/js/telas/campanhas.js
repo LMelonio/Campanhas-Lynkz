@@ -132,7 +132,7 @@ function mostrarDetalhe(id) {
     if (!s.id && !lado) s.rolagemLista = window.scrollY;
     s.id = id;
     md.dataset.comDetalhe = 'true';
-    s.desmontarDetalhe = detalhe.montar(caixa, ctx, { id });
+    s.desmontarDetalhe = detalhe.montar(caixa, ctx, { id, lista: () => ordenar(aplicarFiltros(ctx)).map(c => String(c.id)) });
     if (!lado) window.scrollTo(0, 0);
   } else {
     s.id = null;

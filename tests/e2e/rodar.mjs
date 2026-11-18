@@ -866,6 +866,76 @@ teste('lote C: × da busca e Esc limpam e devolvem a lista', async ({ page }) =>
 });
 
 // ============================================================
+//  v2.1 — LOTE D: detalhe e decisão
+// ============================================================
+teste('lote D: topo com o nome da campanha; legenda sem partes zeradas', async ({ page }) => {
+  await abrir(page, { rota: '#/campanhas/1' });
+  await page.locator('.det-titulo').first().waitFor();
+  igual(await titulo(page), 'Vacinas Novembro', 'título do topo é a campanha');
+  await page.goto(`${BASE}/?papel=aprovador#/campanhas/2`); await page.locator('#cp-detalhe .det-titulo').waitFor();
+  const leg = await page.locator('#cp-detalhe .regua-legenda').innerText();
+  afirma(leg.includes('Tudo LYNKZ') && leg.includes('600,00'), 'uma parte só vira frase: ' + leg);
+  afirma(!leg.includes('Indústria') && !leg.includes('Rebate'), 'sem partes zeradas');
+});
+
+teste('lote D: copiar CPF, código e dados do pagamento', async ({ page, contexto }) => {
+  await contexto.grantPermissions(['clipboard-read', 'clipboard-write'], { origin: BASE });
+  await abrir(page, { rota: '#/campanhas/2' });
+  await page.locator('#cp-detalhe [aria-label="Copiar CPF"]').click();
+  await toastCom(page, 'CPF copiado');
+  igual(await page.evaluate(() => navigator.clipboard.readText()), '11144477735', 'CPF só com dígitos');
+  await page.locator('#cp-detalhe [aria-label="Copiar código"]').click();
+  igual(await page.evaluate(() => navigator.clipboard.readText()), 'C26111002', 'código da campanha');
+  await page.locator('#cp-detalhe [data-copiar-aviso="Dados do pagamento copiados"]').click();
+  const t = await page.evaluate(() => navigator.clipboard.readText());
+  for (const trecho of ['Nome: João Pedro Lima', 'CPF: 111.444.777-35', 'Nascimento: 30/09/1988', 'Telefone: (99) 99999-0002', 'Valor: R$ 600,00', 'Campanha: C26111002 – Balconista destaque'])
+    afirma(t.includes(trecho), 'pagamento contém ' + trecho);
+  const b = await page.locator('#cp-detalhe [aria-label="Copiar CPF"]').boundingBox();
+  afirma(b.width >= 44 && b.height >= 44, 'botão de copiar com 44 px');
+});
+
+teste('lote D: barra de decisão mostra custo e % com o texto da faixa', async ({ page }) => {
+  await abrir(page, { rota: '#/campanhas/1' });
+  const t = await page.locator('#cp-detalhe .decisao-custo').innerText();
+  afirma(t.includes('R$ 3.100,00'), 'custo total: ' + t);
+  afirma(t.includes('7,8% da meta') && t.includes('dentro do padrão'), 'percentual com texto da faixa: ' + t);
+});
+
+teste('lote D: celular mostra o custo acima dos botões', async ({ page }) => {
+  await abrir(page, { rota: '#/campanhas/1' });
+  const c = await page.locator('.decisao-custo').boundingBox(), b = await page.locator('[data-aprovar]').boundingBox();
+  afirma(c.y + c.height <= b.y + 1, 'custo numa linha acima dos botões');
+  igual(await page.locator('[data-aprovar] kbd').isVisible(), false, 'tecla de atalho escondida no celular');
+}, { largura: 390, altura: 844 });
+
+teste('lote D: atalhos A, R, J, K e ? no desktop; nada acontece digitando num campo', async ({ page }) => {
+  await abrir(page, { rota: '#/campanhas/1' });
+  await page.locator('#cp-detalhe [data-aprovar]').waitFor();
+  igual(await page.getAttribute('#cp-detalhe [data-aprovar]', 'aria-keyshortcuts'), 'A', 'aria-keyshortcuts');
+  afirma(await page.locator('#cp-detalhe [data-aprovar] kbd').isVisible(), 'tecla visível no desktop');
+  await page.keyboard.press('j');
+  await page.waitForFunction(() => location.hash === '#/campanhas/2');
+  await page.keyboard.press('k');
+  await page.waitForFunction(() => location.hash === '#/campanhas/1');
+  await page.locator('#cp-detalhe [data-aprovar]').waitFor();
+  await page.keyboard.press('r');
+  await page.locator('dialog.dialogo', { hasText: 'Reprovar' }).waitFor();
+  await page.keyboard.press('Escape');
+  await page.locator('dialog.dialogo').waitFor({ state: 'detached' });
+  await page.focus('#cp-busca');
+  await page.keyboard.type('a');
+  igual(await page.locator('[data-desfazer]').count(), 0, 'digitar "a" na busca não aprova');
+  await page.locator('[data-limpar-busca="cp-busca"]').click(); await page.waitForTimeout(300);
+  await page.locator('.det-titulo').first().click();
+  await page.keyboard.press('a');
+  await page.locator('[data-desfazer]').waitFor();
+  await page.locator('[data-desfazer]').click();
+  await toastCom(page, 'desfeita');
+  await page.keyboard.press('Shift+?');
+  await page.locator('dialog.dialogo', { hasText: 'Atalhos de teclado' }).waitFor();
+});
+
+// ============================================================
 //  10. TODAS AS TELAS × TAMANHOS: sem rolagem lateral, acessibilidade, capturas
 // ============================================================
 const TELAS = ['#/inicio', '#/campanhas', '#/campanhas/2', '#/nova', '#/historico', '#/gestao', '#/gestao/empresas/2', '#/perfil'];

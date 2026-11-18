@@ -42,9 +42,7 @@ export function regua(c, { titulo = 'Custo total', compacta = false } = {}) {
     ${k.total > 0 ? html`<div class="regua-comp" aria-hidden="true">
       ${partes.filter(p => p.v > 0).map(p => html`<i class="${p.cls}" ${largura(p.v / k.total * 100)}></i>`)}
     </div>` : ''}
-    <ul class="regua-legenda">
-      ${partes.map(p => html`<li><span class="legenda-ponto ${p.cls}" aria-hidden="true"></span>${p.rotulo} <b>R$ ${brl(p.v)}</b>${p.cls === 'c-rebate' && k.limitado ? html` <span class="tag-teto">no teto</span>` : ''}</li>`)}
-    </ul>
+    ${legenda(partes.filter(p => p.v > 0), k)}
     <div class="regua-meta">
       <div class="regua-meta-topo">
         <span>Custo sobre a meta${c.tipo_meta ? ` (${String(c.tipo_meta).toLowerCase()})` : ''}</span>
@@ -68,6 +66,17 @@ export function regua(c, { titulo = 'Custo total', compacta = false } = {}) {
       <p class="regua-nota nivel-${b.nivel}">${b.nivel === 'vermelho' ? icone('alerta') : ''}${k.pctMeta == null ? 'Informe a meta do cliente para ver a faixa.' : b.txt[0].toUpperCase() + b.txt.slice(1)}</p>
     </div>
   </div>`;
+}
+
+// Legenda da composição: só o que tem valor. Uma parte só vira uma frase.
+function legenda(partes, k) {
+  if (!partes.length) return '';
+  const teto = p => (p.cls === 'c-rebate' && k.limitado ? html` <span class="tag-teto">no teto</span>` : '');
+  if (partes.length === 1) {
+    const p = partes[0];
+    return html`<ul class="regua-legenda"><li><span class="legenda-ponto ${p.cls}" aria-hidden="true"></span>Tudo ${p.rotulo} · <b class="valor">R$ ${brl(p.v)}</b>${teto(p)}</li></ul>`;
+  }
+  return html`<ul class="regua-legenda">${partes.map(p => html`<li><span class="legenda-ponto ${p.cls}" aria-hidden="true"></span>${p.rotulo} <b class="valor">R$ ${brl(p.v)}</b>${teto(p)}</li>`)}</ul>`;
 }
 
 // Mini régua do cartão.
