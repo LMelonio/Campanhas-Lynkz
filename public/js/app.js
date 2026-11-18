@@ -11,6 +11,7 @@ import { iniciarAcesso, sair as sairDaConta } from './acesso.js';
 import { campanhas } from './dados/campanhas.js';
 import { cadastros } from './dados/cadastros.js';
 import { conferirBanco } from './dados/saude.js';
+import { sb } from './lib/supabase.js';
 import { html, pintar, $, $$ } from './lib/dom.js';
 import { PAPEL, STATUS, brl, calc } from './lib/regras.js';
 import { toast, confirmar } from './ui/avisos.js';
@@ -373,6 +374,8 @@ async function iniciarDados() {
 async function entrar(perfil) {
   ctx.perfil = perfil;
   ctx.ehAprovador = perfil.papel === PAPEL.APROVADOR;
+  try { ctx.ultimoAcesso = (await sb.auth.getSession()).data.session?.user?.last_sign_in_at ?? null; }
+  catch { ctx.ultimoAcesso = null; }
   montarCasca();
   $('#splash').hidden = true;
   $('#app').hidden = false;

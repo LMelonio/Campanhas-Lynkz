@@ -988,6 +988,44 @@ teste('lote E: "Usar como modelo" numa aprovada copia os campos, sem as datas', 
 });
 
 // ============================================================
+//  v2.1 — LOTE F: Excel da lista e Perfil
+// ============================================================
+async function lerExcelBaixado(page, clicar) {
+  const [dl] = await Promise.all([page.waitForEvent('download'), clicar()]);
+  const arq = path.join(SAIDA, dl.suggestedFilename()); await dl.saveAs(arq);
+  const ws = XLSX_LER.read(fs.readFileSync(arq)).Sheets.Campanhas;
+  return { nome: dl.suggestedFilename(), linhas: XLSX_LER.utils.sheet_to_json(ws) };
+}
+
+teste('lote F: Excel do Histórico filtrado tem só as reprovadas', async ({ page }) => {
+  if (!XLSX_MJS) return 'pulado (instale xlsx em tests/e2e)';
+  await abrir(page, { rota: '#/historico' });
+  await page.click('#hs-status [data-status="Reprovada"]');
+  const { nome, linhas } = await lerExcelBaixado(page, () => page.click('#hs-excel'));
+  afirma(/^Campanhas_Reprovadas_\d{4}-\d{2}-\d{2}\.xlsx$/.test(nome), 'nome com o filtro: ' + nome);
+  igual(linhas.length, 1, 'uma linha');
+  afirma(linhas.every(l => l.Status === 'Reprovada'), 'só reprovadas');
+});
+
+teste('lote F: Excel de Campanhas segue os filtros da tela', async ({ page }) => {
+  if (!XLSX_MJS) return 'pulado (instale xlsx em tests/e2e)';
+  await abrir(page, { rota: '#/campanhas' });
+  const { nome, linhas } = await lerExcelBaixado(page, () => page.click('#cp-excel'));
+  afirma(nome.startsWith('Campanhas_Pendentes_'), 'nome: ' + nome);
+  igual(linhas.length, 3, 'as 3 pendentes da tela');
+  await page.fill('#cp-busca', 'zzzz'); await page.waitForTimeout(400);
+  afirma(await page.locator('#cp-excel').isHidden(), 'lista vazia não oferece Excel');
+});
+
+teste('lote F: Perfil mostra o último acesso e a ordem das ações', async ({ page }) => {
+  await abrir(page, { rota: '#/perfil' });
+  afirma(/^Último acesso: hoje, \d{2}:\d{2}$/.test(await page.locator('.perfil-acesso').innerText()), 'último acesso');
+  const ordem = await page.$$eval('#conteudo .perfil > *', els => els.map(e => e.id || e.querySelector('.painel-titulo')?.textContent || e.className));
+  const i = t => ordem.findIndex(x => String(x).includes(t));
+  afirma(i('Resumo') < i('Relatório') && i('Relatório') < i('pf-senha') && i('pf-senha') < i('pf-sair'), 'ordem: Resumo → Relatório → Alterar senha → Sair: ' + ordem.join(' | '));
+});
+
+// ============================================================
 //  10. TODAS AS TELAS × TAMANHOS: sem rolagem lateral, acessibilidade, capturas
 // ============================================================
 const TELAS = ['#/inicio', '#/campanhas', '#/campanhas/2', '#/nova', '#/historico', '#/gestao', '#/gestao/empresas/2', '#/perfil'];

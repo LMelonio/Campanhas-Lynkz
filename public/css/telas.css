@@ -237,3 +237,9 @@ a.det-empresa:hover { text-decoration-color: currentColor; }
 .rascunho-status-form { margin-top: var(--e-2); }
 .barra-envio-total .rascunho-status { grid-column: 1 / -1; }
 @media (max-width: 1099px) { .rascunho-status-form { display: none; } }
+
+/* ---------- cabeçalho das listas (resumo + Excel) e Perfil ---------- */
+.lista-cabeca { display: flex; align-items: center; justify-content: space-between; gap: var(--e-2); flex-wrap: wrap; margin: var(--e-2) 0; }
+.lista-cabeca .lista-resumo { margin: 0; }
+.lista-cabeca .btn-texto { min-height: var(--tap); }
+.perfil-acesso { font-size: var(--t-12); color: var(--ink-2); margin: calc(-1 * var(--e-1)) 0 var(--e-2); }

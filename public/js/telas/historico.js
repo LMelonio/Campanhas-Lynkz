@@ -7,6 +7,7 @@ import { calc, brl, dataBR, contem, STATUS } from '../lib/regras.js';
 import { icone } from '../ui/icones.js';
 import { selo, vazio } from '../ui/pecas.js';
 import { estadoLista } from '../ui/estado.js';
+import { exportarExcel } from '../exportar.js';
 import { campoBusca, ligarBusca } from '../ui/campos.js';
 
 const PASSO = 40;
@@ -24,16 +25,20 @@ function decididas(ctx) {
       || String(b.criado_em).localeCompare(String(a.criado_em)));
 }
 
+const buscadas = ctx => decididas(ctx).filter(c => !filtros.busca ||
+  contem(filtros.busca, `${c.cliente} ${c.campanha} ${c.laboratorio} ${c.codigo} ${c.aprovador_nome || ''} ${c.solicitante_nome || ''}`));
+const daTela = ctx => buscadas(ctx).filter(c => filtros.status === 'Todas' || c.status === filtros.status);
+
 function desenhar(el, ctx) {
-  const base = decididas(ctx).filter(c => !filtros.busca ||
-    contem(filtros.busca, `${c.cliente} ${c.campanha} ${c.laboratorio} ${c.codigo} ${c.aprovador_nome || ''} ${c.solicitante_nome || ''}`));
+  const base = buscadas(ctx);
   const conta = s => (s === 'Todas' ? base.length : base.filter(c => c.status === s).length);
-  const lista = base.filter(c => filtros.status === 'Todas' || c.status === filtros.status);
+  const lista = daTela(ctx);
   const vis = lista.slice(0, filtros.limite);
 
   pintar($('#hs-status', el), html`${OPCOES.map(o => html`<button type="button" class="filtro" data-status="${o.valor}" aria-pressed="${filtros.status === o.valor}">${o.rotulo}<span class="n">${conta(o.valor)}</span></button>`)}`);
   const est = estadoLista({ carregado: ctx.campanhas.carregado, erro: ctx.campanhas.erro });
-  if (est) { pintar($('#hs-resumo', el), ''); pintar($('#hs-itens', el), est); return; }
+  if (est) { pintar($('#hs-resumo', el), ''); $('#hs-excel', el).hidden = true; pintar($('#hs-itens', el), est); return; }
+  $('#hs-excel', el).hidden = !lista.length;
   pintar($('#hs-resumo', el), `${lista.length} ${lista.length === 1 ? 'decisão registrada' : 'decisões registradas'}`);
   pintar($('#hs-itens', el), lista.length ? html`
     <div class="tabela-caixa"><table class="tabela">
@@ -63,7 +68,10 @@ export function montar(el, ctx) {
       ${campoBusca({ id: 'hs-busca', rotulo: 'Buscar no histórico', valor: filtros.busca, placeholder: 'Empresa, campanha, código ou aprovador' })}
       <div class="filtros" id="hs-status" role="group" aria-label="Filtrar por decisão"></div>
     </div>
-    <p class="lista-resumo" id="hs-resumo" role="status"></p>
+    <div class="lista-cabeca">
+      <p class="lista-resumo" id="hs-resumo" role="status"></p>
+      <button type="button" class="btn btn-texto btn-pequeno" id="hs-excel" hidden>${icone('baixar')} Baixar Excel desta lista</button>
+    </div>
     <div id="hs-itens"></div>`);
 
   const buscar = debounce(v => { filtros.busca = v; filtros.limite = PASSO; desenhar(el, ctx); }, 200);
@@ -76,6 +84,15 @@ export function montar(el, ctx) {
     ctx.campanhas.assinar(() => desenhar(el, ctx)),
     () => buscar.cancelar(),
     ligarBusca(el),
+    ao(el, 'click', '#hs-excel', async (e, b) => {
+      b.disabled = true; b.setAttribute('aria-busy', 'true');
+      const nome = { Todas: 'Decididas', Aprovada: 'Aprovadas', Reprovada: 'Reprovadas' }[filtros.status];
+      try {
+        await exportarExcel(daTela(ctx), ctx.cadastros, { prefixo: `Campanhas_${nome}` });
+        ctx.toast('Planilha gerada.', { tom: 'sucesso' });
+      } catch (err) { ctx.toast(err.message, { tom: 'erro', duracao: 8000 }); }
+      finally { b.disabled = false; b.removeAttribute('aria-busy'); }
+    }),
   ];
   desenhar(el, ctx);
   return () => desligar.forEach(fn => fn());

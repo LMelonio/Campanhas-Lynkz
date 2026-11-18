@@ -55,7 +55,8 @@ function colunas(cad) {
   ];
 }
 
-export async function exportarExcel(lista, cad) {
+// prefixo: início do nome do arquivo (o Perfil exporta tudo; as listas, só o que está na tela).
+export async function exportarExcel(lista, cad, { prefixo = 'Extrato_Campanhas' } = {}) {
   if (!lista.length) throw new ErroApp('Não há nada para exportar ainda.');
   let XLSX;
   try { XLSX = await import(SHEETJS); }
@@ -85,5 +86,5 @@ export async function exportarExcel(lista, cad) {
 
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, 'Campanhas');
-  XLSX.writeFile(wb, `Extrato_Campanhas_${hojeCivil()}.xlsx`);
+  XLSX.writeFile(wb, `${prefixo}_${hojeCivil()}.xlsx`);
 }

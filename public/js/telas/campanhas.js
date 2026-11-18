@@ -9,6 +9,7 @@ import { campoBusca, ligarBusca } from '../ui/campos.js';
 import { icone } from '../ui/icones.js';
 import { cartao, vazio } from '../ui/pecas.js';
 import * as detalhe from './detalhe.js';
+import { exportarExcel } from '../exportar.js';
 import { estadoLista } from '../ui/estado.js';
 
 const PASSO = 40;
@@ -107,7 +108,8 @@ function desenharLista() {
   const filtrando = filtros.busca || filtros.lab || filtros.minhas;
   // Carregando ou erro de carga: nunca dizer "Nada encontrado" nesses casos.
   const est = estadoLista({ carregado: ctx.campanhas.carregado, erro: ctx.campanhas.erro });
-  if (est) { pintar($('#cp-resumo', el), ''); pintar(caixa, est); return; }
+  if (est) { pintar($('#cp-resumo', el), ''); $('#cp-excel', el).hidden = true; pintar(caixa, est); return; }
+  $('#cp-excel', el).hidden = !lista.length;
   pintar($('#cp-resumo', el), lista.length === 1 ? '1 campanha' : `${lista.length} campanhas`);
   pintar(caixa, lista.length
     ? html`${visiveis.map(c => cartao(c, { ativo: String(c.id) === String(s.id) }))}
@@ -177,7 +179,10 @@ export function montar(el, ctx, params) {
         </div>
       </div>
       <div class="chips chips-filtro" id="cp-chips" role="group" aria-label="Filtros aplicados" hidden></div>
-      <p class="lista-resumo" id="cp-resumo" role="status"></p>
+      <div class="lista-cabeca">
+        <p class="lista-resumo" id="cp-resumo" role="status"></p>
+        <button type="button" class="btn btn-texto btn-pequeno" id="cp-excel" hidden>${icone('baixar')} Baixar Excel desta lista</button>
+      </div>
       <div id="cp-itens"></div>
     </section>
     <section class="md-detalhe" id="cp-detalhe" aria-label="Detalhe da campanha"></section>
@@ -203,6 +208,14 @@ export function montar(el, ctx, params) {
       ($('[data-tirar]', el) || $('#cp-busca', el)).focus();
     }),
     ligarBusca(el),
+    ao(el, 'click', '#cp-excel', async (e, b) => {
+      b.disabled = true; b.setAttribute('aria-busy', 'true');
+      try {
+        await exportarExcel(ordenar(aplicarFiltros(ctx)), ctx.cadastros, { prefixo: `Campanhas_${ROTULO_STATUS[filtros.status] || 'Todas'}` });
+        ctx.toast('Planilha gerada.', { tom: 'sucesso' });
+      } catch (err) { ctx.toast(err.message, { tom: 'erro', duracao: 8000 }); }
+      finally { b.disabled = false; b.removeAttribute('aria-busy'); }
+    }),
     ao(el, 'change', '#cp-lab', (e, sel) => { filtros.lab = sel.value; filtros.limite = PASSO; redesenhar(); }),
     ao(el, 'change', '#cp-minhas', (e, cb) => { filtros.minhas = cb.checked; filtros.limite = PASSO; redesenhar(); }),
     ao(el, 'click', '#cp-mais', () => {
