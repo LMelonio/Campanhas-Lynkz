@@ -27,8 +27,9 @@ public/                  ← TUDO que vai para o ar (raiz do site)
   css/  tokens.css (ÚNICO lugar com cor)  base.css (casca)  componentes.css  telas.css
   js/   app.js (rotas e ctx)  acesso.js (login e senha)  exportar.js (Excel)
         lib/    regras.js (funções puras)  dom.js (html``)  supabase.js  url-auth.js
-        dados/  campanhas.js  cadastros.js  erros.js
+        dados/  campanhas.js  cadastros.js  erros.js  saude.js (confere se o banco tem as tabelas)
         ui/     icones.js  avisos.js  campos.js  combo.js  pecas.js  cadastro-dialogos.js
+                estado.js (carregando/erro/vazio)  senha.js (campo de senha)  copiar.js
         telas/  inicio.js  campanhas.js  detalhe.js  nova.js  historico.js  gestao.js  perfil.js
 sql/          schema.sql (instalação nova)  migracoes/ (00–06, com rollback e validação)
 tests/        regras.test.mjs (unidade) · banco/ (Postgres) · e2e/ (navegador)   → TESTES.md
@@ -57,6 +58,17 @@ histórico do app quando existe.
 - **cadastros:** `carregado`, `carregar()`, `empresas({inativas})`, `empresa(id)`, `balconista(id)`,
   `balconistasDa(id, {inativos})`, `salvarEmpresa(dados, id?)`, `salvarBalconista(dados, id?)`, `assinar(fn)`, `aoVivo()`.
 - **erros:** `exigir({data, error})` lança `ErroApp` com mensagem em português (e `campo`, quando dá para saber).
+  Erro sem tradução vira "Não foi possível concluir agora" na tela; o texto original vai só para o console.
+- **saude:** `conferirBanco() → { ok, falta: [{tabela, migracao}], erro }`. Faltou tabela → `app.js` mostra
+  "Sistema em atualização" e nenhuma tela abre até "Tentar de novo" dar certo.
+- **estado:** `estadoLista({ carregado, erro, vazioSe, vazioConteudo })` → html ou `null` (aí a tela desenha os itens).
+  `campanhas.erro` / `cadastros.erro` guardam o erro da última carga. Botão `[data-tentar-de-novo]` é tratado no `app.js`.
+  Erro de carga vira a faixa `#faixa-erro`; `toast` fica só para confirmações e erro de uma ação que acabou de ser feita.
+- **senha:** `campoSenha({ id, rotulo, novo, autocomplete, extraRotulo })` + `ligarSenha(raiz, { email })` (olho,
+  Caps Lock, força). Tem `data-campo` e `.campo-erro`: funciona com `aplicarErros`.
+- **copiar:** `botaoCopiar(texto, rotulo, aviso)` + `ligarCopiar(raiz, toast)`.
+- **campos (busca):** `campoBusca({ id, rotulo, valor, placeholder })` + `ligarBusca(raiz)` (× de 44 px e Esc limpam).
+- **Rotas com query:** `params.query` (ex.: `#/campanhas?status=Aprovada&mes=atual&rebate=1`); a lista mostra um chip com ×.
 - **avisos:** `toast(msg, {acao, duracao, tom, aoFechar})`, `abrirDialogo({titulo, descricao, corpo, acoes, aoAbrir, antesDeFechar})`, `confirmar()`.
 - **campos:** `campo`, `selecao`, `areaTexto`, `interruptor`, `ligarMascaras(raiz)`, `aplicarErros(raiz, {id: msg})`.
 
@@ -72,6 +84,9 @@ histórico do app quando existe.
 - **Nunca** copie `dev/supabase-simulado.js` para dentro de `public/`.
 - Antes de enviar mudança: `npm test`, `npm run test:e2e` e, se mexeu no banco, `npm run test:banco` (ver `TESTES.md`).
 - Tela, botão ou fluxo novo: acrescente o teste em `tests/e2e/rodar.mjs`.
+- **Módulo novo em `public/js/`:** acrescente o `<link rel="modulepreload">` no `public/index.html` (o teste falha se faltar).
+- Valor em reais na tela: classe `.valor` (não deixa "R$" sozinho no fim da linha).
+- Simulador: `?sem=tabela` (banco desatualizado), `?falhar=tabela` (rede caiu), senha que começa com "errad" é recusada.
 - Subiu versão? Troque `VERSAO` em `public/config.js` **e** em `public/sw.js` (as duas iguais).
 - Endereço externo novo (CDN, API)? Libere no CSP de `public/_headers` **e** de `deploy/nginx.conf`.
 

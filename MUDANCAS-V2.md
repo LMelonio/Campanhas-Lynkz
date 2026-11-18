@@ -1,3 +1,41 @@
+# Mudanças da v2.1.0 (18/11/2026) — UX/UI
+
+**Banco desatualizado e erros**
+- Se o banco não tiver as tabelas desta versão, o app mostra **"Sistema em atualização"** (com
+  "Detalhes para o TI" e "Tentar de novo") em vez de um erro em inglês.
+- Falha ao carregar vira uma **faixa fixa** abaixo do topo, com "Tentar de novo", e as listas dizem
+  **"Não foi possível carregar"** em vez de "Nada encontrado".
+- Nenhum texto técnico em inglês na tela: o original vai para o console.
+
+**Acesso e conta**
+- Campo de senha com **olho** (mostrar/ocultar), aviso de **Caps Lock** e medidor de força na senha nova.
+- Login: "Esqueci minha senha" ao lado do rótulo, **"Lembrar meu e-mail neste aparelho"** (só o e-mail),
+  erro embaixo do campo com o texto selecionado e, depois de 3 erros, link para redefinir.
+- **Alterar senha** no Perfil, sem sair da conta. **Sair** com rascunho pede confirmação.
+
+**Início e listas**
+- Card da fila em duas linhas ("3 campanhas" / "R$ 8.700 em custo total"); valor em reais nunca quebra.
+- Os 4 números do mês são **clicáveis** e abrem a lista filtrada, com chip "×" para tirar o filtro.
+- Busca com **×** para limpar (e Esc) em Campanhas, Histórico e Gestão.
+
+**Detalhe e decisão**
+- Topo com o nome da campanha; legenda da régua sem partes zeradas ("Tudo LYNKZ · R$ 600,00").
+- **Copiar** CPF, e-mail, telefone, código e "Copiar dados do pagamento".
+- Barra de decisão com **custo total e % da meta**.
+- **Atalhos no computador:** A aprova, R reprova, J/K próxima/anterior, ? mostra a lista.
+
+**Nova campanha**
+- Sem teclado subindo sozinho no celular. "Rascunho salvo às hh:mm".
+- Atalhos de período: **Este mês**, **Próximo mês**, **30 dias**; duração ao lado do Fim.
+- **"Usar como modelo"** em qualquer campanha (sem copiar as datas).
+
+**Histórico, Perfil e abertura**
+- **"Baixar Excel desta lista"** em Campanhas e Histórico (só o que está filtrado na tela).
+- Perfil com o último acesso.
+- Abertura mais rápida: os módulos são baixados de uma vez (`modulepreload`).
+
+Testes: 15 de regras, 70 de navegador (eram 44), acessibilidade sem problemas graves também no modo escuro.
+
 # Mudanças da v2.0.1 (18/11/2026)
 
 - **Publicação no Cloudflare** a partir do GitHub (`wrangler.jsonc`, `PUBLICAR.md`). O Netlify sai.

@@ -1026,6 +1026,51 @@ teste('lote F: Perfil mostra o último acesso e a ordem das ações', async ({ p
 });
 
 // ============================================================
+//  v2.1 — LOTE G: abertura mais rápida
+// ============================================================
+teste('lote G: todo módulo de public/js tem modulepreload no index.html', async ({ page }) => {
+  const index = fs.readFileSync(path.join(RAIZ, 'index.html'), 'utf8');
+  const listar = d => fs.readdirSync(d, { withFileTypes: true }).flatMap(e =>
+    e.isDirectory() ? listar(path.join(d, e.name)) : e.name.endsWith('.js') ? [path.join(d, e.name)] : []);
+  const modulos = listar(path.join(RAIZ, 'js')).map(f => path.relative(RAIZ, f).split(path.sep).join('/'));
+  const faltam = modulos.filter(m => !index.includes(`<link rel="modulepreload" href="${m}">`));
+  afirma(!faltam.length, 'sem modulepreload (acrescente no index.html): ' + faltam.join(', '));
+  const sobram = [...index.matchAll(/modulepreload" href="([^"]+)"/g)].map(m => m[1]).filter(h => !modulos.includes(h));
+  afirma(!sobram.length, 'modulepreload de arquivo que não existe: ' + sobram.join(', '));
+  const url = fs.readFileSync(path.join(RAIZ, 'config.js'), 'utf8').match(/SUPABASE_URL:\s*"([^"]+)"/)[1];
+  afirma(index.includes(`<link rel="preconnect" href="${url}" crossorigin>`), 'preconnect do Supabase igual ao config.js');
+  await abrir(page);                       // e o app abre normalmente com os preloads
+});
+
+// ============================================================
+//  v2.1 — telas novas no modo escuro: legíveis e sem problema grave de acessibilidade
+// ============================================================
+for (const largura of [390, 1440]) {
+  teste(`escuro ${largura}px: manutenção, faixa de erro e diálogo de senha passam no axe`, async ({ page }) => {
+    const graves = (v, onde) => v.filter(x => ['critical', 'serious'].includes(x.impacto)).map(x => `${x.id} em ${onde}: ${x.alvos.join(' | ')}`);
+    const problemas = [];
+    await page.goto(`${BASE}/?papel=aprovador&zerar=1&sem=campanhas_app,empresas,balconistas#/inicio`);
+    await page.locator('.manutencao-caixa').waitFor();
+    await page.locator('.manutencao-detalhes summary').click();
+    problemas.push(...graves(await axe(page, `escuro-manutencao-${largura}`), 'manutenção'));
+    await page.screenshot({ path: path.join(SAIDA, `escuro-manutencao-${largura}.png`) });
+
+    await page.goto(`${BASE}/?papel=aprovador&zerar=1&falhar=campanhas_app#/campanhas`);
+    await page.locator('#faixa-erro:not([hidden])').waitFor();
+    problemas.push(...graves(await axe(page, `escuro-faixa-erro-${largura}`), 'faixa de erro'));
+    await page.screenshot({ path: path.join(SAIDA, `escuro-faixa-erro-${largura}.png`) });
+
+    await abrir(page, { rota: '#/perfil' });
+    await page.click('#pf-senha');
+    await page.locator('dialog.dialogo').waitFor();
+    await page.fill('#pf-nova', 'abc12345');
+    problemas.push(...graves(await axe(page, `escuro-senha-${largura}`), 'diálogo de senha'));
+    await page.screenshot({ path: path.join(SAIDA, `escuro-senha-${largura}.png`) });
+    afirma(!problemas.length, problemas.join('\n      '));
+  }, { largura, altura: largura === 390 ? 844 : 900, escuro: true });
+}
+
+// ============================================================
 //  10. TODAS AS TELAS × TAMANHOS: sem rolagem lateral, acessibilidade, capturas
 // ============================================================
 const TELAS = ['#/inicio', '#/campanhas', '#/campanhas/2', '#/nova', '#/historico', '#/gestao', '#/gestao/empresas/2', '#/perfil'];

@@ -17,11 +17,42 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="preconnect" href="https://esm.sh" crossorigin>
+<!-- Supabase do config.js: troque junto se o endereço do banco mudar. -->
+<link rel="preconnect" href="https://kdznytksxtjmuqwrqxka.supabase.co" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wdth,wght@75..100,400..700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="css/tokens.css">
 <link rel="stylesheet" href="css/base.css">
 <link rel="stylesheet" href="css/componentes.css">
 <link rel="stylesheet" href="css/telas.css">
+<!-- Baixa todos os módulos de uma vez (sem a cascata de um descobrir o outro).
+     Arquivo novo em js/? Acrescente aqui (o teste de navegador confere). -->
+<link rel="modulepreload" href="js/acesso.js">
+<link rel="modulepreload" href="js/app.js">
+<link rel="modulepreload" href="js/dados/cadastros.js">
+<link rel="modulepreload" href="js/dados/campanhas.js">
+<link rel="modulepreload" href="js/dados/erros.js">
+<link rel="modulepreload" href="js/dados/saude.js">
+<link rel="modulepreload" href="js/exportar.js">
+<link rel="modulepreload" href="js/lib/dom.js">
+<link rel="modulepreload" href="js/lib/regras.js">
+<link rel="modulepreload" href="js/lib/supabase.js">
+<link rel="modulepreload" href="js/lib/url-auth.js">
+<link rel="modulepreload" href="js/telas/campanhas.js">
+<link rel="modulepreload" href="js/telas/detalhe.js">
+<link rel="modulepreload" href="js/telas/gestao.js">
+<link rel="modulepreload" href="js/telas/historico.js">
+<link rel="modulepreload" href="js/telas/inicio.js">
+<link rel="modulepreload" href="js/telas/nova.js">
+<link rel="modulepreload" href="js/telas/perfil.js">
+<link rel="modulepreload" href="js/ui/avisos.js">
+<link rel="modulepreload" href="js/ui/cadastro-dialogos.js">
+<link rel="modulepreload" href="js/ui/campos.js">
+<link rel="modulepreload" href="js/ui/combo.js">
+<link rel="modulepreload" href="js/ui/copiar.js">
+<link rel="modulepreload" href="js/ui/estado.js">
+<link rel="modulepreload" href="js/ui/icones.js">
+<link rel="modulepreload" href="js/ui/pecas.js">
+<link rel="modulepreload" href="js/ui/senha.js">
 </head>
 <body>
 

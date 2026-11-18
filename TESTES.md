@@ -7,7 +7,7 @@ push (`.github/workflows/testes.yml`).
 |---|---|---|---|
 | Regras | `npm test` | Custo, faixas, CPF, máscaras, valores pt-BR, datas no fuso, Excel (`public/js/lib/regras.js`) | 14 de 14 |
 | Banco | `npm run test:banco` | Instalação nova, migração v1 → v2 com dados antigos, permissões por papel, triggers, idempotência, rollback | 85 verificações + 24 da validação 06 |
-| Navegador | `npm run test:e2e` | Todas as telas e fluxos, celular e desktop, acessibilidade, Excel, modo offline | 44 de 44 (rodado 4 vezes seguidas, inclusive num clone limpo do repositório) |
+| Navegador | `npm run test:e2e` | Todas as telas e fluxos, celular e desktop, acessibilidade (inclusive modo escuro), Excel, modo offline, banco desatualizado | 70 de 70 (v2.1.0) |
 | Cloudflare | `npx wrangler deploy --dry-run` | Configuração de publicação válida, 44 arquivos de `public/` | ok |
 
 Além disso, foram feitas checagens manuais nesta rodada:

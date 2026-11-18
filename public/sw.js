@@ -6,7 +6,7 @@
 //  - Supabase: nunca passa pelo cache.
 //  Só guarda respostas OK. VERSAO tem de ser igual à do config.js.
 // ============================================================
-const VERSAO = '2.0.1';
+const VERSAO = '2.1.0';
 const CACHE = 'campanhas-' + VERSAO;
 const CASCA = [
   './', 'config.js', 'manifest.json',          // './' e não 'index.html': o Cloudflare redireciona /index.html → /
