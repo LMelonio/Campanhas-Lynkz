@@ -8,6 +8,11 @@
 --  tabelas em CSV pelo Table Editor.
 --
 --  Depois do rollback, publique de novo o app v1.3.1.
+--
+--  Mantém de propósito o que a 04 traz da parte B (colunas swile_* e as
+--  funções pode_ver_swile / swile_da_campanha), mesmo em banco que nunca
+--  rodou a 02: a view campanhas_app é refeita com elas e tirá-las deixaria
+--  os dados Swile legíveis por todos. O app v1.3.1 funciona com a view.
 -- ============================================================
 begin;
 set local lock_timeout = '5s';
