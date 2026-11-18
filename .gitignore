@@ -11,3 +11,6 @@ tests/e2e/saida/
 .git.zip
 sql/migracoes/ROTEIRO-PRODUCAO.md
 sql/migracoes/D10-PARA-EXECUTAR.sql
+
+# app.js da v1 que o editor às vezes recria na raiz (o app de verdade está em public/js/)
+/app.js

@@ -9,6 +9,7 @@ import { calc, brl, dataBR, contem, maskCNPJ, maskCPF, maskTelefone, STATUS } fr
 import { icone } from '../ui/icones.js';
 import { cartao, vazio, seloNeutro } from '../ui/pecas.js';
 import { confirmar } from '../ui/avisos.js';
+import { estadoLista } from '../ui/estado.js';
 import { dialogoEmpresa, dialogoBalconista } from '../ui/cadastro-dialogos.js';
 import { CHAVE_EMPRESA_SUGERIDA } from './nova.js';
 
@@ -22,6 +23,8 @@ function desenharLista() {
   const lista = ctx.cadastros.empresas({ inativas: filtros.inativas }).filter(e => !filtros.busca || contem(filtros.busca,
     `${e.nome} ${e.cidade || ''} ${e.cnpj || ''} ${ctx.cadastros.balconistasDa(e.id).map(b => b.nome_completo).join(' ')}`));
 
+  const est = estadoLista({ carregado: ctx.cadastros.carregado, erro: ctx.cadastros.erro });
+  if (est) { pintar($('#gs-resumo', el), ''); pintar($('#gs-itens', el), est); return; }
   pintar($('#gs-resumo', el), `${lista.length} ${lista.length === 1 ? 'empresa' : 'empresas'}`);
   pintar($('#gs-itens', el), lista.length
     ? html`<ul class="empresas">${lista.map(e => {
@@ -90,7 +93,8 @@ function desenharFicha() {
   const e = ctx.cadastros.empresa(params.empresa);
   if (!e) {
     ctx.cabecalho({ titulo: 'Empresa', voltar: '#/gestao' });
-    pintar(el, vazio({ icone: 'gestao', titulo: ctx.cadastros.carregado ? 'Empresa não encontrada' : 'Carregando…', acao: { href: '#/gestao', rotulo: 'Ver empresas' } }));
+    pintar(el, estadoLista({ carregado: ctx.cadastros.carregado, erro: ctx.cadastros.erro })
+      || vazio({ icone: 'gestao', titulo: 'Empresa não encontrada', acao: { href: '#/gestao', rotulo: 'Ver empresas' } }));
     return;
   }
   ctx.cabecalho({ titulo: e.nome, voltar: '#/gestao' });

@@ -12,6 +12,11 @@
 //  aprovador e o solicitante, balconista da mesma empresa, CPF único por
 //  empresa. Os dados ficam no sessionStorage da aba (fechar a aba zera).
 //  Para recomeçar do zero: ?zerar=1
+//
+//  Para testar falhas (lidos a cada consulta, dá para tirar da URL sem recarregar):
+//    ?sem=campanhas_app,empresas   → essas tabelas "não existem" (PGRST205, banco desatualizado)
+//    ?falhar=campanhas_app         → consulta falha como se a rede caísse
+//  Senha: qualquer uma entra, menos as que começam com "errad" (para testar senha errada).
 // ============================================================
 const q = new URLSearchParams(location.search);
 const PAPEL = q.get('papel') === 'coordenador' ? 'coordenador' : 'aprovador';
@@ -156,12 +161,19 @@ class Consulta {
   update(d) { this.op = 'update'; this.dados = d; return this; }
   eq(col, val) { this.filtros.push([col, val]); return this; }
   order(col, { ascending = true } = {}) { this.ordem = [col, ascending]; return this; }
+  limit(n) { this.limite = n; return this; }
   single() { this.modo = 'single'; return this; }
   maybeSingle() { this.modo = 'maybe'; return this; }
   then(ok, falha) { return new Promise(r => setTimeout(r, 120 + Math.random() * 180)).then(() => this.executar()).then(ok, falha); }
 
   executar() {
     if (!usuario()) return { data: null, error: erro('JWT expired', 'PGRST301') };
+    const qs = new URLSearchParams(location.search);
+    const lista = k => (qs.get(k) || '').split(',').filter(Boolean);
+    if (lista('sem').includes(this.tabela)) {
+      return { data: null, error: erro(`Could not find the table 'public.${this.tabela}' in the schema cache`, 'PGRST205') };
+    }
+    if (lista('falhar').includes(this.tabela)) return { data: null, error: { message: 'TypeError: Failed to fetch' } };
     const view = this.tabela === 'campanhas_app';
     const nome = view ? 'campanhas' : this.tabela;
     if (nome === 'perfis') {
@@ -194,6 +206,7 @@ class Consulta {
   }
 
   fim(linhas) {
+    if (this.limite != null) linhas = linhas.slice(0, this.limite);
     const copia = linhas.map(r => JSON.parse(JSON.stringify(r)));
     if (this.modo === 'single') return copia.length === 1 ? { data: copia[0], error: null } : { data: null, error: erro('JSON object requested, multiple (or no) rows returned', 'PGRST116') };
     if (this.modo === 'maybe') return { data: copia[0] ?? null, error: null };
@@ -203,7 +216,8 @@ class Consulta {
 
 // ---------- autenticação ----------
 const CHAVE_SAIU = 'simulado-saiu';
-let sessao = sessionStorage.getItem(CHAVE_SAIU) ? null : { user: { id: EU, email: USUARIOS[EU].email }, access_token: 'simulado' };
+const novaSessao = u => ({ user: { id: u.id, email: u.email, last_sign_in_at: new Date().toISOString() }, access_token: 'simulado' });
+let sessao = sessionStorage.getItem(CHAVE_SAIU) ? null : novaSessao(USUARIOS[EU]);
 const ouvintesAuth = new Set();
 const avisarAuth = evt => setTimeout(() => ouvintesAuth.forEach(fn => fn(evt, sessao)), 0);
 
@@ -217,10 +231,10 @@ export const sb = {
   auth: {
     async getSession() { return { data: { session: sessao }, error: null }; },
     async getUser() { return sessao ? { data: { user: sessao.user }, error: null } : { data: { user: null }, error: erro('Auth session missing') }; },
-    async signInWithPassword({ email }) {
+    async signInWithPassword({ email, password = '' }) {
       const u = Object.values(USUARIOS).find(x => x.email === email);
-      if (!u) return { data: {}, error: { message: 'Invalid login credentials' } };
-      sessao = { user: { id: u.id, email: u.email }, access_token: 'simulado' };
+      if (!u || /^errad/i.test(password)) return { data: {}, error: { message: 'Invalid login credentials', status: 400 } };
+      sessao = novaSessao(u);
       sessionStorage.removeItem(CHAVE_SAIU);
       avisarAuth('SIGNED_IN');
       return { data: { session: sessao }, error: null };
@@ -228,7 +242,10 @@ export const sb = {
     async signOut() { sessao = null; sessionStorage.setItem(CHAVE_SAIU, '1'); avisarAuth('SIGNED_OUT'); return { error: null }; },
     async resetPasswordForEmail() { return { data: {}, error: null }; },
     async verifyOtp() { return { data: {}, error: { message: 'Simulador: link de recuperação não existe.' } }; },
-    async updateUser() { return { data: {}, error: null }; },
+    async updateUser({ password } = {}) {
+      if (password === 'senha-igual') return { data: {}, error: { code: 'same_password', message: 'same password' } };
+      return { data: {}, error: null };
+    },
     onAuthStateChange(fn) { ouvintesAuth.add(fn); return { data: { subscription: { unsubscribe: () => ouvintesAuth.delete(fn) } } }; },
   },
 };

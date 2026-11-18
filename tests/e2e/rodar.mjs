@@ -675,6 +675,51 @@ teste('tema: modo escuro troca as cores', async ({ page }) => {
 }, { escuro: true });
 
 // ============================================================
+//  v2.1 — LOTE A: banco desatualizado e estados de erro
+// ============================================================
+teste('lote A: banco sem as migrações mostra "Sistema em atualização" e volta com "Tentar de novo"', async ({ page }) => {
+  await page.goto(`${BASE}/?papel=aprovador&zerar=1&sem=campanhas_app,empresas,balconistas#/inicio`);
+  await page.locator('.manutencao-caixa').waitFor();
+  igual(await titulo(page), 'Sistema em atualização', 'título');
+  const t = await page.locator('#conteudo').innerText();
+  afirma(!/could not|schema cache|does not exist|failed/i.test(t), 'sem texto técnico em inglês na tela');
+  afirma((await page.locator('.manutencao-detalhes').textContent()).includes('04-gestao-empresas-balconistas.sql'), 'detalhes para o TI (recolhidos) citam a migração');
+  afirma(!(await page.locator('.menu-nova').isVisible()), 'sem atalho para Nova campanha');
+  igual(await page.locator('.toast').count(), 0, 'nenhum aviso flutuante');
+  await page.click('#menu a[href="#/campanhas"]');
+  igual(await page.locator('#cp-itens').count(), 0, 'nenhuma lista abre em manutenção');
+  await page.evaluate(() => history.replaceState(history.state, '', '/?papel=aprovador#/inicio'));
+  await page.click('#manut-tentar');
+  await page.locator('.destaque').waitFor();
+  igual(await titulo(page), 'Início', 'app volta ao normal');
+  afirma(await page.locator('.menu-nova').isVisible(), 'atalho de Nova campanha volta');
+});
+
+teste('lote A: falha de rede mostra erro com "Tentar de novo", não "Nada encontrado", e faixa sem toast', async ({ page }) => {
+  await page.goto(`${BASE}/?papel=aprovador&zerar=1&falhar=campanhas_app#/campanhas`);
+  await page.locator('#cp-itens .estado-erro').waitFor();
+  const t = await page.locator('#cp-itens').innerText();
+  afirma(t.includes('Não foi possível carregar'), 'estado de erro na lista');
+  afirma(!t.includes('Nada encontrado') && !t.includes('Nada por aqui'), 'não finge lista vazia');
+  igual(await page.locator('.toast').count(), 0, 'nenhum aviso flutuante para erro de carga');
+  afirma(await page.locator('#faixa-erro').isVisible(), 'faixa de erro visível');
+  const topo = await page.locator('#topo').boundingBox(), faixa = await page.locator('#faixa-erro').boundingBox();
+  afirma(faixa.y >= topo.y + topo.height, 'faixa abaixo do topo (não cobre as ações)');
+  await page.evaluate(() => history.replaceState(history.state, '', '/?papel=aprovador#/campanhas'));
+  await page.locator('#cp-itens [data-tentar-de-novo]').click();
+  await page.locator('#cp-itens .cartao').first().waitFor();
+  await page.locator('#faixa-erro').waitFor({ state: 'hidden', timeout: 5000 });   // some quando as duas cargas terminam
+});
+
+teste('lote A: erro técnico sem tradução não aparece em inglês', async ({ page }) => {
+  await abrir(page);
+  const m = await page.evaluate(async () => (await import('/js/dados/erros.js')).traduzir({ message: 'Something weird happened', code: 'XX000' }));
+  igual(m, 'Não foi possível concluir agora. Tente de novo.', 'mensagem genérica em português');
+  const m2 = await page.evaluate(async () => (await import('/js/dados/erros.js')).traduzir({ message: 'x', code: 'PGRST205' }));
+  afirma(m2.includes('em atualização'), 'PGRST205 vira "em atualização"');
+});
+
+// ============================================================
 //  10. TODAS AS TELAS × TAMANHOS: sem rolagem lateral, acessibilidade, capturas
 // ============================================================
 const TELAS = ['#/inicio', '#/campanhas', '#/campanhas/2', '#/nova', '#/historico', '#/gestao', '#/gestao/empresas/2', '#/perfil'];
@@ -717,7 +762,7 @@ for (const t of testes.filter(t => !filtro || t.nome.includes(filtro))) {
   try {
     const r = await t.fn({ page, contexto, erros });
     if (typeof r === 'string') { res = 'pulado'; detalhe = r; }
-    const graves = erros.filter(e => !/favicon|ERR_INTERNET_DISCONNECTED|net::ERR_FAILED/.test(e));
+    const graves = erros.filter(e => !/favicon|ERR_INTERNET_DISCONNECTED|net::ERR_FAILED|Erro sem tradução/.test(e));
     if (graves.length) throw new Falha('erros no console:\n      ' + graves.join('\n      '));
   } catch (e) {
     res = 'falhou'; detalhe = e instanceof Falha ? e.message : (e.stack || String(e)).split('\n').slice(0, 4).join('\n      ');

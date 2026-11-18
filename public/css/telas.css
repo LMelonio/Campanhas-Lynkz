@@ -188,3 +188,18 @@ a.det-empresa:hover { text-decoration-color: currentColor; }
 }
 .perfil-nome { font-size: var(--t-20); font-weight: 700; }
 .perfil-email { font-size: var(--t-14); color: var(--ink-2); margin-bottom: var(--e-2); }
+
+/* ---------- sistema em atualização ---------- */
+.manutencao-caixa {
+  max-width: 560px; margin: var(--e-8) auto; display: grid; gap: var(--e-3); justify-items: start;
+  background: var(--card); border: 1px solid var(--line); border-left: 6px solid var(--amber);
+  border-radius: var(--r-panel); padding: var(--e-6); box-shadow: var(--sombra);
+}
+.manutencao-icone { width: 48px; height: 48px; border-radius: 50%; display: grid; place-items: center; background: var(--amber-soft); color: var(--amber); }
+.manutencao-icone svg.ico { width: 26px; height: 26px; }
+.manutencao-caixa h2 { font-size: var(--t-20); }
+.manutencao-caixa p { font-size: var(--t-14); color: var(--ink-2); }
+.manutencao-detalhes { width: 100%; font-size: var(--t-14); border-top: 1px solid var(--line); padding-top: var(--e-3); }
+.manutencao-detalhes summary { cursor: pointer; min-height: var(--tap); display: flex; align-items: center; font-weight: 600; }
+.manutencao-detalhes ul { padding-left: var(--e-5); list-style: disc; display: grid; gap: var(--e-1); margin-top: var(--e-2); }
+.manutencao-detalhes code { font-size: var(--t-12); background: var(--card-2); padding: 1px 4px; border-radius: 4px; overflow-wrap: anywhere; }

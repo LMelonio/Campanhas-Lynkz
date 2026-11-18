@@ -10,6 +10,7 @@ import { exigir, ErroApp } from './erros.js';
 const FONTE = 'campanhas_app';
 let lista = [];
 let carregado = false;
+let ultimoErro = null;   // mensagem da última carga que falhou (null = ok)
 let canal = null;
 const ouvintes = new Set();
 
@@ -41,8 +42,17 @@ async function relerLinha(id) {
 export const campanhas = {
   get carregado() { return carregado; },
 
+  get erro() { return ultimoErro; },
+
   async carregar() {
-    lista = exigir(await sb.from(FONTE).select('*').order('criado_em', { ascending: false })) || [];
+    try {
+      lista = exigir(await sb.from(FONTE).select('*').order('criado_em', { ascending: false })) || [];
+    } catch (e) {
+      ultimoErro = e.message;
+      avisar({ tipo: 'erro' });
+      throw e;
+    }
+    ultimoErro = null;
     carregado = true;
     avisar({ tipo: 'carga' });
   },
@@ -105,5 +115,6 @@ export const campanhas = {
     ouvintes.clear();
     lista = [];
     carregado = false;
+    ultimoErro = null;
   },
 };

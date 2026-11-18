@@ -10,6 +10,7 @@
 import { iniciarAcesso, sair as sairDaConta } from './acesso.js';
 import { campanhas } from './dados/campanhas.js';
 import { cadastros } from './dados/cadastros.js';
+import { conferirBanco } from './dados/saude.js';
 import { html, pintar, $, $$ } from './lib/dom.js';
 import { PAPEL, STATUS, brl, calc } from './lib/regras.js';
 import { toast } from './ui/avisos.js';
@@ -106,6 +107,8 @@ async function sair() {
 
 // ---------- rotas ----------
 function aplicarRota() {
+  // Banco desatualizado: nenhuma tela abre até "Tentar de novo" dar certo.
+  if (emManutencao) { fecharMenu(); return; }
   const r = resolver(location.hash);
   if (!r) { ctx.navegar('#/inicio', { substituir: true }); return; }
   fecharMenu();
@@ -191,6 +194,17 @@ function montarCasca() {
   }, true);
   $('#pular').addEventListener('click', e => { e.preventDefault(); $('#conteudo').focus(); });
 
+  // "Tentar de novo" das listas e da faixa de erro.
+  document.addEventListener('click', async e => {
+    const b = e.target instanceof Element && e.target.closest('[data-tentar-de-novo]');
+    if (b) {
+      b.disabled = true; b.setAttribute('aria-busy', 'true');
+      await carregarDados();
+      if (b.isConnected) { b.disabled = false; b.removeAttribute('aria-busy'); }
+    }
+    if (e.target instanceof Element && e.target.closest('[data-faixa-fechar]')) esconderFaixaErro();
+  });
+
   $('#abrir-menu').addEventListener('click', abrirMenu);
   $('#bi-menu').addEventListener('click', abrirMenu);
   $('#menu-fundo').addEventListener('click', fecharMenu);
@@ -264,36 +278,91 @@ function avisarNovidades(ev) {
   }
 }
 
+// ---------- banco desatualizado ----------
+let emManutencao = false;
+
+function mostrarManutencao(falta) {
+  emManutencao = true;
+  if (atual?.desmontar) { try { atual.desmontar(); } catch (e) { console.error(e); } }
+  atual = null;
+  document.body.classList.add('manutencao');
+  ctx.barraDeAcao(false);
+  ctx.cabecalho({ titulo: 'Sistema em atualização' });
+  marcarNav('');
+  pintar($('#conteudo'), html`<section class="manutencao-caixa" aria-labelledby="manut-t">
+    <span class="manutencao-icone">${icone('alerta')}</span>
+    <h2 id="manut-t">Sistema em atualização</h2>
+    <p>O banco de dados ainda não recebeu a atualização desta versão. Avise a gerência. Suas campanhas estão salvas.</p>
+    <button type="button" class="btn btn-primario" id="manut-tentar">${icone('repetir')} Tentar de novo</button>
+    <details class="manutencao-detalhes">
+      <summary>Detalhes para o TI</summary>
+      <p>Falta no banco (rode a migração indicada no SQL Editor do Supabase e depois a 06 para conferir):</p>
+      <ul>${falta.map(f => html`<li><code>${f.tabela}</code> → <code>sql/migracoes/${f.migracao}</code></li>`)}</ul>
+    </details>
+  </section>`);
+  $('#manut-tentar').addEventListener('click', async e => {
+    const b = e.currentTarget;
+    b.disabled = true; b.setAttribute('aria-busy', 'true');
+    await iniciarDados();
+    if (b.isConnected) { b.disabled = false; b.removeAttribute('aria-busy'); }
+  });
+}
+
+// ---------- faixa de erro de carga (fica até fechar ou dar certo) ----------
+function mostrarFaixaErro(msg) {
+  const f = $('#faixa-erro');
+  pintar(f, html`${icone('alerta')}<span>${msg}</span>
+    <button type="button" class="btn btn-texto" data-tentar-de-novo>Tentar de novo</button>
+    <button type="button" class="btn-icone" data-faixa-fechar aria-label="Fechar aviso">${icone('x')}</button>`);
+  f.hidden = false;
+}
+const esconderFaixaErro = () => { $('#faixa-erro').hidden = true; };
+
+// Carrega campanhas e cadastros. Erro não vira aviso flutuante: vira faixa
+// fixa e o estado "Não foi possível carregar" de cada lista.
+async function carregarDados() {
+  const erros = [];
+  await Promise.all([
+    campanhas.carregar().catch(e => erros.push(e.message)),
+    cadastros.carregar().catch(e => erros.push(e.message)),
+  ]);
+  if (erros.length) mostrarFaixaErro(erros[0]); else esconderFaixaErro();
+  return !erros.length;
+}
+
 // ---------- entrada ----------
+let dadosLigados = false;
+
+async function iniciarDados() {
+  if (!emManutencao) pintar($('#conteudo'), carregando(4));
+  const saude = await conferirBanco();
+  if (!saude.ok && saude.falta.length) { mostrarManutencao(saude.falta); return; }
+  emManutencao = false;
+  document.body.classList.remove('manutencao');
+
+  await carregarDados();
+  if (!dadosLigados) {
+    dadosLigados = true;
+    campanhas.aoVivo();
+    cadastros.aoVivo();
+    campanhas.assinar(contarPendentes);
+    campanhas.assinar(avisarNovidades);
+  }
+  contarPendentes();
+
+  if (!resolver(location.hash)) history.replaceState({ i: indiceHistorico }, '', '#/inicio');
+  else history.replaceState({ i: indiceHistorico }, '', location.hash);
+  atual = null;
+  aplicarRota();
+}
+
 async function entrar(perfil) {
   ctx.perfil = perfil;
   ctx.ehAprovador = perfil.papel === PAPEL.APROVADOR;
   montarCasca();
   $('#splash').hidden = true;
   $('#app').hidden = false;
-  pintar($('#conteudo'), carregando(4));
-
-  try {
-    await campanhas.carregar();
-  } catch (e) {
-    toast(e.message, { tom: 'erro', duracao: 0 });
-  }
-  try {
-    await cadastros.carregar();
-  } catch (e) {
-    // Banco ainda sem a migração 04: o app funciona, sem o cadastro.
-    console.warn('Cadastros indisponíveis:', e);
-    toast('O cadastro de empresas não carregou: ' + e.message, { tom: 'erro', duracao: 8000 });
-  }
-  campanhas.aoVivo();
-  cadastros.aoVivo();
-  campanhas.assinar(contarPendentes);
-  campanhas.assinar(avisarNovidades);
-  contarPendentes();
-
-  if (!resolver(location.hash)) history.replaceState({ i: 0 }, '', '#/inicio');
-  else history.replaceState({ i: 0 }, '', location.hash);
-  aplicarRota();
+  await iniciarDados();
 }
 
 if ('serviceWorker' in navigator) {

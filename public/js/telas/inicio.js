@@ -6,10 +6,13 @@ import { html, pintar } from '../lib/dom.js';
 import { calc, brl, brl0, dataCivil, hojeCivil, STATUS } from '../lib/regras.js';
 import { icone } from '../ui/icones.js';
 import { cartao, vazio } from '../ui/pecas.js';
+import { estadoLista } from '../ui/estado.js';
 
 const MESES = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'];
 
 function desenhar(el, ctx) {
+  const est = estadoLista({ carregado: ctx.campanhas.carregado, erro: ctx.campanhas.erro });
+  if (est) { pintar(el, est); return; }
   const todas = ctx.campanhas.todas();
   const eu = ctx.perfil.id;
   const filaTodas = ctx.campanhas.pendentes();

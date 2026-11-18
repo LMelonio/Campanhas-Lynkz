@@ -324,3 +324,16 @@ dialog.dialogo[open] { animation: sobe .22s ease; display: flex; flex-direction:
 }
 @keyframes sobe { from { transform: translateY(24px); opacity: 0; } }
 @keyframes aparece { from { transform: scale(.97); opacity: 0; } }
+
+/* ---------- estado de lista: erro de carga ---------- */
+.estado-erro {
+  display: flex; flex-wrap: wrap; align-items: center; gap: var(--e-3); padding: var(--e-5);
+  background: var(--erro-soft); color: var(--erro); border: 1px solid var(--erro); border-radius: var(--r-panel);
+}
+.estado-erro > svg.ico { width: 28px; height: 28px; }
+.estado-erro-texto { flex: 1 1 200px; }
+.estado-titulo { font-size: var(--t-16); font-weight: 700; }
+.estado-texto { font-size: var(--t-14); color: var(--ink); }
+
+/* valor em reais nunca quebra no meio ("R$" sozinho no fim da linha) */
+.valor { white-space: nowrap; }

@@ -9,6 +9,7 @@ import { icone } from '../ui/icones.js';
 import { selo, regua, vazio, carregando } from '../ui/pecas.js';
 import { abrirDialogo, erroNoDialogo } from '../ui/avisos.js';
 import { areaTexto, aplicarErros } from '../ui/campos.js';
+import { estadoLista } from '../ui/estado.js';
 
 const C = window.CONFIG;
 const ESPERA_APROVAR = 5000;
@@ -130,7 +131,7 @@ function desenhar() {
   if (!c) {
     ctx.cabecalho({ titulo: 'Campanha', voltar: '#/campanhas' });
     ctx.barraDeAcao(false);
-    pintar(el, ctx.campanhas.carregado
+    pintar(el, ctx.campanhas.erro ? estadoLista({ erro: ctx.campanhas.erro }) : ctx.campanhas.carregado
       ? vazio({ icone: 'busca', titulo: 'Campanha não encontrada', texto: 'Ela pode ter sido removida da sua visão ou o endereço está errado.', acao: { href: '#/campanhas', rotulo: 'Ver campanhas' } })
       : carregando(2));
     return;
@@ -252,7 +253,7 @@ export function montar(el, ctx, { id }) {
     }),
     ao(el, 'click', '[data-reprovar]', () => { const c = ctx.campanhas.porId(id); if (c) reprovar(ctx, c); }),
     ao(el, 'click', '[data-desfazer]', () => desfazer(ctx, emEspera)),
-    ctx.campanhas.assinar(ev => { if (ev.tipo === 'carga' || String(ev.id) === String(id)) desenhar(); }),
+    ctx.campanhas.assinar(ev => { if (ev.tipo === 'carga' || ev.tipo === 'erro' || String(ev.id) === String(id)) desenhar(); }),
     ctx.cadastros.assinar(() => desenhar()),
   );
   desenhar();

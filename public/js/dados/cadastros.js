@@ -10,6 +10,7 @@ import { exigir } from './erros.js';
 let empresasMap = new Map();
 let balconistasMap = new Map();
 let carregado = false;
+let ultimoErro = null;   // mensagem da última carga que falhou (null = ok)
 let canal = null;
 const ouvintes = new Set();
 
@@ -51,13 +52,22 @@ function camposBalconista(d, criando) {
 export const cadastros = {
   get carregado() { return carregado; },
 
+  get erro() { return ultimoErro; },
+
   async carregar() {
-    const [emp, bal] = await Promise.all([
-      sb.from('empresas').select('*').order('nome'),
-      sb.from('balconistas').select('*').order('nome_completo'),
-    ]);
-    empresasMap = new Map((exigir(emp) || []).map(e => [String(e.id), e]));
-    balconistasMap = new Map((exigir(bal) || []).map(b => [String(b.id), b]));
+    try {
+      const [emp, bal] = await Promise.all([
+        sb.from('empresas').select('*').order('nome'),
+        sb.from('balconistas').select('*').order('nome_completo'),
+      ]);
+      empresasMap = new Map((exigir(emp) || []).map(e => [String(e.id), e]));
+      balconistasMap = new Map((exigir(bal) || []).map(b => [String(b.id), b]));
+    } catch (e) {
+      ultimoErro = e.message;
+      avisar({ tipo: 'erro' });
+      throw e;
+    }
+    ultimoErro = null;
     carregado = true;
     avisar({ tipo: 'carga' });
   },
@@ -123,5 +133,6 @@ export const cadastros = {
     empresasMap = new Map();
     balconistasMap = new Map();
     carregado = false;
+    ultimoErro = null;
   },
 };

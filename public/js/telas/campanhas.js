@@ -8,6 +8,7 @@ import { contem, STATUS } from '../lib/regras.js';
 import { icone } from '../ui/icones.js';
 import { cartao, vazio } from '../ui/pecas.js';
 import * as detalhe from './detalhe.js';
+import { estadoLista } from '../ui/estado.js';
 
 const PASSO = 40;
 const STATUS_FILTROS = [
@@ -56,6 +57,9 @@ function desenharLista() {
   const lista = ordenar(aplicarFiltros(ctx));
   const visiveis = lista.slice(0, filtros.limite);
   const filtrando = filtros.busca || filtros.lab || filtros.minhas;
+  // Carregando ou erro de carga: nunca dizer "Nada encontrado" nesses casos.
+  const est = estadoLista({ carregado: ctx.campanhas.carregado, erro: ctx.campanhas.erro });
+  if (est) { pintar($('#cp-resumo', el), ''); pintar(caixa, est); return; }
   pintar($('#cp-resumo', el), lista.length === 1 ? '1 campanha' : `${lista.length} campanhas`);
   pintar(caixa, lista.length
     ? html`${visiveis.map(c => cartao(c, { ativo: String(c.id) === String(s.id) }))}

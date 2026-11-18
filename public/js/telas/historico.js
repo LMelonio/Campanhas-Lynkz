@@ -6,6 +6,7 @@ import { html, pintar, $, ao, debounce } from '../lib/dom.js';
 import { calc, brl, dataBR, contem, STATUS } from '../lib/regras.js';
 import { icone } from '../ui/icones.js';
 import { selo, vazio } from '../ui/pecas.js';
+import { estadoLista } from '../ui/estado.js';
 
 const PASSO = 40;
 const filtros = { busca: '', status: 'Todas', limite: PASSO };
@@ -30,6 +31,8 @@ function desenhar(el, ctx) {
   const vis = lista.slice(0, filtros.limite);
 
   pintar($('#hs-status', el), html`${OPCOES.map(o => html`<button type="button" class="filtro" data-status="${o.valor}" aria-pressed="${filtros.status === o.valor}">${o.rotulo}<span class="n">${conta(o.valor)}</span></button>`)}`);
+  const est = estadoLista({ carregado: ctx.campanhas.carregado, erro: ctx.campanhas.erro });
+  if (est) { pintar($('#hs-resumo', el), ''); pintar($('#hs-itens', el), est); return; }
   pintar($('#hs-resumo', el), `${lista.length} ${lista.length === 1 ? 'decisão registrada' : 'decisões registradas'}`);
   pintar($('#hs-itens', el), lista.length ? html`
     <div class="tabela-caixa"><table class="tabela">
