@@ -6,6 +6,10 @@ import { STATUS, PAPEL } from '../lib/regras.js';
 import { icone } from '../ui/icones.js';
 import { seloNeutro } from '../ui/pecas.js';
 import { exportarExcel } from '../exportar.js';
+import { sb } from '../lib/supabase.js';
+import { abrirDialogo, erroNoDialogo } from '../ui/avisos.js';
+import { aplicarErros } from '../ui/campos.js';
+import { campoSenha, ligarSenha } from '../ui/senha.js';
 
 const C = window.CONFIG;
 
@@ -43,9 +47,54 @@ function desenhar(el, ctx) {
       </div>
     </section>
 
+    <button type="button" class="btn btn-fantasma btn-largo perfil-senha" id="pf-senha">${icone('cadeado')} Alterar senha</button>
     <button type="button" class="btn btn-perigo btn-largo" id="pf-sair">${icone('sair')} Sair da conta</button>
     <p class="versao versao-centro">Versão ${C.VERSAO}</p>
   </div>`);
+}
+
+// Alterar senha sem sair: confere a senha atual entrando de novo com ela,
+// depois grava a nova. A sessão continua aberta.
+async function alterarSenha(ctx) {
+  let desligar = () => {};
+  const val = (d, id) => d.querySelector('#' + id).value;
+  await abrirDialogo({
+    titulo: 'Alterar senha',
+    descricao: 'Mínimo de 8 caracteres. Você continua conectado depois de trocar.',
+    corpo: html`${campoSenha({ id: 'pf-atual', rotulo: 'Senha atual', autocomplete: 'current-password' })}
+      ${campoSenha({ id: 'pf-nova', rotulo: 'Nova senha', novo: true })}
+      ${campoSenha({ id: 'pf-nova2', rotulo: 'Repita a nova senha', autocomplete: 'new-password' })}`,
+    acoes: [
+      { rotulo: 'Cancelar', valor: null, tipo: 'fantasma' },
+      { rotulo: 'Salvar nova senha', valor: 'salvar', tipo: 'primario', principal: true },
+    ],
+    aoAbrir: d => { desligar = ligarSenha(d, { email: () => ctx.perfil.email }); d.querySelector('#pf-atual').focus(); },
+    antesDeFechar: async (_v, d) => {
+      erroNoDialogo(d, '');
+      const atual = val(d, 'pf-atual'), nova = val(d, 'pf-nova'), nova2 = val(d, 'pf-nova2');
+      const erros = {};
+      if (!atual) erros['pf-atual'] = 'Digite sua senha atual.';
+      if (nova.length < 8) erros['pf-nova'] = 'A senha precisa ter pelo menos 8 caracteres.';
+      else if (nova !== nova2) erros['pf-nova2'] = 'As duas senhas não são iguais.';
+      if (aplicarErros(d, erros)) return false;
+
+      const r1 = await sb.auth.signInWithPassword({ email: ctx.perfil.email, password: atual });
+      if (r1.error) {
+        if (/invalid login credentials/i.test(r1.error.message)) aplicarErros(d, { 'pf-atual': 'Senha atual incorreta.' });
+        else { console.error(r1.error); erroNoDialogo(d, 'Não foi possível conferir a senha agora. Tente de novo.'); }
+        return false;
+      }
+      const r2 = await sb.auth.updateUser({ password: nova });
+      if (r2.error) {
+        if (r2.error.code === 'same_password') aplicarErros(d, { 'pf-nova': 'A nova senha precisa ser diferente da anterior.' });
+        else if (r2.error.code === 'weak_password') aplicarErros(d, { 'pf-nova': 'Senha fraca. Use mais caracteres, misturando letras e números.' });
+        else { console.error(r2.error); erroNoDialogo(d, 'Não foi possível salvar agora. Tente de novo.'); }
+        return false;
+      }
+      return true;
+    },
+  }).then(v => { if (v === 'salvar') ctx.toast('Senha alterada.', { tom: 'sucesso' }); });
+  desligar();
 }
 
 export function montar(el, ctx) {
@@ -61,6 +110,7 @@ export function montar(el, ctx) {
       finally { b.disabled = false; b.removeAttribute('aria-busy'); }
     }),
     ao(el, 'click', '#pf-sair', () => ctx.sair()),
+    ao(el, 'click', '#pf-senha', () => alterarSenha(ctx)),
     ctx.campanhas.assinar(() => { if (!el.querySelector('[aria-busy="true"]')) desenhar(el, ctx); }),
   ];
   return () => desligar.forEach(fn => fn());

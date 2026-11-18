@@ -13,7 +13,7 @@ import { cadastros } from './dados/cadastros.js';
 import { conferirBanco } from './dados/saude.js';
 import { html, pintar, $, $$ } from './lib/dom.js';
 import { PAPEL, STATUS, brl, calc } from './lib/regras.js';
-import { toast } from './ui/avisos.js';
+import { toast, confirmar } from './ui/avisos.js';
 import { icone } from './ui/icones.js';
 import { carregando } from './ui/pecas.js';
 import * as telaInicio from './telas/inicio.js';
@@ -99,6 +99,16 @@ const ctx = {
 };
 
 async function sair() {
+  // Rascunho não enviado: perguntar antes de apagar.
+  telaNova.gravarRascunhoAgora();
+  if (telaNova.temRascunho()) {
+    const ok = await confirmar({
+      titulo: 'Sair e descartar o rascunho?',
+      descricao: 'A campanha que você começou não foi enviada e será apagada deste aparelho.',
+      confirmar: 'Sair mesmo assim', perigo: true,
+    });
+    if (!ok) return;
+  }
   telaNova.limparRascunho();
   campanhas.parar();
   cadastros.parar();

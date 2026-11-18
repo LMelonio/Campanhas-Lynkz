@@ -117,12 +117,12 @@ teste('acesso: login valida campos, recusa usuário errado e entra', async ({ pa
   await deslogado(page);
   igual(await page.locator('#acesso h1').innerText(), 'Bem-vindo de volta', 'título do login');
   await page.click('#l-entrar');
-  afirma((await page.locator('#l-msg').innerText()).includes('e-mail válido'), 'pede e-mail válido');
+  afirma((await page.locator('#l-email-erro').innerText()).includes('e-mail válido'), 'pede e-mail válido (no campo)');
   await page.fill('#l-email', 'carlos@lynkz.com.br');
   await page.click('#l-entrar');
-  afirma((await page.locator('#l-msg').innerText()).includes('senha'), 'pede senha');
+  afirma((await page.locator('#l-senha-erro').innerText()).includes('senha'), 'pede senha (no campo)');
   await page.fill('#l-email', 'ninguem@lynkz.com.br'); await page.fill('#l-senha', 'x'); await page.press('#l-senha', 'Enter');
-  await page.locator('#l-msg', { hasText: 'inválidos' }).waitFor();
+  await page.locator('#l-senha-erro', { hasText: 'inválidos' }).waitFor();
   await page.fill('#l-email', 'carlos@lynkz.com.br'); await page.fill('#l-senha', 'qualquer'); await page.click('#l-entrar');
   await page.waitForSelector('#app:not([hidden])');
   afirma((await page.locator('#menu').innerText()).includes('Carlos'), 'menu mostra o usuário logado');
@@ -638,6 +638,9 @@ teste('perfil: sair volta ao login e apaga o rascunho', async ({ page }) => {
   await page.fill('#n-campanha', 'vai sumir'); await page.waitForTimeout(600);
   await page.goto(`${BASE}/?papel=aprovador#/perfil`); await page.waitForSelector('#pf-sair');
   await page.click('#pf-sair');
+  const conf = page.locator('dialog.dialogo', { hasText: 'descartar o rascunho' });
+  await conf.waitFor();                                   // com rascunho, pergunta antes
+  await conf.locator('button[type="submit"]').click();
   await page.waitForSelector('#acesso:not([hidden]) #f-login');
   igual(await page.evaluate(() => localStorage.getItem('lynkz_rascunho_campanha_v2')), null, 'rascunho apagado ao sair');
 });
@@ -717,6 +720,93 @@ teste('lote A: erro técnico sem tradução não aparece em inglês', async ({ p
   igual(m, 'Não foi possível concluir agora. Tente de novo.', 'mensagem genérica em português');
   const m2 = await page.evaluate(async () => (await import('/js/dados/erros.js')).traduzir({ message: 'x', code: 'PGRST205' }));
   afirma(m2.includes('em atualização'), 'PGRST205 vira "em atualização"');
+});
+
+// ============================================================
+//  v2.1 — LOTE B: acesso e conta
+// ============================================================
+teste('lote B: olho mostra e oculta a senha sem tirar o foco', async ({ page }) => {
+  await deslogado(page);
+  await page.fill('#l-senha', 'abc123');
+  const olho = page.locator('[data-olho="l-senha"]');
+  await olho.click();
+  igual(await page.getAttribute('#l-senha', 'type'), 'text', 'senha visível');
+  igual(await olho.getAttribute('aria-pressed'), 'true', 'aria-pressed');
+  igual(await olho.getAttribute('aria-label'), 'Ocultar senha', 'aria-label muda');
+  igual(await page.evaluate(() => document.activeElement.id), 'l-senha', 'foco continua no campo');
+  await olho.click();
+  igual(await page.getAttribute('#l-senha', 'type'), 'password', 'oculta de novo');
+  igual(await olho.getAttribute('aria-label'), 'Mostrar senha', 'aria-label volta');
+  const caixa = await olho.boundingBox();
+  afirma(caixa.width >= 44 && caixa.height >= 44, 'alvo de toque de 44 px');
+});
+
+teste('lote B: aviso de Caps Lock aparece com o campo em foco e some', async ({ page }) => {
+  await deslogado(page);
+  await page.focus('#l-senha');
+  const tecla = (tipo, caps) => page.evaluate(([t, c]) => document.querySelector('#l-senha')
+    .dispatchEvent(new KeyboardEvent(t, { key: 'a', bubbles: true, modifierCapsLock: c })), [tipo, caps]);
+  await tecla('keydown', true);
+  afirma((await page.locator('#l-senha-caps').innerText()).includes('Caps Lock está ligado'), 'aviso aparece');
+  await tecla('keyup', false);
+  igual((await page.locator('#l-senha-caps').innerText()).trim(), '', 'some quando desliga');
+  await tecla('keydown', true);
+  await page.focus('#l-email');
+  igual((await page.locator('#l-senha-caps').innerText()).trim(), '', 'some ao sair do campo');
+});
+
+teste('lote B: "Lembrar meu e-mail" preenche o e-mail e foca a senha; nunca guarda a senha', async ({ page }) => {
+  const SENHA = 'MinhaSenha#2026';
+  await deslogado(page);
+  afirma(await page.isChecked('#l-lembrar'), 'lembrar vem marcado');
+  await page.fill('#l-email', 'carlos@lynkz.com.br'); await page.fill('#l-senha', SENHA); await page.click('#l-entrar');
+  await page.waitForSelector('#app:not([hidden])');
+  await page.click('#menu-sair');                          // sem rascunho: não pergunta
+  await page.waitForSelector('#acesso:not([hidden]) #f-login');
+  igual(await page.inputValue('#l-email'), 'carlos@lynkz.com.br', 'e-mail lembrado');
+  igual(await page.evaluate(() => document.activeElement.id), 'l-senha', 'foco direto na senha');
+  const tudo = await page.evaluate(() => JSON.stringify({ ...localStorage }) + JSON.stringify({ ...sessionStorage }));
+  afirma(!tudo.includes(SENHA), 'senha não fica no aparelho');
+  await page.click('label[for="l-lembrar"]');
+  await page.fill('#l-senha', SENHA); await page.click('#l-entrar');
+  await page.waitForSelector('#app:not([hidden])');
+  await page.click('#menu-sair');
+  await page.waitForSelector('#acesso:not([hidden]) #f-login');
+  igual(await page.inputValue('#l-email'), '', 'desmarcado: e-mail esquecido');
+  afirma(!(await page.isChecked('#l-lembrar')), 'a escolha de não lembrar é mantida');
+});
+
+teste('lote B: senha errada foca a senha selecionada; 3 erros oferecem redefinir', async ({ page }) => {
+  await deslogado(page);
+  await page.fill('#l-email', 'carlos@lynkz.com.br');
+  for (let i = 1; i <= 3; i++) {
+    await page.fill('#l-senha', 'errada' + i); await page.click('#l-entrar');
+    await page.locator('#l-senha-erro', { hasText: 'inválidos' }).waitFor();
+    if (i === 1) {
+      igual(await page.evaluate(() => document.activeElement.id), 'l-senha', 'foco na senha');
+      afirma(await page.evaluate(() => { const s = document.activeElement; return s.selectionStart === 0 && s.selectionEnd === s.value.length; }), 'texto selecionado');
+      igual(await page.locator('#l-redefinir').count(), 0, 'sem link antes de 3 erros');
+    }
+  }
+  await page.click('#l-redefinir');
+  await page.locator('#acesso h1', { hasText: 'Redefinir senha' }).waitFor();
+});
+
+teste('lote B: Perfil → Alterar senha confere a atual e grava a nova', async ({ page }) => {
+  await abrir(page, { rota: '#/perfil' });
+  await page.click('#pf-senha');
+  const d = page.locator('dialog.dialogo'); await d.waitFor();
+  await d.locator('#pf-atual').fill('errada');
+  await d.locator('#pf-nova').fill('NovaSenha123');
+  afirma((await d.locator('#pf-nova-forca .forca-texto').innerText()).includes('forte'), 'medidor de força ao vivo');
+  await d.locator('#pf-nova2').fill('NovaSenha123');
+  await d.locator('button[type="submit"]').click();
+  await d.locator('#pf-atual-erro', { hasText: 'incorreta' }).waitFor();
+  await d.locator('#pf-atual').fill('certa-123');
+  await d.locator('button[type="submit"]').click();
+  await d.waitFor({ state: 'detached' });
+  await toastCom(page, 'Senha alterada');
+  igual(await titulo(page), 'Perfil', 'continua logado no Perfil');
 });
 
 // ============================================================

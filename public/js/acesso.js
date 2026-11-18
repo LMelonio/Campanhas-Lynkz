@@ -12,6 +12,8 @@ import { urlAuth, limparUrl } from './lib/url-auth.js';
 import { html, pintar, $, armazenamento } from './lib/dom.js';
 import { emailValido } from './lib/regras.js';
 import { icone } from './ui/icones.js';
+import { campo, interruptor, marcarErro, limparErro } from './ui/campos.js';
+import { campoSenha, ligarSenha } from './ui/senha.js';
 
 const C = window.CONFIG;
 const el = () => document.getElementById('acesso');
@@ -72,39 +74,75 @@ const ocupar = (botao, texto) => {
 function telaAcessoVisivel() { return !el().hidden; }
 
 // ---------- login ----------
+// Só o e-mail fica no aparelho (nunca a senha). "Sair da conta" não apaga.
+const CHAVE_EMAIL = 'lynkz_ultimo_email';
+const CHAVE_LEMBRAR = 'lynkz_lembrar_email';
+let errosSeguidos = 0;
+
 function mostrarLogin(msgOk = '', email = '') {
+  const lembrado = armazenamento.ler(CHAVE_EMAIL);
+  const emailIni = email || (typeof lembrado === 'string' ? lembrado : '');
+  const lembrar = armazenamento.ler(CHAVE_LEMBRAR) !== false;
   mostrar(html`
     <h1 tabindex="-1">Bem-vindo de volta</h1>
     <p class="acesso-sub">Entre com o e-mail e a senha da empresa.</p>
     <form id="f-login" novalidate>
-      <div class="campo"><label for="l-email">E-mail</label>
-        <input id="l-email" type="email" inputmode="email" autocomplete="username" placeholder="seuemail@${C.DOMINIO || 'empresa.com.br'}" value="${email}" ${email ? '' : html`autofocus`}></div>
-      <div class="campo"><label for="l-senha">Senha</label>
-        <input id="l-senha" type="password" autocomplete="current-password" ${email ? html`autofocus` : ''}></div>
+      ${campo({ id: 'l-email', rotulo: 'E-mail', tipo: 'email', valor: emailIni,
+                atributos: { inputmode: 'email', autocomplete: 'username', placeholder: `seuemail@${C.DOMINIO || 'empresa.com.br'}`, autofocus: !emailIni } })}
+      ${campoSenha({ id: 'l-senha', rotulo: 'Senha', autocomplete: 'current-password',
+                     extraRotulo: html`<button type="button" class="link-acao" id="l-esqueci">Esqueci minha senha</button>` })}
+      ${interruptor({ id: 'l-lembrar', rotulo: 'Lembrar meu e-mail neste aparelho', marcado: lembrar, classe: 'sem-caixa' })}
       <button class="btn btn-primario btn-largo" id="l-entrar" type="submit">Entrar</button>
     </form>
-    <button class="btn btn-texto" id="l-esqueci" type="button">Esqueci minha senha</button>
     <p id="l-msg" class="acesso-msg${msgOk ? ' ok' : ''}" role="status" aria-live="polite">${msgOk}</p>`);
+  const raiz = $('.acesso-caixa', el());   // recriada a cada tela: ouvintes não se acumulam
+  ligarSenha(raiz);
+  if (emailIni) $('#l-senha').focus();
 
-  $('#l-esqueci').addEventListener('click', () => mostrarPedirLink('Redefinir senha',
-    'Informe seu e-mail. Enviaremos um link para você criar uma senha nova.', $('#l-email').value.trim()));
+  const esqueci = () => mostrarPedirLink('Redefinir senha',
+    'Informe seu e-mail. Enviaremos um link para você criar uma senha nova.', $('#l-email').value.trim());
+  $('#l-esqueci').addEventListener('click', esqueci);
+  raiz.addEventListener('click', e => { if (e.target.closest('#l-redefinir')) esqueci(); });
+  // Digitar de novo tira a marca de erro do campo.
+  raiz.addEventListener('input', e => {
+    const c = e.target.closest('.campo.tem-erro');
+    if (c) limparErro(raiz, c.dataset.campo);
+  });
 
   $('#f-login').addEventListener('submit', async ev => {
     ev.preventDefault();
     const email = $('#l-email').value.trim().toLowerCase();
     const senha = $('#l-senha').value;
-    if (!emailValido(email)) { msg('l-msg', 'Digite um e-mail válido.', 'erro'); $('#l-email').focus(); return; }
-    if (!senha) { msg('l-msg', 'Digite sua senha.', 'erro'); $('#l-senha').focus(); return; }
     msg('l-msg', '');
+    limparErro(raiz, 'l-email'); limparErro(raiz, 'l-senha');
+    if (!emailValido(email)) { marcarErro(raiz, 'l-email', 'Digite um e-mail válido.'); $('#l-email').focus(); return; }
+    if (!senha) { marcarErro(raiz, 'l-senha', 'Digite sua senha.'); $('#l-senha').focus(); return; }
     const liberar = ocupar($('#l-entrar'), 'Entrando…');
     const { error } = await sb.auth.signInWithPassword({ email, password: senha });
     if (error) {
       liberar();
-      msg('l-msg', /invalid login credentials/i.test(error.message) ? 'E-mail ou senha inválidos.'
-        : /failed to fetch|network/i.test(error.message) ? 'Sem conexão. Confira a internet e tente de novo.'
-        : 'Não foi possível entrar: ' + error.message, 'erro');
+      if (/invalid login credentials/i.test(error.message)) {
+        errosSeguidos++;
+        marcarErro(raiz, 'l-senha', 'E-mail ou senha inválidos.');
+        // Depois de 3 erros seguidos, o caminho para redefinir fica à mão.
+        if (errosSeguidos >= 3) {
+          pintar($('#l-senha-erro'), html`${icone('alerta')}<span>E-mail ou senha inválidos.
+            <button type="button" class="link-acao" id="l-redefinir">Esqueceu? Redefina a senha</button></span>`);
+        }
+        const s = $('#l-senha');
+        s.focus();
+        s.select();
+      } else if (/failed to fetch|network/i.test(error.message)) {
+        msg('l-msg', 'Sem conexão. Confira a internet e tente de novo.', 'erro');
+      } else {
+        console.error('Login:', error);
+        msg('l-msg', 'Não foi possível entrar agora. Tente de novo em instantes.', 'erro');
+      }
       return;
     }
+    errosSeguidos = 0;
+    if ($('#l-lembrar').checked) { armazenamento.gravar(CHAVE_EMAIL, email); armazenamento.gravar(CHAVE_LEMBRAR, true); }
+    else { armazenamento.remover(CHAVE_EMAIL); armazenamento.gravar(CHAVE_LEMBRAR, false); }
     await verificar();
   });
 }
@@ -195,15 +233,15 @@ async function mostrarNovaSenha() {
     <form id="f-senha" novalidate>
       <div class="campo"><label for="n-email">Conta</label>
         <input id="n-email" type="email" autocomplete="username" value="${user.email || ''}" readonly></div>
-      <div class="campo"><label for="n-senha">Nova senha</label>
-        <input id="n-senha" type="password" autocomplete="new-password" minlength="8" autofocus></div>
-      <div class="campo"><label for="n-senha2">Confirme a nova senha</label>
-        <input id="n-senha2" type="password" autocomplete="new-password" minlength="8"></div>
+      ${campoSenha({ id: 'n-senha', rotulo: 'Nova senha', novo: true })}
+      ${campoSenha({ id: 'n-senha2', rotulo: 'Confirme a nova senha', autocomplete: 'new-password' })}
       <button class="btn btn-primario btn-largo" id="n-ok" type="submit">Salvar nova senha</button>
     </form>
     <button class="btn btn-texto" id="n-cancelar" type="button">Cancelar</button>
     <p id="n-msg" class="acesso-msg" role="status" aria-live="polite"></p>`);
 
+  ligarSenha($('.acesso-caixa', el()), { email: () => user.email });
+  $('#n-senha').focus();
   $('#n-cancelar').addEventListener('click', async () => { await encerrarRecuperacao(); mostrarLogin(); });
   $('#f-senha').addEventListener('submit', async ev => {
     ev.preventDefault();

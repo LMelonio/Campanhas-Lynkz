@@ -24,6 +24,9 @@ const P = {
   seta:      '<path d="M9 18l6-6-6-6"/>',
   repetir:   '<path d="M4 12a8 8 0 0113.7-5.7L20 8.6"/><path d="M20 3v5.6h-5.6"/><path d="M20 12a8 8 0 01-13.7 5.7L4 15.4"/><path d="M4 21v-5.6h5.6"/>',
   info:      '<circle cx="12" cy="12" r="9"/><path d="M12 11v6"/><path d="M12 7.5v.1"/>',
+  olho:      '<path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>',
+  'olho-fechado': '<path d="M9.9 5.2A10.6 10.6 0 0112 5c6.4 0 10 7 10 7a17.7 17.7 0 01-2.6 3.6"/><path d="M6.6 6.6C3.8 8.4 2 12 2 12s3.6 7 10 7a10 10 0 005.4-1.6"/><path d="M9.9 9.9a3 3 0 004.2 4.2"/><path d="M3 3l18 18"/>',
+  copiar:    '<rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a1 1 0 01-1-1V4a1 1 0 011-1h10a1 1 0 011 1v1"/>',
 };
 
 export function icone(nome, rotulo = '') {

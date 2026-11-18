@@ -337,3 +337,29 @@ dialog.dialogo[open] { animation: sobe .22s ease; display: flex; flex-direction:
 
 /* valor em reais nunca quebra no meio ("R$" sozinho no fim da linha) */
 .valor { white-space: nowrap; }
+
+/* ---------- campo de senha ---------- */
+.campo-rotulo-linha { display: flex; align-items: center; justify-content: space-between; gap: var(--e-2); }
+.campo-rotulo-linha > label { font-size: var(--t-14); font-weight: 600; }
+.link-acao {
+  background: none; border: 0; padding: 0 var(--e-1); min-height: var(--tap);
+  color: var(--red-ink); font-size: var(--t-14); font-weight: 600; text-decoration: underline; text-underline-offset: 3px;
+}
+.senha-caixa { position: relative; }
+.campo .senha-caixa input { padding-right: calc(var(--tap) + var(--e-1)); }
+.senha-olho { position: absolute; top: 0; right: 0; color: var(--ink-2); border-radius: var(--r-ctrl); }
+.senha-caps:empty { display: none; }
+.senha-caps { display: flex; align-items: center; gap: 6px; font-size: var(--t-12); font-weight: 650; color: var(--amber); }
+.senha-caps svg.ico { width: 16px; height: 16px; }
+.senha-forca { display: grid; gap: var(--e-1); }
+.forca-barra { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; }
+.forca-barra i { height: 6px; border-radius: var(--r-pill); background: var(--line); }
+.senha-forca[data-nivel="1"] .forca-barra i:nth-child(-n+1) { background: var(--faixa-vermelha); }
+.senha-forca[data-nivel="2"] .forca-barra i:nth-child(-n+2) { background: var(--faixa-ambar); }
+.senha-forca[data-nivel="3"] .forca-barra i:nth-child(-n+3) { background: var(--faixa-verde); }
+.forca-texto { font-size: var(--t-12); font-weight: 650; color: var(--ink-2); min-height: 1em; }
+.forca-req { display: grid; gap: 2px; font-size: var(--t-12); color: var(--ink-2); }
+.forca-req li { display: flex; align-items: center; gap: 6px; }
+.forca-req li svg.ico { width: 14px; height: 14px; color: var(--erro); }
+.forca-req li.ok { color: var(--ink); }
+.forca-req li.ok svg.ico { color: var(--green); }

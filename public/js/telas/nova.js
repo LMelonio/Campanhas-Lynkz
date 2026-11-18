@@ -35,6 +35,15 @@ const PESSOAIS = {
 };
 const IDS_PESSOAIS = Object.values(PESSOAIS);
 
+// Grava já o que estiver esperando o atraso (usado antes de sair da conta).
+export function gravarRascunhoAgora() {
+  if (st && !st.enviado) salvarRascunho();
+}
+
+export function temRascunho() {
+  return !!lerRascunho();
+}
+
 export function limparRascunho() {
   armazenamento.remover(CHAVE_RASCUNHO);
   armazenamento.remover(CHAVE_RASCUNHO_V1);   // rascunho da v1, se sobrou
