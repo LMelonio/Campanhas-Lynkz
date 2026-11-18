@@ -25,7 +25,7 @@ A v1 continua funcionando no Netlify durante a troca.
 
 ## 2. Código no GitHub
 
-1. Em **github.com/new**: nome `lynkz-campanhas`, **Private**, sem README, sem .gitignore.
+1. Em **github.com/new**: nome `Campanhas-Lynkz`, **Private**, sem README, sem .gitignore.
 2. Envie o código. Esta pasta já é um repositório git com o histórico. Escolha um jeito:
 
    **GitHub Desktop:** *File → Add local repository* → escolha a pasta → *Publish repository*
@@ -33,8 +33,8 @@ A v1 continua funcionando no Netlify durante a troca.
 
    **Terminal:**
    ```bash
-   cd lynkz-campanhas
-   git remote add origin https://github.com/<sua-conta>/lynkz-campanhas.git
+   cd Campanhas-Lynkz
+   git remote add origin https://github.com/<sua-conta>/Campanhas-Lynkz.git
    git push -u origin main
    ```
 3. Confira em **Actions** que o fluxo **testes** rodou e passou (unidade, banco, navegador, Cloudflare).
@@ -48,14 +48,15 @@ A v1 continua funcionando no Netlify durante a troca.
 ## 3. Site no Cloudflare (Workers, só arquivos estáticos)
 
 1. **dash.cloudflare.com** → *Workers & Pages* → *Create* → *Import a repository*.
-2. Conecte a conta do GitHub e escolha `lynkz-campanhas`.
+2. Conecte a conta do GitHub e escolha `Campanhas-Lynkz`.
 3. Configure:
-   - **Project name:** `lynkz-campanhas`
+   - **Project name:** `campanhas-lynkz` — **igual** ao `name` do `wrangler.jsonc`. Se forem diferentes, o deploy
+     vai para outro Worker e o site no ar não muda.
    - **Build command:** deixe vazio
    - **Deploy command:** `npx wrangler deploy`
    - **Root directory:** `/`
    - Variáveis: nenhuma (as chaves públicas estão em `public/config.js`)
-4. *Save and Deploy*. Em menos de um minuto sai `https://lynkz-campanhas.<sua-conta>.workers.dev`.
+4. *Save and Deploy*. Em menos de um minuto sai `https://campanhas-lynkz.<sua-conta>.workers.dev` (o atual: `https://campanhas-lynkz.lucas-melonio.workers.dev`).
 5. **Domínio da empresa:** no projeto → *Settings* → *Domains & Routes* → *Add* → *Custom domain* →
    `campanhas.lynkz.com.br`. Isso exige que o DNS de `lynkz.com.br` esteja no Cloudflare. Se o DNS estiver
    em outro provedor, use o endereço `workers.dev` ou peça ao TI para mover o DNS.

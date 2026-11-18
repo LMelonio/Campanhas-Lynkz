@@ -3,7 +3,7 @@
 // Documentação: PUBLICAR.md
 {
   "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "lynkz-campanhas",
+  "name": "campanhas-lynkz",   // TEM de ser igual ao nome do Worker no Cloudflare (senão publica em outro Worker)
   "compatibility_date": "2025-11-01",
   "assets": {
     "directory": "./public",

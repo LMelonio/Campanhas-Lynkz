@@ -35,6 +35,24 @@ test "$(rodar -d campanhas_teste_mig -t -A -c "select count(*) from campanhas_ap
 echo "ok  campanha da v1 continua igual depois da migração"
 rodar -d campanhas_teste_mig -f testes.sql 2>&1 | sed -n 's/^psql.*NOTICE:  \(ok.*\)/\1/p; /PASSARAM/p'
 
+echo "== 2b. Migração a partir do banco de produção: v1 SEM a parte B (02) → só 04 + 05"
+banco campanhas_teste_semb
+rodar -d campanhas_teste_semb -f supabase-stub.sql 2>/dev/null
+rodar -d campanhas_teste_semb -f v1-sem-parteB-schema.sql >/dev/null 2>&1
+test "$(rodar -d campanhas_teste_semb -t -A -c "select to_regclass('public.campanhas_app') is null and to_regprocedure('public.swile_da_campanha(bigint)') is null")" = t
+echo "ok  banco de partida sem a parte B (sem campanhas_app e sem swile_da_campanha)"
+# Campanha Swile antiga, gravada antes da migração: precisa sobreviver e ficar protegida.
+rodar -d campanhas_teste_semb -c "insert into campanhas (cliente, laboratorio, campanha, status, forma_pagamento, investimento_lynkz, meta, swile_nome_completo, swile_cpf, swile_data_nascimento, swile_email, swile_telefone) values ('Cliente v1','Avert','Antiga Swile','Aprovada','Swile', 500, 10000, 'Maria Antiga', '52998224725', '1990-01-01', 'm@x.com', '98988887777')" >/dev/null
+rodar -d campanhas_teste_semb -f $SQL/migracoes/04-gestao-empresas-balconistas.sql >/dev/null
+rodar -d campanhas_teste_semb -f $SQL/migracoes/05-data-decisao-fuso.sql >/dev/null
+rodar -d campanhas_teste_semb -f $SQL/migracoes/06-validacao-v2.sql -t -A -F' ' | tee /tmp/val3.txt
+if grep -q '^[0-9]* f ' /tmp/val3.txt; then echo "FALHOU: validação 06 com linha false"; exit 1; fi
+test "$(rodar -d campanhas_teste_semb -t -A -c "select count(*) from campanhas_app where campanha='Antiga Swile' and investimento_lynkz=500 and status='Aprovada'")" = 1
+echo "ok  campanha Swile da v1 continua igual depois da 04"
+test "$(rodar -d campanhas_teste_semb -t -A -c "select has_column_privilege('authenticated','public.campanhas','swile_cpf','SELECT')")" = f
+echo "ok  swile_cpf da campanha antiga protegido (sem leitura direta)"
+rodar -d campanhas_teste_semb -f testes.sql 2>&1 | sed -n 's/^psql.*NOTICE:  \(ok.*\)/\1/p; /PASSARAM/p'
+
 echo "== 3. Rodar as migrações de novo não quebra (idempotência)"
 rodar -d campanhas_teste_mig -f $SQL/migracoes/04-gestao-empresas-balconistas.sql >/dev/null 2>&1
 rodar -d campanhas_teste_mig -f $SQL/migracoes/05-data-decisao-fuso.sql >/dev/null 2>&1
@@ -48,5 +66,5 @@ test "$(rodar -d campanhas_teste_mig -t -A -c "select to_regclass('public.empres
 test "$(rodar -d campanhas_teste_mig -t -A -c "select count(*) from campanhas_app")" -ge 0
 echo "ok  rollback remove gestão e mantém campanhas_app"
 
-rodar -d postgres -c "drop database campanhas_teste_novo" -c "drop database campanhas_teste_mig"
+rodar -d postgres -c "drop database campanhas_teste_novo" -c "drop database campanhas_teste_mig" -c "drop database campanhas_teste_semb"
 echo "BANCO: TUDO OK"

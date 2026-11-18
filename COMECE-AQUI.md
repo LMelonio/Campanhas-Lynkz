@@ -74,10 +74,10 @@ Salve o arquivo.
 
 Resumo (detalhes e prints em `PUBLICAR.md`):
 
-1. **GitHub:** crie um repositório **privado** `lynkz-campanhas` e envie esta pasta.
+1. **GitHub:** crie um repositório **privado** `Campanhas-Lynkz` e envie esta pasta.
 2. **Cloudflare:** *Workers & Pages* → *Create* → *Import a repository* → escolha o repositório.
    Build command: *(vazio)*. Deploy command: `npx wrangler deploy`. Clique em *Deploy*.
-3. Em segundos sai um endereço tipo `https://lynkz-campanhas.<sua-conta>.workers.dev`.
+3. Em segundos sai um endereço tipo `https://campanhas-lynkz.<sua-conta>.workers.dev` (o nome do projeto no Cloudflare tem de ser `campanhas-lynkz`, igual ao `wrangler.jsonc`).
    Para usar um domínio da empresa (ex.: `campanhas.lynkz.com.br`): *Settings* → *Domains & Routes*.
 
 Guarde esse endereço: é o seu app. A partir daí, **cada mudança enviada ao GitHub publica sozinha.**
