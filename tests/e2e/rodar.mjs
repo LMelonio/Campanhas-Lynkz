@@ -562,7 +562,8 @@ teste('gestão: ficha edita empresa, cadastra/edita/desativa balconista e desati
   await page.click('#fx-editar');
   let d = page.locator('dialog.dialogo'); await d.waitFor();
   await d.locator('#de-cidade').fill('Imperatriz - MA'); await d.locator('button[type="submit"]').click(); await d.waitFor({ state: 'detached' });
-  afirma((await page.locator('#conteudo').innerText()).includes('Imperatriz - MA'), 'cidade editada');
+  // A ficha redesenha no evento "close" do diálogo, que chega um instante depois: espera o texto.
+  await page.locator('#conteudo', { hasText: 'Imperatriz - MA' }).waitFor({ timeout: 5000 });   // cidade editada
 
   await page.click('#fx-novo-balc');
   d = page.locator('dialog.dialogo'); await d.waitFor();
@@ -573,7 +574,7 @@ teste('gestão: ficha edita empresa, cadastra/edita/desativa balconista e desati
   afirma(/João Pedro Lima|já/i.test(await d.innerText()), 'CPF repetido na empresa é barrado');
   await d.locator('#db-cpf').fill('714.602.380-01');
   await d.locator('button[type="submit"]').click(); await d.waitFor({ state: 'detached' });
-  afirma((await page.locator('#conteudo').innerText()).includes('Clara Mendes'), 'balconista novo na lista');
+  await page.locator('#conteudo', { hasText: 'Clara Mendes' }).waitFor({ timeout: 5000 });       // balconista novo na lista
 
   const novo = (await db(page)).balconistas.find(b => b.nome_completo === 'Clara Mendes');
   await page.click(`[data-editar-balc="${novo.id}"]`);
