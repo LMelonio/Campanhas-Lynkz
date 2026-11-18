@@ -4,7 +4,8 @@
 //  Atualização ao vivo redesenha só a lista, preservando rolagem e foco.
 // ============================================================
 import { html, pintar, $, ao, debounce } from '../lib/dom.js';
-import { contem, STATUS } from '../lib/regras.js';
+import { contem, calc, dataCivil, hojeCivil, STATUS } from '../lib/regras.js';
+import { campoBusca, ligarBusca } from '../ui/campos.js';
 import { icone } from '../ui/icones.js';
 import { cartao, vazio } from '../ui/pecas.js';
 import * as detalhe from './detalhe.js';
@@ -20,6 +21,35 @@ const STATUS_FILTROS = [
 
 // Filtros sobrevivem à troca de tela (até sair do app).
 const filtros = { busca: '', status: null, lab: '', minhas: null, limite: PASSO };
+// Filtros que vieram da URL (indicadores do Início): viram chips com "×".
+// status · mes ('AAAA-MM', pela data da decisão) · rebate (só com rebate)
+const daUrl = {};
+const MESES = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'];
+const ROTULO_STATUS = { Pendente: 'Pendentes', Aprovada: 'Aprovadas', Reprovada: 'Reprovadas', Todas: 'Todas' };
+
+// Aplica ?status=…&mes=atual&rebate=1. Devolve true se havia algo na URL.
+function aplicarQuery(q = {}) {
+  if (!Object.keys(q).length) return false;
+  for (const k of Object.keys(daUrl)) delete daUrl[k];
+  if (STATUS_FILTROS.some(f => f.valor === q.status)) { filtros.status = q.status; daUrl.status = q.status; }
+  if (q.mes === 'atual') daUrl.mes = hojeCivil().slice(0, 7);
+  else if (/^\d{4}-\d{2}$/.test(q.mes || '')) daUrl.mes = q.mes;
+  if (q.rebate === '1') daUrl.rebate = true;
+  // A lista precisa bater com o número clicado: sem "Só as minhas", busca ou laboratório.
+  Object.assign(filtros, { minhas: false, busca: '', lab: '', limite: PASSO });
+  return true;
+}
+
+// Reescreve a URL com o que sobrou dos filtros da URL (sem criar histórico).
+function atualizarUrl() {
+  const q = new URLSearchParams();
+  if (daUrl.status) q.set('status', daUrl.status);
+  if (daUrl.mes) q.set('mes', daUrl.mes === hojeCivil().slice(0, 7) ? 'atual' : daUrl.mes);
+  if (daUrl.rebate) q.set('rebate', '1');
+  const base = '#/campanhas' + (s?.id ? `/${s.id}` : '');
+  const qs = q.toString();
+  history.replaceState(history.state, '', base + (qs ? '?' + qs : ''));
+}
 
 let s = null;   // estado da tela montada: { el, ctx, id, desligar[], desmontarDetalhe, rolagemLista }
 
@@ -29,7 +59,9 @@ function aplicarFiltros(ctx, { ignorarStatus = false } = {}) {
     (ignorarStatus || filtros.status === 'Todas' || c.status === filtros.status) &&
     (!filtros.lab || c.laboratorio === filtros.lab) &&
     (!filtros.minhas || c.solicitante_id === eu) &&
-    (!filtros.busca || contem(filtros.busca, `${c.cliente} ${c.campanha} ${c.laboratorio} ${c.codigo} ${c.solicitante_nome || ''}`)));
+    (!filtros.busca || contem(filtros.busca, `${c.cliente} ${c.campanha} ${c.laboratorio} ${c.codigo} ${c.solicitante_nome || ''}`)) &&
+    (!daUrl.mes || dataCivil(c.data_decisao || c.criado_em).startsWith(daUrl.mes)) &&
+    (!daUrl.rebate || calc(c).reb > 0));
 }
 
 function ordenar(lista) {
@@ -40,7 +72,23 @@ function ordenar(lista) {
     : String(b.criado_em).localeCompare(String(a.criado_em)));
 }
 
+function desenharChips() {
+  const caixa = $('#cp-chips', s.el);
+  const chips = [];
+  if (daUrl.status || daUrl.mes) {
+    const mes = daUrl.mes ? MESES[+daUrl.mes.slice(5, 7) - 1] : '';
+    const texto = daUrl.status
+      ? `${ROTULO_STATUS[daUrl.status]}${mes ? ` em ${mes}` : ''}`
+      : `Em ${mes}`;
+    chips.push({ chave: 'status', texto });
+  }
+  if (daUrl.rebate) chips.push({ chave: 'rebate', texto: 'Com rebate' });
+  caixa.hidden = !chips.length;
+  pintar(caixa, html`${chips.map(c => html`<button type="button" class="chip chip-filtro" data-tirar="${c.chave}" aria-label="Remover filtro: ${c.texto}">${c.texto}${icone('x')}</button>`)}`);
+}
+
 function desenharFiltros() {
+  desenharChips();
   const { el, ctx } = s;
   const base = aplicarFiltros(ctx, { ignorarStatus: true });
   const conta = v => v === 'Todas' ? base.length : base.filter(c => c.status === v).length;
@@ -102,6 +150,7 @@ function mostrarDetalhe(id) {
 export function montar(el, ctx, params) {
   if (filtros.status === null) filtros.status = ctx.ehAprovador ? STATUS.PENDENTE : 'Todas';
   if (filtros.minhas === null) filtros.minhas = !ctx.ehAprovador;
+  aplicarQuery(params.query);
   s = { el, ctx, id: null, desligar: [], desmontarDetalhe: null, rolagemLista: 0 };
 
   const labs = [...new Set([...(window.CONFIG.LABORATORIOS || []), ...ctx.campanhas.todas().map(c => c.laboratorio)])]
@@ -110,11 +159,7 @@ export function montar(el, ctx, params) {
   pintar(el, html`<div class="mestre-detalhe" data-com-detalhe="false">
     <section class="md-lista" aria-label="Lista de campanhas">
       <div class="ferramentas">
-        <div class="campo busca">
-          <label class="so-leitor" for="cp-busca">Buscar campanhas</label>
-          ${icone('busca')}
-          <input id="cp-busca" type="search" value="${filtros.busca}" placeholder="Empresa, campanha, laboratório ou código" autocomplete="off">
-        </div>
+        ${campoBusca({ id: 'cp-busca', rotulo: 'Buscar campanhas', valor: filtros.busca, placeholder: 'Empresa, campanha, laboratório ou código' })}
         <div class="filtros" id="cp-status" role="group" aria-label="Filtrar por status"></div>
         <div class="ferramentas-linha">
           <div class="campo">
@@ -131,6 +176,7 @@ export function montar(el, ctx, params) {
           </label>
         </div>
       </div>
+      <div class="chips chips-filtro" id="cp-chips" role="group" aria-label="Filtros aplicados" hidden></div>
       <p class="lista-resumo" id="cp-resumo" role="status"></p>
       <div id="cp-itens"></div>
     </section>
@@ -142,7 +188,21 @@ export function montar(el, ctx, params) {
 
   s.desligar.push(
     ao(el, 'input', '#cp-busca', (e, i) => buscar(i.value)),
-    ao(el, 'click', '[data-status]', (e, b) => { filtros.status = b.dataset.status; filtros.limite = PASSO; redesenhar(); b.focus(); }),
+    ao(el, 'click', '[data-status]', (e, b) => {
+      filtros.status = b.dataset.status; filtros.limite = PASSO;
+      if (daUrl.status) { delete daUrl.status; atualizarUrl(); }
+      redesenhar();
+      $(`[data-status="${b.dataset.status}"]`, el)?.focus();
+    }),
+    ao(el, 'click', '[data-tirar]', (e, b) => {
+      if (b.dataset.tirar === 'status') { delete daUrl.status; delete daUrl.mes; filtros.status = 'Todas'; }
+      else delete daUrl[b.dataset.tirar];
+      filtros.limite = PASSO;
+      atualizarUrl();
+      redesenhar();
+      ($('[data-tirar]', el) || $('#cp-busca', el)).focus();
+    }),
+    ligarBusca(el),
     ao(el, 'change', '#cp-lab', (e, sel) => { filtros.lab = sel.value; filtros.limite = PASSO; redesenhar(); }),
     ao(el, 'change', '#cp-minhas', (e, cb) => { filtros.minhas = cb.checked; filtros.limite = PASSO; redesenhar(); }),
     ao(el, 'click', '#cp-mais', () => {
@@ -168,5 +228,15 @@ export function montar(el, ctx, params) {
 
 // Troca de #/campanhas ↔ #/campanhas/:id sem remontar a lista.
 export function atualizar(params) {
-  if (s) mostrarDetalhe(params.id || null);
+  if (!s) return;
+  // Query nova (indicador do Início com a lista já aberta): aplica e sincroniza os controles.
+  if (aplicarQuery(params.query)) {
+    $('#cp-busca', s.el).value = '';
+    $('[data-limpar-busca="cp-busca"]', s.el).hidden = true;
+    $('#cp-lab', s.el).value = '';
+    $('#cp-minhas', s.el).checked = false;
+    desenharFiltros();
+    desenharLista();
+  }
+  mostrarDetalhe(params.id || null);
 }

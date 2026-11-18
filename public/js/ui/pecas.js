@@ -37,7 +37,7 @@ export function regua(c, { titulo = 'Custo total', compacta = false } = {}) {
   return html`<div class="regua${compacta ? ' compacta' : ''}">
     <div class="regua-topo">
       <span class="regua-rotulo">${titulo}</span>
-      <strong class="regua-total num-display"><small>R$ </small>${brl(k.total)}</strong>
+      <strong class="regua-total num-display valor"><small>R$ </small>${brl(k.total)}</strong>
     </div>
     ${k.total > 0 ? html`<div class="regua-comp" aria-hidden="true">
       ${partes.filter(p => p.v > 0).map(p => html`<i class="${p.cls}" ${largura(p.v / k.total * 100)}></i>`)}
@@ -89,7 +89,7 @@ export function cartao(c, { ativo = false } = {}) {
     <p class="cartao-sub">${c.campanha} · ${c.laboratorio}</p>
     ${miniRegua(c)}
     <div class="cartao-pe">
-      <span class="cartao-valor num-display">R$ ${brl(k.total)}</span>
+      <span class="cartao-valor num-display valor">R$ ${brl(k.total)}</span>
       <span class="cartao-quando">${icone('historico')}${dataBR(c.criado_em)} · ${c.codigo}</span>
     </div>
   </a>`;

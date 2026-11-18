@@ -35,7 +35,8 @@ function desenhar(el, ctx) {
       ? (fila.length
         ? html`<section class="destaque" aria-labelledby="fila-t">
             <p class="destaque-rotulo" id="fila-t">Aguardando sua decisão</p>
-            <p class="destaque-valor num-display">${fila.length} ${fila.length === 1 ? 'campanha' : 'campanhas'} · R$ ${brl0(valorFila)}</p>
+            <p class="destaque-valor num-display">${fila.length} ${fila.length === 1 ? 'campanha' : 'campanhas'}</p>
+            <p class="destaque-custo"><span class="valor">R$ ${brl0(valorFila)}</span> em custo total</p>
             <p class="destaque-sub">A mais antiga é de ${fila[0].cliente}, enviada por ${fila[0].solicitante_nome || '—'}.</p>
             <a class="btn btn-primario" href="#/campanhas/${fila[0].id}">Revisar a mais antiga ${icone('seta')}</a>
           </section>`
@@ -46,7 +47,8 @@ function desenhar(el, ctx) {
           </section>`)
       : html`<section class="destaque${fila.length ? '' : ' destaque-ok'}" aria-labelledby="fila-t">
           <p class="destaque-rotulo" id="fila-t">Suas campanhas em análise</p>
-          <p class="destaque-valor num-display">${fila.length ? html`${fila.length} ${fila.length === 1 ? 'campanha' : 'campanhas'} · R$ ${brl0(valorFila)}` : 'Nenhuma no momento'}</p>
+          <p class="destaque-valor num-display">${fila.length ? `${fila.length} ${fila.length === 1 ? 'campanha' : 'campanhas'}` : 'Nenhuma no momento'}</p>
+          ${fila.length ? html`<p class="destaque-custo"><span class="valor">R$ ${brl0(valorFila)}</span> em custo total</p>` : ''}
           <div class="acoes">
             <a class="btn btn-primario" href="#/nova">${icone('mais')} Nova campanha</a>
             ${fila.length ? html`<a class="btn btn-fantasma" href="#/campanhas">Ver situação</a>` : ''}
@@ -54,12 +56,17 @@ function desenhar(el, ctx) {
         </section>`}
 
     <h2 class="secao-titulo">Números de ${nomeMes}</h2>
-    <dl class="numeros">
-      <div class="numero"><dt>Aprovadas</dt><dd class="num-display">${aprovMes.length}</dd></div>
-      <div class="numero"><dt>Custo aprovado</dt><dd class="num-display">R$ ${brl0(custoMes)}</dd></div>
-      <div class="numero"><dt>Rebate comprometido</dt><dd class="num-display">R$ ${brl0(rebateMes)}</dd></div>
-      <div class="numero"><dt>Pendentes</dt><dd class="num-display">${filaTodas.length}</dd></div>
-    </dl>
+    <ul class="numeros">
+      ${[
+        ['Aprovadas', `${aprovMes.length}`, '#/campanhas?status=Aprovada&mes=atual'],
+        ['Custo aprovado', `R$ ${brl0(custoMes)}`, '#/campanhas?status=Aprovada&mes=atual'],
+        ['Rebate comprometido', `R$ ${brl0(rebateMes)}`, '#/campanhas?status=Aprovada&mes=atual&rebate=1'],
+        ['Pendentes', `${filaTodas.length}`, '#/campanhas?status=Pendente'],
+      ].map(([rotulo, valor, href]) => html`<li><a class="numero numero-link" href="${href}">
+        <span class="numero-rotulo">${rotulo}</span>
+        <strong class="num-display valor">${valor}</strong>
+        ${icone('seta')}</a></li>`)}
+    </ul>
     <p class="secao-nota">Custo = verba LYNKZ + indústria + rebate estimado se o cliente bater a meta. Aprovadas pela data da decisão.</p>
 
     <div class="secao-cabeca">

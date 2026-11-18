@@ -363,3 +363,13 @@ dialog.dialogo[open] { animation: sobe .22s ease; display: flex; flex-direction:
 .forca-req li svg.ico { width: 14px; height: 14px; color: var(--erro); }
 .forca-req li.ok { color: var(--ink); }
 .forca-req li.ok svg.ico { color: var(--green); }
+
+/* ---------- busca com limpar ---------- */
+.busca .busca-limpar { position: absolute; right: 0; top: 0; color: var(--ink-2); border-radius: var(--r-ctrl); }
+.busca input { padding-right: calc(var(--tap) + var(--e-1)) !important; }
+.busca input::-webkit-search-cancel-button { -webkit-appearance: none; appearance: none; display: none; }
+
+/* chip de filtro vindo da URL (com ×) */
+.chips-filtro { margin: var(--e-3) 0 0; }
+.chip-filtro { display: inline-flex; align-items: center; gap: var(--e-1); min-height: var(--tap); border-color: var(--red); background: var(--red-soft); color: var(--red-ink); font-weight: 600; }
+.chip-filtro svg.ico { width: 16px; height: 16px; }

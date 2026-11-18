@@ -7,6 +7,7 @@ import { calc, brl, dataBR, contem, STATUS } from '../lib/regras.js';
 import { icone } from '../ui/icones.js';
 import { selo, vazio } from '../ui/pecas.js';
 import { estadoLista } from '../ui/estado.js';
+import { campoBusca, ligarBusca } from '../ui/campos.js';
 
 const PASSO = 40;
 const filtros = { busca: '', status: 'Todas', limite: PASSO };
@@ -42,7 +43,7 @@ function desenhar(el, ctx) {
         <td data-rotulo="Empresa" class="principal"><a href="#/campanhas/${c.id}">${c.cliente}</a></td>
         <td data-rotulo="Campanha">${c.campanha}</td>
         <td data-rotulo="Laboratório">${c.laboratorio}</td>
-        <td data-rotulo="Custo" class="num">R$ ${brl(calc(c).total)}</td>
+        <td data-rotulo="Custo" class="num"><span class="valor">R$ ${brl(calc(c).total)}</span></td>
         <td data-rotulo="Status">${selo(c.status)}</td>
         <td data-rotulo="Decidida por">${c.aprovador_nome || '—'}</td>
       </tr>`)}</tbody>
@@ -59,11 +60,7 @@ export function montar(el, ctx) {
   ctx.cabecalho({ titulo: 'Histórico' });
   pintar(el, html`
     <div class="ferramentas ferramentas-linha-larga">
-      <div class="campo busca">
-        <label class="so-leitor" for="hs-busca">Buscar no histórico</label>
-        ${icone('busca')}
-        <input id="hs-busca" type="search" value="${filtros.busca}" placeholder="Empresa, campanha, código ou aprovador" autocomplete="off">
-      </div>
+      ${campoBusca({ id: 'hs-busca', rotulo: 'Buscar no histórico', valor: filtros.busca, placeholder: 'Empresa, campanha, código ou aprovador' })}
       <div class="filtros" id="hs-status" role="group" aria-label="Filtrar por decisão"></div>
     </div>
     <p class="lista-resumo" id="hs-resumo" role="status"></p>
@@ -78,6 +75,7 @@ export function montar(el, ctx) {
     ao(el, 'click', 'tr[data-id]', (e, tr) => { if (!e.target.closest('a')) ctx.navegar(`#/campanhas/${tr.dataset.id}`); }),
     ctx.campanhas.assinar(() => desenhar(el, ctx)),
     () => buscar.cancelar(),
+    ligarBusca(el),
   ];
   desenhar(el, ctx);
   return () => desligar.forEach(fn => fn());

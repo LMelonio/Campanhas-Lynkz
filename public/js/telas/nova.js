@@ -440,7 +440,7 @@ export function montar(el, ctx, params) {
     <div class="barra-envio" role="region" aria-label="Enviar campanha">
       <div class="barra-envio-total">
         <span class="barra-envio-rotulo">Custo total</span>
-        <strong class="num-display" id="be-total">R$ 0,00</strong>
+        <strong class="num-display valor" id="be-total">R$ 0,00</strong>
         <span class="barra-envio-pct" id="be-pct"></span>
       </div>
       <button type="submit" form="form-nova" class="btn btn-primario" data-enviar>Enviar</button>

@@ -10,6 +10,7 @@ import { icone } from '../ui/icones.js';
 import { cartao, vazio, seloNeutro } from '../ui/pecas.js';
 import { confirmar } from '../ui/avisos.js';
 import { estadoLista } from '../ui/estado.js';
+import { campoBusca, ligarBusca } from '../ui/campos.js';
 import { dialogoEmpresa, dialogoBalconista } from '../ui/cadastro-dialogos.js';
 import { CHAVE_EMPRESA_SUGERIDA } from './nova.js';
 
@@ -59,11 +60,7 @@ function montarLista() {
       <button type="button" class="btn btn-primario" id="gs-nova">${icone('mais')} Cadastrar empresa</button>
     </div>
     <div class="ferramentas ferramentas-linha-larga">
-      <div class="campo busca">
-        <label class="so-leitor" for="gs-busca">Buscar empresas</label>
-        ${icone('busca')}
-        <input id="gs-busca" type="search" value="${filtros.busca}" placeholder="Empresa, cidade, CNPJ ou balconista" autocomplete="off">
-      </div>
+      ${campoBusca({ id: 'gs-busca', rotulo: 'Buscar empresas', valor: filtros.busca, placeholder: 'Empresa, cidade, CNPJ ou balconista' })}
       <label class="interruptor sem-caixa" for="gs-inativas">
         <input type="checkbox" role="switch" id="gs-inativas"${filtros.inativas ? html` checked` : ''}>
         <span class="interruptor-trilho" aria-hidden="true"></span>
@@ -82,6 +79,7 @@ function montarLista() {
       if (e) { ctx.toast(`Empresa ${e.nome} cadastrada.`, { tom: 'sucesso' }); ctx.navegar(`#/gestao/empresas/${e.id}`); }
     }),
     () => buscar.cancelar(),
+    ligarBusca(el),
   );
   s.redesenhar = desenharLista;
   desenharLista();
@@ -113,7 +111,7 @@ function desenharFicha() {
     </header>
 
     <dl class="numeros numeros-3">
-      <div class="numero"><dt>Investido em aprovadas</dt><dd class="num-display">R$ ${brl(investido)}</dd></div>
+      <div class="numero"><dt>Investido em aprovadas</dt><dd class="num-display valor">R$ ${brl(investido)}</dd></div>
       <div class="numero"><dt>Campanhas</dt><dd class="num-display">${camps.length}</dd></div>
       <div class="numero"><dt>Balconistas ativos</dt><dd class="num-display">${ctx.cadastros.balconistasDa(e.id).length}</dd></div>
     </dl>

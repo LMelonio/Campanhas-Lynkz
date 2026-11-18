@@ -65,6 +65,33 @@ export function areaTexto({ id, rotulo, valor = '', dica = '', obrigatorio = fal
   </div>`;
 }
 
+// Busca com botão "limpar" (×) de 44 px, visível só com texto. Esc também limpa.
+export function campoBusca({ id, rotulo, valor = '', placeholder = '' }) {
+  return html`<div class="campo busca">
+    <label class="so-leitor" for="${id}">${rotulo}</label>
+    ${icone('busca')}
+    <input${atributos({ id, type: 'search', value: valor ?? '', placeholder, autocomplete: 'off', 'data-busca': true })}>
+    <button type="button" class="btn-icone busca-limpar" data-limpar-busca="${id}" aria-label="Limpar busca"${atributos({ hidden: !valor })}>${icone('x')}</button>
+  </div>`;
+}
+
+export function ligarBusca(raiz) {
+  const limpar = input => {
+    input.value = '';
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    input.focus();
+  };
+  const d1 = ao(raiz, 'input', 'input[data-busca]', (e, i) => {
+    const b = $(`[data-limpar-busca="${CSS.escape(i.id)}"]`, raiz);
+    if (b) b.hidden = !i.value;
+  });
+  const d2 = ao(raiz, 'click', '[data-limpar-busca]', (e, b) => limpar(document.getElementById(b.dataset.limparBusca)));
+  const d3 = ao(raiz, 'keydown', 'input[data-busca]', (e, i) => {
+    if (e.key === 'Escape' && i.value) { e.preventDefault(); e.stopPropagation(); limpar(i); }
+  });
+  return () => { d1(); d2(); d3(); };
+}
+
 // Interruptor liga/desliga (checkbox com role=switch).
 export function interruptor({ id, rotulo, marcado = false, dica = '', classe = '' }) {
   return html`<label class="interruptor ${classe}" for="${id}">

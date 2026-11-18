@@ -810,6 +810,62 @@ teste('lote B: Perfil → Alterar senha confere a atual e grava a nova', async (
 });
 
 // ============================================================
+//  v2.1 — LOTE C: Início e listas
+// ============================================================
+teste('lote C: valor do card da fila numa linha só no celular', async ({ page }) => {
+  await abrir(page);
+  const v = page.locator('.destaque .valor');
+  afirma((await v.innerText()).startsWith('R$'), 'valor separado do número de campanhas');
+  igual(await v.evaluate(e => e.getClientRects().length), 1, '"R$ …" não quebra de linha');
+  afirma((await page.locator('.destaque-valor').innerText()).trim().endsWith('campanhas'), 'linha de cima só com a quantidade');
+}, { largura: 390, altura: 844 });
+
+teste('lote C: indicador do Início abre a lista filtrada com chip; × limpa e mostra todas', async ({ page }) => {
+  await abrir(page);
+  await page.locator('.numero-link', { hasText: 'Pendentes' }).click();
+  await page.waitForFunction(() => location.hash === '#/campanhas?status=Pendente');
+  const chip = page.locator('#cp-chips [data-tirar="status"]');
+  igual((await chip.innerText()).trim(), 'Pendentes', 'chip do filtro da URL');
+  igual(await page.locator('#cp-itens .cartao').count(), 3, 'lista só com as pendentes');
+  await chip.click();
+  await page.waitForFunction(() => location.hash === '#/campanhas');
+  afirma(await page.locator('#cp-chips').isHidden(), 'chip some');
+  igual(await page.getAttribute('#cp-status [data-status="Todas"]', 'aria-pressed'), 'true', 'volta para Todas');
+  igual(await page.locator('#cp-itens .cartao').count(), 6, 'mostra todas');
+  await page.click('#menu a[href="#/inicio"]');
+  await page.locator('.numero-link', { hasText: 'Rebate comprometido' }).click();
+  await page.waitForFunction(() => location.hash.includes('rebate=1'));
+  afirma((await page.locator('#cp-chips').innerText()).includes('Aprovadas em novembro'), 'chip com o mês');
+  afirma((await page.locator('#cp-chips').innerText()).includes('Com rebate'), 'chip do rebate');
+});
+
+teste('lote C: × da busca e Esc limpam e devolvem a lista', async ({ page }) => {
+  await abrir(page, { rota: '#/campanhas' });
+  await page.click('#cp-status [data-status="Todas"]');
+  const x = page.locator('[data-limpar-busca="cp-busca"]');
+  afirma(await x.isHidden(), '× escondido sem texto');
+  await page.fill('#cp-busca', 'biogenesis'); await page.waitForTimeout(400);
+  igual(await page.locator('#cp-itens .cartao').count(), 1, 'busca filtra');
+  afirma(await x.isVisible(), '× aparece com texto');
+  const caixa = await x.boundingBox();
+  afirma(caixa.width >= 44 && caixa.height >= 44, '× com 44 px');
+  await x.click(); await page.waitForTimeout(400);
+  igual(await page.inputValue('#cp-busca'), '', '× limpa');
+  igual(await page.locator('#cp-itens .cartao').count(), 6, 'lista volta');
+  igual(await page.evaluate(() => document.activeElement.id), 'cp-busca', 'foco volta para a busca');
+  await page.fill('#cp-busca', 'zzzz'); await page.waitForTimeout(400);
+  await page.keyboard.press('Escape'); await page.waitForTimeout(400);
+  igual(await page.inputValue('#cp-busca'), '', 'Esc limpa');
+  igual(await page.locator('#cp-itens .cartao').count(), 6, 'lista volta depois do Esc');
+  await page.click('#menu a[href="#/historico"]');
+  await page.fill('#hs-busca', 'xyz'); await page.locator('[data-limpar-busca="hs-busca"]').click();
+  igual(await page.inputValue('#hs-busca'), '', '× também no Histórico');
+  await page.click('#menu a[href="#/gestao"]');
+  await page.fill('#gs-busca', 'xyz'); await page.locator('[data-limpar-busca="gs-busca"]').click();
+  igual(await page.inputValue('#gs-busca'), '', '× também na Gestão');
+});
+
+// ============================================================
 //  10. TODAS AS TELAS × TAMANHOS: sem rolagem lateral, acessibilidade, capturas
 // ============================================================
 const TELAS = ['#/inicio', '#/campanhas', '#/campanhas/2', '#/nova', '#/historico', '#/gestao', '#/gestao/empresas/2', '#/perfil'];

@@ -42,11 +42,15 @@ const ROTAS = [
   [/^\/perfil$/,                 'perfil',    () => ({})],
 ];
 
+// "#/campanhas?status=Pendente" → caminho "/campanhas", query { status: 'Pendente' }.
+// O "caminho" devolvido inclui a query: mudar só a query também atualiza a tela.
 function resolver(hash) {
-  const caminho = (hash || '').replace(/^#/, '');
+  const bruto = (hash || '').replace(/^#/, '');
+  const [caminho, busca = ''] = bruto.split('?');
+  const query = Object.fromEntries(new URLSearchParams(busca));
   for (const [re, nome, params] of ROTAS) {
     const m = caminho.match(re);
-    if (m) return { nome, params: params(m), caminho };
+    if (m) return { nome, params: { ...params(m), query }, caminho: bruto };
   }
   return null;
 }

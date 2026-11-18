@@ -203,3 +203,16 @@ a.det-empresa:hover { text-decoration-color: currentColor; }
 .manutencao-detalhes summary { cursor: pointer; min-height: var(--tap); display: flex; align-items: center; font-weight: 600; }
 .manutencao-detalhes ul { padding-left: var(--e-5); list-style: disc; display: grid; gap: var(--e-1); margin-top: var(--e-2); }
 .manutencao-detalhes code { font-size: var(--t-12); background: var(--card-2); padding: 1px 4px; border-radius: 4px; overflow-wrap: anywhere; }
+
+/* ---------- Início: card da fila e indicadores clicáveis ---------- */
+.destaque-custo { font-size: var(--t-16); color: var(--ink-2); font-weight: 550; }
+.numeros { list-style: none; padding: 0; }
+.numero-link {
+  position: relative; display: grid; gap: var(--e-1); height: 100%; text-decoration: none; color: inherit;
+  padding-right: calc(var(--e-4) + 20px);
+}
+.numero-link:hover { border-color: var(--line-2); }
+.numero-link > svg.ico { position: absolute; right: var(--e-3); top: 50%; transform: translateY(-50%); color: var(--ink-3); width: 18px; height: 18px; }
+.numero-rotulo { font-size: var(--t-12); color: var(--ink-2); font-weight: 600; }
+.numero-link strong { font-size: var(--t-28); font-weight: 700; line-height: 1.2; }
+@media (max-width: 420px) { .numero-link strong { font-size: var(--t-20); } }
