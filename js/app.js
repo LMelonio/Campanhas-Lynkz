@@ -1,0 +1,311 @@
+// ============================================================
+//  APP — casca, rotas por hash e contexto das telas.
+//
+//  Rotas:  #/inicio  #/campanhas  #/campanhas/:id  #/nova  #/nova/de/:id
+//          #/historico  #/gestao  #/gestao/empresas/:id  #/perfil
+//
+//  Cada tela exporta montar(el, ctx, params) → desmontar e, se fizer
+//  sentido, atualizar(params) (troca de parâmetro sem remontar a tela).
+// ============================================================
+import { iniciarAcesso, sair as sairDaConta } from './acesso.js';
+import { campanhas } from './dados/campanhas.js';
+import { cadastros } from './dados/cadastros.js';
+import { html, pintar, $, $$ } from './lib/dom.js';
+import { PAPEL, STATUS, brl, calc } from './lib/regras.js';
+import { toast } from './ui/avisos.js';
+import { icone } from './ui/icones.js';
+import { carregando } from './ui/pecas.js';
+import * as telaInicio from './telas/inicio.js';
+import * as telaCampanhas from './telas/campanhas.js';
+import * as telaNova from './telas/nova.js';
+import * as telaHistorico from './telas/historico.js';
+import * as telaGestao from './telas/gestao.js';
+import * as telaPerfil from './telas/perfil.js';
+
+const C = window.CONFIG;
+
+const TELAS = {
+  inicio: telaInicio, campanhas: telaCampanhas, nova: telaNova,
+  historico: telaHistorico, gestao: telaGestao, perfil: telaPerfil,
+};
+
+const ROTAS = [
+  [/^\/inicio$/,                 'inicio',    () => ({})],
+  [/^\/campanhas$/,              'campanhas', () => ({})],
+  [/^\/campanhas\/(\d+)$/,       'campanhas', m => ({ id: m[1] })],
+  [/^\/nova$/,                   'nova',      () => ({})],
+  [/^\/nova\/de\/(\d+)$/,        'nova',      m => ({ de: m[1] })],
+  [/^\/historico$/,              'historico', () => ({})],
+  [/^\/gestao$/,                 'gestao',    () => ({})],
+  [/^\/gestao\/empresas\/(\d+)$/, 'gestao',   m => ({ empresa: m[1] })],
+  [/^\/perfil$/,                 'perfil',    () => ({})],
+];
+
+function resolver(hash) {
+  const caminho = (hash || '').replace(/^#/, '');
+  for (const [re, nome, params] of ROTAS) {
+    const m = caminho.match(re);
+    if (m) return { nome, params: params(m), caminho };
+  }
+  return null;
+}
+
+const NAV = [
+  { nome: 'inicio',    rotulo: 'Início',    href: '#/inicio',    ico: 'inicio' },
+  { nome: 'campanhas', rotulo: 'Campanhas', href: '#/campanhas', ico: 'campanhas', contador: true },
+  { nome: 'historico', rotulo: 'Histórico', href: '#/historico', ico: 'historico' },
+  { nome: 'gestao',    rotulo: 'Gestão',    href: '#/gestao',    ico: 'gestao' },
+  { nome: 'perfil',    rotulo: 'Perfil',    href: '#/perfil',    ico: 'perfil' },
+];
+
+let atual = null;          // { nome, params, caminho, desmontar }
+let indiceHistorico = 0;
+
+// ---------- contexto entregue às telas ----------
+const ctx = {
+  perfil: null,
+  ehAprovador: false,
+  campanhas,
+  cadastros,
+  toast,
+
+  // Navega para "#/rota". substituir: não cria entrada no histórico.
+  navegar(rota, { substituir = false } = {}) {
+    if (!rota.startsWith('#')) rota = '#' + rota;
+    if (rota === location.hash && !substituir) { aplicarRota(); return; }
+    if (substituir) history.replaceState({ i: indiceHistorico }, '', rota);
+    else history.pushState({ i: ++indiceHistorico }, '', rota);
+    aplicarRota();
+  },
+
+  // Cabeçalho da tela: título, rota de volta (opcional) e ações à direita.
+  cabecalho({ titulo, voltar = null, acoes = '' }) {
+    $('#titulo').textContent = titulo;
+    document.title = `${titulo} · ${C.SUBMARCA || 'Campanhas'}`;
+    const v = $('#voltar');
+    v.hidden = !voltar;
+    if (voltar) v.setAttribute('href', voltar);
+    $('#abrir-menu').classList.toggle('com-voltar', !!voltar);
+    pintar($('#topo-acoes'), acoes);
+  },
+
+  // Esconde a barra inferior no celular (telas com barra de ação própria).
+  barraDeAcao(ligada) { document.body.classList.toggle('sem-barra', !!ligada); },
+
+  remontar() { montarRota(resolver(location.hash) || resolver('#/inicio')); },
+
+  sair,
+};
+
+async function sair() {
+  telaNova.limparRascunho();
+  campanhas.parar();
+  cadastros.parar();
+  await sairDaConta();
+}
+
+// ---------- rotas ----------
+function aplicarRota() {
+  const r = resolver(location.hash);
+  if (!r) { ctx.navegar('#/inicio', { substituir: true }); return; }
+  fecharMenu();
+  if (atual && atual.nome === r.nome && TELAS[r.nome].atualizar && atual.caminho !== r.caminho) {
+    atual.caminho = r.caminho;
+    atual.params = r.params;
+    TELAS[r.nome].atualizar(r.params);
+    marcarNav(r.nome);
+    return;
+  }
+  if (atual && atual.caminho === r.caminho) return;
+  montarRota(r);
+}
+
+function montarRota(r) {
+  if (atual?.desmontar) {
+    try { atual.desmontar(); } catch (e) { console.error(e); }
+  }
+  const el = $('#conteudo');
+  ctx.barraDeAcao(false);
+  ctx.cabecalho({ titulo: '' });
+  pintar(el, '');
+  el.scrollTop = 0;
+  window.scrollTo(0, 0);
+  atual = { ...r, desmontar: null };
+  try {
+    atual.desmontar = TELAS[r.nome].montar(el, ctx, r.params) || null;
+  } catch (e) {
+    console.error(e);
+    pintar(el, html`<p class="nota nota-alerta">${icone('alerta')}<span>Esta tela não abriu: ${e.message}</span></p>`);
+  }
+  marcarNav(r.nome);
+  // Leitor de tela anuncia a troca de tela pelo título.
+  if (document.activeElement === document.body || !el.contains(document.activeElement)) el.focus({ preventScroll: true });
+}
+
+function marcarNav(nome) {
+  $$('[data-nav]').forEach(a => {
+    if (a.dataset.nav === nome) a.setAttribute('aria-current', 'page');
+    else a.removeAttribute('aria-current');
+  });
+}
+
+// ---------- casca ----------
+function montarCasca() {
+  const p = ctx.perfil;
+  pintar($('#abrir-menu'), icone('menu'));
+  pintar($('#voltar'), icone('voltar'));
+
+  pintar($('#menu'), html`
+    <div class="menu-marca"><img src="assets/logo.png" alt="${C.MARCA || 'LYNKZ'}" width="96" height="22"><span>${C.SUBMARCA || 'Campanhas'}</span></div>
+    <a class="btn btn-primario btn-largo menu-nova" href="#/nova" data-nav="nova">${icone('mais')} Nova campanha</a>
+    <ul class="menu-lista">
+      ${NAV.map(n => html`<li><a class="menu-item" href="${n.href}" data-nav="${n.nome}">${icone(n.ico)}${n.rotulo}${n.contador ? html`<span class="contador" data-contador hidden></span>` : ''}</a></li>`)}
+    </ul>
+    <div class="menu-rodape">
+      <p class="menu-usuario">${p.nome}<small>${p.papel === PAPEL.APROVADOR ? 'Aprovador' : 'Coordenador'} · ${p.email}</small></p>
+      <button class="btn btn-fantasma btn-pequeno" type="button" id="menu-sair">${icone('sair')} Sair</button>
+      <p class="versao">Versão ${C.VERSAO}</p>
+    </div>`);
+
+  pintar($('#barra-inferior'), html`
+    <a class="bi-item" href="#/inicio" data-nav="inicio">${icone('inicio')}Início</a>
+    <a class="bi-item" href="#/campanhas" data-nav="campanhas">${icone('campanhas')}Campanhas<span class="contador" data-contador hidden></span></a>
+    <a class="bi-item bi-nova" href="#/nova" data-nav="nova" aria-label="Nova campanha"><span>${icone('mais')}</span></a>
+    <a class="bi-item" href="#/gestao" data-nav="gestao">${icone('gestao')}Gestão</a>
+    <button class="bi-item" type="button" id="bi-menu" aria-controls="menu" aria-expanded="false">${icone('menu')}Menu</button>`);
+
+  pintar($('#offline'), html`${icone('offline')}Sem conexão — mostrando o que já estava carregado`);
+
+  // Links "#/…" passam pelo roteador (pushState com índice, para o Voltar).
+  document.addEventListener('click', e => {
+    const a = e.target instanceof Element && e.target.closest('a[href^="#/"]');
+    if (!a || e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey) return;
+    e.preventDefault();
+    ctx.navegar(a.getAttribute('href'));
+  });
+  // Voltar do cabeçalho: usa o histórico do app quando existe.
+  $('#voltar').addEventListener('click', e => {
+    e.preventDefault();
+    if ((history.state?.i ?? 0) > 0) history.back();
+    else ctx.navegar($('#voltar').getAttribute('href'), { substituir: true });
+  }, true);
+  $('#pular').addEventListener('click', e => { e.preventDefault(); $('#conteudo').focus(); });
+
+  $('#abrir-menu').addEventListener('click', abrirMenu);
+  $('#bi-menu').addEventListener('click', abrirMenu);
+  $('#menu-fundo').addEventListener('click', fecharMenu);
+  $('#menu-sair').addEventListener('click', sair);
+  document.addEventListener('keydown', e => { if (e.key === 'Escape' && document.body.classList.contains('menu-aberto')) fecharMenu(); });
+
+  window.addEventListener('popstate', () => { indiceHistorico = history.state?.i ?? 0; aplicarRota(); });
+  window.addEventListener('hashchange', () => {
+    // Endereço digitado à mão: registra o índice e segue.
+    if (history.state?.i == null) history.replaceState({ i: ++indiceHistorico }, '', location.hash);
+    aplicarRota();
+  });
+
+  const conexao = () => { $('#offline').hidden = navigator.onLine; };
+  window.addEventListener('online', conexao);
+  window.addEventListener('offline', conexao);
+  conexao();
+}
+
+// ---------- menu lateral (celular) ----------
+let quemAbriu = null;
+const ehDesktop = () => matchMedia('(min-width: 900px)').matches;
+
+function abrirMenu(e) {
+  if (ehDesktop()) return;
+  quemAbriu = e?.currentTarget || document.activeElement;
+  document.body.classList.add('menu-aberto');
+  $('#menu-fundo').hidden = false;
+  ['#conteudo', '#topo', '#barra-inferior'].forEach(s => { $(s).inert = true; });
+  $$('[aria-controls="menu"]').forEach(b => b.setAttribute('aria-expanded', 'true'));
+  $('#menu a, #menu button')?.focus();
+}
+
+function fecharMenu() {
+  if (!document.body.classList.contains('menu-aberto')) return;
+  document.body.classList.remove('menu-aberto');
+  $('#menu-fundo').hidden = true;
+  ['#conteudo', '#topo', '#barra-inferior'].forEach(s => { $(s).inert = false; });
+  $$('[aria-controls="menu"]').forEach(b => b.setAttribute('aria-expanded', 'false'));
+  if (quemAbriu?.isConnected) quemAbriu.focus();
+  quemAbriu = null;
+}
+// O menu fica fora do "inert" no desktop; ao virar desktop com ele aberto, fecha.
+matchMedia('(min-width: 900px)').addEventListener('change', fecharMenu);
+
+// ---------- contador de pendentes ----------
+// Aprovador: todas as pendentes. Coordenador: só as dele.
+function contarPendentes() {
+  const pend = campanhas.pendentes();
+  const n = ctx.ehAprovador ? pend.length : pend.filter(c => c.solicitante_id === ctx.perfil.id).length;
+  $$('[data-contador]').forEach(s => {
+    s.hidden = !n;
+    s.textContent = n > 99 ? '99+' : String(n);
+    s.setAttribute('aria-label', `${n} pendente${n === 1 ? '' : 's'}`);
+  });
+}
+
+function avisarNovidades(ev) {
+  if (ev.tipo !== 'linha' || ev.origem !== 'remota' || !ev.campanha) return;
+  const c = ev.campanha;
+  if (ev.nova && ctx.ehAprovador && c.status === STATUS.PENDENTE && c.solicitante_id !== ctx.perfil.id) {
+    toast(`Nova campanha aguardando você: ${c.cliente} · R$ ${brl(calc(c).total)}`, {
+      acao: { rotulo: 'Ver', aoClicar: () => ctx.navegar(`#/campanhas/${c.id}`) }, duracao: 8000,
+    });
+    if (navigator.vibrate) navigator.vibrate(140);
+  } else if (!ev.nova && c.solicitante_id === ctx.perfil.id && c.status !== STATUS.PENDENTE && !ctx.ehAprovador) {
+    toast(`Sua campanha ${c.campanha} foi ${c.status.toLowerCase()}.`, {
+      tom: c.status === STATUS.APROVADA ? 'sucesso' : 'erro',
+      acao: { rotulo: 'Ver', aoClicar: () => ctx.navegar(`#/campanhas/${c.id}`) }, duracao: 8000,
+    });
+  }
+}
+
+// ---------- entrada ----------
+async function entrar(perfil) {
+  ctx.perfil = perfil;
+  ctx.ehAprovador = perfil.papel === PAPEL.APROVADOR;
+  montarCasca();
+  $('#splash').hidden = true;
+  $('#app').hidden = false;
+  pintar($('#conteudo'), carregando(4));
+
+  try {
+    await campanhas.carregar();
+  } catch (e) {
+    toast(e.message, { tom: 'erro', duracao: 0 });
+  }
+  try {
+    await cadastros.carregar();
+  } catch (e) {
+    // Banco ainda sem a migração 04: o app funciona, sem o cadastro.
+    console.warn('Cadastros indisponíveis:', e);
+    toast('O cadastro de empresas não carregou: ' + e.message, { tom: 'erro', duracao: 8000 });
+  }
+  campanhas.aoVivo();
+  cadastros.aoVivo();
+  campanhas.assinar(contarPendentes);
+  campanhas.assinar(avisarNovidades);
+  contarPendentes();
+
+  if (!resolver(location.hash)) history.replaceState({ i: 0 }, '', '#/inicio');
+  else history.replaceState({ i: 0 }, '', location.hash);
+  aplicarRota();
+}
+
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('sw.js').catch(() => {});
+}
+
+iniciarAcesso({ aoEntrar: entrar }).catch(e => {
+  console.error(e);
+  $('#splash').hidden = true;
+  const a = $('#acesso');
+  a.hidden = false;
+  pintar(a, html`<main class="acesso-caixa"><h1>Não foi possível abrir o app</h1><p class="acesso-sub">${e.message}</p>
+    <button class="btn btn-primario btn-largo" type="button" id="recarregar">Tentar de novo</button></main>`);
+  $('#recarregar').addEventListener('click', () => location.reload());
+});

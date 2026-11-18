@@ -1,0 +1,121 @@
+/* ============================================================
+   TOKENS — o único lugar com cor literal no app.
+   Todo texto tem contraste de pelo menos 4,5:1 com o fundo em que aparece
+   (inclusive no modo escuro). Elementos gráficos (faixas da régua,
+   composição do custo) têm pelo menos 3:1.
+   ============================================================ */
+:root {
+  color-scheme: light dark;
+
+  /* marca — vermelho é cor de AÇÃO (botão primário, item ativo) */
+  --red: #E11F1C;
+  --red-press: #B81816;
+  --red-soft: #FDEAE9;
+  --red-ink: #B0120F;          /* texto vermelho sobre fundo claro (reprovada) */
+  --on-red: #FFFFFF;
+
+  /* superfícies */
+  --bg: #EEF0F2;
+  --card: #FFFFFF;
+  --card-2: #F6F7F8;
+  --line: #DCE0E4;
+  --line-2: #B9C0C8;           /* borda de campo: 3:1 com o cartão */
+
+  /* texto */
+  --ink: #1B1E22;
+  --ink-2: #4D555F;
+  --ink-3: #5F6670;            /* o antigo #9CA3AF tinha 2,5:1 */
+
+  /* estados */
+  --green: #0B7A3E;
+  --green-soft: #E2F3E9;
+  --amber: #8F5200;
+  --amber-soft: #FCEFD9;
+  --erro: #A34700;             /* erro de validação: não é o vermelho de ação */
+  --erro-soft: #FDEBD9;
+  --foco: #1F5FAD;
+
+  /* faixas da régua (gráfico) */
+  --faixa-verde: #2E9B5E;
+  --faixa-ambar: #D38B12;
+  --faixa-vermelha: #D93A35;
+  --marcador: #1B1E22;
+
+  /* composição do custo */
+  --cost-lynkz: #E11F1C;
+  --cost-industria: #2F64A8;
+  --cost-rebate: #B86E00;
+
+  /* camadas */
+  --veu: rgba(17, 19, 22, .48);
+  --sombra: 0 1px 2px rgba(16, 24, 40, .06), 0 1px 3px rgba(16, 24, 40, .05);
+  --sombra-alta: 0 12px 32px rgba(16, 24, 40, .18);
+  --sombra-acao: 0 6px 18px rgba(225, 31, 28, .30);
+  --esqueleto-1: #E3E6E9;
+  --esqueleto-2: #F1F3F4;
+  --toast-bg: #1B1E22;
+  --toast-ink: #FFFFFF;
+  --toast-acao: #FF9C99;
+
+  /* tipo — escala 12/14/16/20/28/40 */
+  --font: 'Instrument Sans', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --t-12: .75rem;
+  --t-14: .875rem;
+  --t-16: 1rem;
+  --t-20: 1.25rem;
+  --t-28: 1.75rem;
+  --t-40: 2.5rem;
+
+  /* espaço — base 4 */
+  --e-1: 4px;  --e-2: 8px;  --e-3: 12px; --e-4: 16px;
+  --e-5: 20px; --e-6: 24px; --e-8: 32px; --e-10: 40px; --e-12: 48px;
+
+  /* raios: painel > controle > pílula */
+  --r-panel: 14px;
+  --r-ctrl: 10px;
+  --r-pill: 999px;
+
+  /* medidas */
+  --tap: 44px;
+  --topo-h: 56px;
+  --barra-h: 64px;
+  --menu-w: 248px;
+  --conteudo-max: 1120px;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --red-soft: #3B1715;
+    --red-ink: #FF8F8A;
+    --bg: #111315;
+    --card: #1A1D21;
+    --card-2: #22262B;
+    --line: #2E343A;
+    --line-2: #59626C;
+    --ink: #ECEEF0;
+    --ink-2: #BAC1C9;
+    --ink-3: #A3ABB4;
+    --green: #5CCF8F;
+    --green-soft: #133022;
+    --amber: #F0B357;
+    --amber-soft: #352610;
+    --erro: #FFA463;
+    --erro-soft: #3A2412;
+    --foco: #7FB0F0;
+    --faixa-verde: #3FB872;
+    --faixa-ambar: #E3A23A;
+    --faixa-vermelha: #EE5A52;
+    --marcador: #ECEEF0;
+    --cost-industria: #5B8FD6;
+    --cost-rebate: #E09A2E;
+    --veu: rgba(0, 0, 0, .62);
+    --sombra: 0 1px 2px rgba(0, 0, 0, .4);
+    --sombra-alta: 0 12px 32px rgba(0, 0, 0, .55);
+    --sombra-acao: 0 6px 18px rgba(0, 0, 0, .45);
+    --esqueleto-1: #23272C;
+    --esqueleto-2: #2C3137;
+    --toast-bg: #ECEEF0;
+    --toast-ink: #111315;
+    --toast-acao: #B0120F;
+  }
+}

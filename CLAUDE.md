@@ -1,0 +1,116 @@
+# Projeto: Aprovação de Campanhas Promocionais — LYNKZ (v2)
+
+App de celular e computador (PWA) onde coordenadores de campo solicitam campanhas promocionais
+para empresas clientes e a gerência aprova ou reprova. Empresas e balconistas ficam cadastrados.
+Tudo fica registrado e exporta para Excel.
+
+## Stack
+
+HTML, CSS e JavaScript puros, em módulos ESM. **Sem framework, sem build, sem npm.**
+Banco e autenticação: Supabase (`js/lib/supabase.js`, versão fixa via esm.sh).
+Publicação: arrastar a pasta no Netlify Drop.
+
+Essa simplicidade é proposital: quem mantém o projeto não é desenvolvedor.
+**Não introduza React, Vue, Tailwind, bundler ou etapa de build sem que seja pedido.**
+
+## Arquivos
+
+```
+index.html          só a casca: #splash, #acesso, #app (topo, menu, conteúdo, barra inferior)
+config.js           chaves do Supabase, marca, VERSAO e listas dos menus. O usuário edita este.
+manifest.json  sw.js  _headers (CSP)  _redirects (bloqueia sql/, tests/, dev/, .md)
+assets/             logo.png, logo-branca.png, icon-*.png
+css/  tokens.css (ÚNICO lugar com cor)  base.css (casca)  componentes.css  telas.css
+js/   app.js (rotas e ctx)  acesso.js (login e senha)  exportar.js (Excel)
+      lib/    regras.js (funções puras)  dom.js (html``)  supabase.js  url-auth.js
+      dados/  campanhas.js  cadastros.js  erros.js
+      ui/     icones.js  avisos.js  campos.js  combo.js  pecas.js  cadastro-dialogos.js
+      telas/  inicio.js  campanhas.js  detalhe.js  nova.js  historico.js  gestao.js  perfil.js
+sql/  schema.sql (instalação nova)  migracoes/ (00–06, com rollback e validação)
+tests/regras.test.mjs        node --test tests/regras.test.mjs
+dev/supabase-simulado.js     roda o app sem banco (ver topo do arquivo)
+```
+
+## Rotas
+
+`#/inicio` · `#/campanhas` · `#/campanhas/:id` · `#/nova` · `#/nova/de/:id` (reenviar com ajustes) ·
+`#/historico` · `#/gestao` · `#/gestao/empresas/:id` · `#/perfil`
+
+Links `<a href="#/…">` passam pelo roteador (`pushState` com índice); o "Voltar" do topo usa o
+histórico do app quando existe.
+
+## Interfaces dos módulos
+
+- **Tela:** `export function montar(el, ctx, params) → desmontar` e, opcional, `export function atualizar(params)`
+  (troca de parâmetro sem remontar — usado em campanhas e gestão).
+- **ctx:** `perfil`, `ehAprovador`, `campanhas`, `cadastros`, `toast`, `navegar(rota, {substituir})`,
+  `cabecalho({titulo, voltar, acoes})`, `barraDeAcao(bool)` (esconde a barra inferior no celular), `remontar()`, `sair()`.
+- **campanhas:** `carregado`, `carregar()`, `todas()`, `porId()`, `pendentes()` (mais antiga primeiro),
+  `assinar(fn) → desligar`, `aoVivo()`, `criar(campos)`, `decidir(id, status, motivo)`, `parar()`.
+  Lê sempre a view `campanhas_app`. No tempo real relê **só a linha** do evento.
+- **cadastros:** `carregado`, `carregar()`, `empresas({inativas})`, `empresa(id)`, `balconista(id)`,
+  `balconistasDa(id, {inativos})`, `salvarEmpresa(dados, id?)`, `salvarBalconista(dados, id?)`, `assinar(fn)`, `aoVivo()`.
+- **erros:** `exigir({data, error})` lança `ErroApp` com mensagem em português (e `campo`, quando dá para saber).
+- **avisos:** `toast(msg, {acao, duracao, tom, aoFechar})`, `abrirDialogo({titulo, descricao, corpo, acoes, aoAbrir, antesDeFechar})`, `confirmar()`.
+- **campos:** `campo`, `selecao`, `areaTexto`, `interruptor`, `ligarMascaras(raiz)`, `aplicarErros(raiz, {id: msg})`.
+
+## Regras de código
+
+- Português do Brasil em nomes, comentários e textos.
+- **HTML só com `html\`\``** (`js/lib/dom.js`), que escapa toda interpolação. Proibido montar HTML
+  concatenando string. `bruto()` só para SVG fixo do próprio código, nunca dado do banco.
+- Datas: `dataBR()`/`dataCivil()` no fuso `America/Fortaleza` (`FUSO` em regras.js). Nunca `toISOString().slice(0,10)`.
+- Valores digitados: `lerValor()` (aceita `1.234,56`, `2.000`, `1234.56`). Exibição: `brl()`, `brl0()`, `pct()`.
+- Formulário nunca é redesenhado por evento externo (tempo real). Listas redesenham só a lista.
+- Depois de mexer em `js/lib/regras.js`, rode `node --test tests/regras.test.mjs`.
+- Para ver no navegador: `python3 -m http.server` (ESM não funciona por `file://`). Sem banco: veja `dev/supabase-simulado.js`.
+- Subiu versão? Troque `VERSAO` no `config.js` **e** no `sw.js` (as duas iguais).
+
+## Design
+
+- Vermelho oficial **`#E11F1C`** = cor de **ação** (botão primário, item ativo). Alerta usa `--red-ink` em texto.
+- **Cores só em `css/tokens.css`** (claro e escuro). Conferir: `grep -n "#[0-9A-Fa-f]\{3,6\}\|rgb(" css/*.css`
+  só pode achar `tokens.css`.
+- Todo texto com contraste ≥ 4,5:1. Erro de campo: borda 2 px + ícone + texto (nunca só cor).
+- Fonte Instrument Sans; números grandes em `.num-display`. Escala 12/14/16/20/28/40, espaço base 4,
+  raios `--r-panel` > `--r-ctrl` > `--r-pill`, alvo de toque `--tap` (44 px).
+- < 900 px: topo fixo + barra inferior (Início, Campanhas, +, Gestão, Menu) + menu deslizante.
+  ≥ 900 px: menu lateral fixo. ≥ 1100 px: régua ao lado do formulário Nova. ≥ 1200 px: lista e detalhe lado a lado.
+- Toast no celular embaixo; no desktop no alto à direita (não cobre os botões de decisão).
+
+## Regras de negócio
+
+**Custo total = investimento LYNKZ + indústria + rebate estimado** (`meta × %`, limitado pelo teto).
+A régua usa o **total**, nunca só a verba. `calc()` em `js/lib/regras.js` é a fonte única dessa conta.
+Faixas da régua: `FAIXA_VERDE` e `FAIXA_AMARELA` no `config.js`.
+
+## Segurança — não enfraquecer
+
+As regras vivem no banco (RLS, triggers, permissões por coluna). A tela só esconde botões.
+
+- Só `aprovador` altera `status`; toda campanha nasce `Pendente`; decidida não muda; reprova exige motivo.
+- `aprovador_nome`, `data_decisao` (fuso America/Fortaleza) e `solicitante_nome` são carimbados por trigger.
+- Usuário com `ativo = false` não lê nem grava nada (`eh_ativo()` nas policies). Ninguém edita `perfis` pela API.
+- Nada é apagado: sem policy nem permissão de delete em campanhas, empresas e balconistas.
+- Dados Swile (`swile_*`): leitura negada na tabela; a view `campanhas_app` entrega só ao aprovador e ao solicitante.
+- `empresas` / `balconistas`: todo ativo lê, cadastra e edita, só nas colunas editáveis (nunca `id`,
+  `criado_*`, `atualizado_*`). Balconista não troca de empresa. CPF único por empresa.
+- Trigger `ao_vincular_campanha`: balconista tem de ser da empresa; `cliente` recebe o nome da empresa.
+- Coluna nova em `campanhas`? Rode `select public.reaplicar_permissoes_campanhas();` (refaz view e permissões).
+- Mudanças de banco em produção vão em `sql/migracoes/` (com rollback e validação) e são espelhadas em `sql/schema.sql`.
+- Funcionalidade nova que precise de dado: escreva a policy correspondente — não relaxe as existentes.
+
+## Decisões de 18/11/2026
+
+| Tema | Decisão |
+|---|---|
+| Quem cadastra empresas e balconistas | Todo usuário ativo cadastra e edita. Nada é apagado, só desativado. |
+| Privacidade dos balconistas | CPF, nascimento, e-mail e telefone visíveis a todo usuário ativo. |
+| Dados Swile na campanha (`swile_*`) | Continuam visíveis só ao aprovador e ao solicitante. |
+| Fuso das datas | `America/Fortaleza` (Maranhão, UTC-3). |
+
+## Pendências conhecidas
+
+- Notificação push não existe; o app avisa com a tela aberta. Caminho simples: Edge Function enviando e-mail.
+- Rebate estimado assume que o cliente bate exatamente a meta (sem rebate escalonado).
+- Campanhas da v1 não têm `empresa_id`; aparecem pelo nome em `cliente` e não entram na ficha da empresa.

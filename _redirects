@@ -1,0 +1,12 @@
+# Arquivos internos que vão junto na pasta mas não podem ser servidos.
+# O Netlify não aceita curinga no meio do nome (/*.md), por isso os .md
+# estão listados um a um. Arquivo .md novo na raiz? Acrescente aqui.
+/sql/*                     /404.html  404!
+/tests/*                   /404.html  404!
+/dev/*                     /404.html  404!
+/CLAUDE.md                 /404.html  404!
+/COMECE-AQUI.md            /404.html  404!
+/MUDANCAS-V2.md            /404.html  404!
+/PRIVACIDADE.md            /404.html  404!
+/APLICAR-MELHORIAS-V2.md   /404.html  404!
+/.gitignore                /404.html  404!

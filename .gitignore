@@ -1,0 +1,4 @@
+# Arquivos internos - não publicar no repositório público
+.git.zip
+sql/migracoes/ROTEIRO-PRODUCAO.md
+sql/migracoes/D10-PARA-EXECUTAR.sql

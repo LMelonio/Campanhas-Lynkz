@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#FFFFFF" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#1A1D21" media="(prefers-color-scheme: dark)">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Campanhas">
+<title>Campanhas · LYNKZ</title>
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="assets/icon-192.png">
+<link rel="apple-touch-icon" href="assets/icon-192.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="preconnect" href="https://esm.sh" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wdth,wght@75..100,400..700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/tokens.css">
+<link rel="stylesheet" href="css/base.css">
+<link rel="stylesheet" href="css/componentes.css">
+<link rel="stylesheet" href="css/telas.css">
+</head>
+<body>
+
+<a class="pular" href="#conteudo" id="pular">Pular para o conteúdo</a>
+
+<div id="splash" class="splash" role="status">
+  <img src="assets/logo.png" alt="LYNKZ" width="120" height="28">
+  <span class="giro" aria-hidden="true"></span>
+  <span>Abrindo…</span>
+</div>
+
+<div id="acesso" class="acesso" hidden></div>
+
+<div id="app" hidden>
+  <header class="topo" id="topo">
+    <button class="btn-icone topo-menu" id="abrir-menu" type="button" aria-label="Abrir menu" aria-controls="menu" aria-expanded="false"></button>
+    <a class="btn-icone topo-voltar" id="voltar" href="#/inicio" aria-label="Voltar" hidden></a>
+    <h1 class="topo-titulo" id="titulo">Início</h1>
+    <div class="topo-acoes" id="topo-acoes"></div>
+  </header>
+
+  <nav class="menu" id="menu" aria-label="Menu principal"></nav>
+  <div class="menu-fundo" id="menu-fundo" hidden></div>
+
+  <main class="conteudo" id="conteudo" tabindex="-1"></main>
+
+  <nav class="barra-inferior" id="barra-inferior" aria-label="Navegação rápida"></nav>
+
+  <div class="faixa-offline" id="offline" role="status" hidden></div>
+</div>
+
+<div id="avisos" class="avisos" role="status" aria-live="polite"></div>
+
+<script src="config.js"></script>
+<script type="module" src="js/app.js"></script>
+</body>
+</html>
