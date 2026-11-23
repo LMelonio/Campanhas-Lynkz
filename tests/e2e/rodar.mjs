@@ -72,12 +72,12 @@ async function novaPagina({ largura = 1440, altura = 900, sw = 'block', escuro =
 }
 
 // Abre o app logado. papel: 'aprovador' | 'coordenador'.
-async function abrir(page, { papel = 'aprovador', rota = '#/inicio' } = {}) {
-  await page.goto(`${BASE}/?papel=${papel}&zerar=1${rota}`);
+async function abrir(page, { papel = 'aprovador', rota = '#/inicio', extra = '' } = {}) {
+  await page.goto(`${BASE}/?papel=${papel}&zerar=1${extra}${rota}`);
   await page.waitForSelector('#app:not([hidden])');
   await page.waitForFunction(() => document.querySelector('#titulo')?.textContent.trim().length > 0 && !document.querySelector('.esqueleto'));
 }
-const db = page => page.evaluate(() => JSON.parse(sessionStorage.getItem('simulado-db-v2')));
+const db = page => page.evaluate(() => JSON.parse(sessionStorage.getItem('simulado-db-v3')));
 const toastCom = (page, texto) => page.locator('.toast', { hasText: texto }).first().waitFor({ timeout: 8000 });
 const titulo = page => page.locator('#titulo').innerText();
 async function escolherNoCombo(page, seletor, termo, opcao) {
@@ -236,10 +236,10 @@ teste('início: fila do aprovador conta todas as pendentes; coordenador só as d
 teste('campanhas: filtros de status, busca sem acento, laboratório e "Só as minhas"', async ({ page }) => {
   await abrir(page, { rota: '#/campanhas' });
   const n = s => page.locator(`#cp-status [data-status="${s}"] .n`).innerText();
-  igual(await n('Pendente'), '3', 'pendentes'); igual(await n('Aprovada'), '2', 'aprovadas'); igual(await n('Reprovada'), '1', 'reprovadas');
+  igual(await n('Pendente'), '3', 'pendentes'); igual(await n('Aprovada'), '3', 'aprovadas (inclui 1 importada)'); igual(await n('Reprovada'), '1', 'reprovadas');
   igual(await page.locator('#cp-itens .cartao').count(), 3, 'lista começa nas pendentes');
   await page.click('#cp-status [data-status="Todas"]');
-  igual(await page.locator('#cp-itens .cartao').count(), 6, 'todas');
+  igual(await page.locator('#cp-itens .cartao').count(), 7, 'todas');
   await page.fill('#cp-busca', 'biogenesis'); await page.waitForTimeout(400);
   igual(await page.locator('#cp-itens .cartao').count(), 1, 'busca sem acento acha Biogénesis');
   afirma(await page.locator('#cp-busca').evaluate(e => e === document.activeElement), 'busca mantém o foco');
@@ -545,6 +545,10 @@ teste('gestão: cadastrar empresa valida, recusa CNPJ repetido e abre a ficha', 
   await d.locator('button[type="submit"]').click();
   afirma(await d.locator('#de-nome-erro').isVisible(), 'nome curto');
   afirma(await d.locator('#de-cnpj-erro').isVisible(), 'CNPJ incompleto');
+  igual(await d.locator('#de-cnpj').evaluate(i => getComputedStyle(i).borderTopWidth), '2px', 'campo com erro ganha borda de 2 px');
+  await d.locator('#de-cnpj').fill('11111111111111');
+  await d.locator('button[type="submit"]').click();
+  afirma(/inválido/i.test(await d.locator('#de-cnpj-erro').innerText()), 'CNPJ com dígito errado é recusado');
   await d.locator('#de-nome').fill('Pet Nova Ltda'); await d.locator('#de-cnpj').fill('11222333000181');
   igual(await d.locator('#de-cnpj').inputValue(), '11.222.333/0001-81', 'máscara de CNPJ');
   await d.locator('button[type="submit"]').click();
@@ -608,7 +612,7 @@ teste('gestão: "Nova campanha" na ficha já abre com a empresa escolhida', asyn
 teste('histórico: contagens, filtro e busca', async ({ page }) => {
   await abrir(page, { rota: '#/historico' });
   const n = s => page.locator(`#hs-status [data-status="${s}"] .n`).innerText();
-  igual(await n('Aprovada'), '2', 'aprovadas'); igual(await n('Reprovada'), '1', 'reprovadas');
+  igual(await n('Aprovada'), '3', 'aprovadas (inclui 1 importada)'); igual(await n('Reprovada'), '1', 'reprovadas');
   await page.click('#hs-status [data-status="Reprovada"]');
   afirma((await page.locator('#hs-itens').innerText()).includes('Ração Premium'), 'filtro reprovadas');
   await page.click('#hs-status [data-status="Aprovada"]');
@@ -833,7 +837,7 @@ teste('lote C: indicador do Início abre a lista filtrada com chip; × limpa e m
   await page.waitForFunction(() => location.hash === '#/campanhas');
   afirma(await page.locator('#cp-chips').isHidden(), 'chip some');
   igual(await page.getAttribute('#cp-status [data-status="Todas"]', 'aria-pressed'), 'true', 'volta para Todas');
-  igual(await page.locator('#cp-itens .cartao').count(), 6, 'mostra todas');
+  igual(await page.locator('#cp-itens .cartao').count(), 7, 'mostra todas');
   await page.click('#menu a[href="#/inicio"]');
   await page.locator('.numero-link', { hasText: 'Rebate comprometido' }).click();
   await page.waitForFunction(() => location.hash.includes('rebate=1'));
@@ -853,12 +857,12 @@ teste('lote C: × da busca e Esc limpam e devolvem a lista', async ({ page }) =>
   afirma(caixa.width >= 44 && caixa.height >= 44, '× com 44 px');
   await x.click(); await page.waitForTimeout(400);
   igual(await page.inputValue('#cp-busca'), '', '× limpa');
-  igual(await page.locator('#cp-itens .cartao').count(), 6, 'lista volta');
+  igual(await page.locator('#cp-itens .cartao').count(), 7, 'lista volta');
   igual(await page.evaluate(() => document.activeElement.id), 'cp-busca', 'foco volta para a busca');
   await page.fill('#cp-busca', 'zzzz'); await page.waitForTimeout(400);
   await page.keyboard.press('Escape'); await page.waitForTimeout(400);
   igual(await page.inputValue('#cp-busca'), '', 'Esc limpa');
-  igual(await page.locator('#cp-itens .cartao').count(), 6, 'lista volta depois do Esc');
+  igual(await page.locator('#cp-itens .cartao').count(), 7, 'lista volta depois do Esc');
   await page.click('#menu a[href="#/historico"]');
   await page.fill('#hs-busca', 'xyz'); await page.locator('[data-limpar-busca="hs-busca"]').click();
   igual(await page.inputValue('#hs-busca'), '', '× também no Histórico');
@@ -1041,6 +1045,69 @@ teste('lote G: todo módulo de public/js tem modulepreload no index.html', async
   const url = fs.readFileSync(path.join(RAIZ, 'config.js'), 'utf8').match(/SUPABASE_URL:\s*"([^"]+)"/)[1];
   afirma(index.includes(`<link rel="preconnect" href="${url}" crossorigin>`), 'preconnect do Supabase igual ao config.js');
   await abrir(page);                       // e o app abre normalmente com os preloads
+});
+
+// ============================================================
+//  v2.3 — LOTE Q: clientes do Qlik e histórico das planilhas
+// ============================================================
+teste('lote Q: empresa do Qlik mostra código e vendedor; busca pelo código e pelo nome fantasia', async ({ page }) => {
+  await abrir(page, { rota: '#/gestao' });
+  await page.fill('#gs-busca', '4821'); await page.waitForTimeout(400);
+  const t = await page.locator('#gs-itens').innerText();
+  afirma(/Casa do Criador/.test(t) && /Cód\. 4821/.test(t) && /Caxias \/ MA/.test(t), 'lista mostra código, cidade e UF');
+  await page.fill('#gs-busca', 'agropet'); await page.waitForTimeout(400);
+  igual(await page.locator('#gs-itens a[href^="#/gestao/empresas/"]').count(), 1, 'busca pelo nome fantasia');
+  await page.click('#gs-itens a[href="#/gestao/empresas/3"]');
+  await page.locator('#conteudo', { hasText: 'Código do cliente' }).waitFor();
+  const f = await page.locator('#conteudo').innerText();
+  afirma(/Bia Souza/.test(f) && /vêm do Qlik/.test(f), 'ficha mostra vendedor e de onde vêm os dados');
+});
+
+teste('lote Q: diálogo trava nome, CNPJ e cidade do Qlik e salva telefone', async ({ page }) => {
+  await abrir(page, { rota: '#/gestao/empresas/3' });
+  await page.click('#fx-editar');
+  const d = page.locator('dialog.dialogo'); await d.waitFor();
+  for (const id of ['#de-nome', '#de-cnpj', '#de-cidade']) afirma(await d.locator(id).evaluate(i => i.readOnly), `${id} só leitura`);
+  afirma(await d.locator('#de-telefone').evaluate(i => i === document.activeElement), 'foco vai para o telefone');
+  await d.locator('#de-telefone').fill('99981112222');
+  await d.locator('button[type="submit"]').click(); await d.waitFor({ state: 'detached' });
+  const e = (await db(page)).empresas.find(x => x.id === 3);
+  igual(e.telefone, '99981112222', 'telefone gravado');
+  igual(e.nome, 'Casa do Criador', 'nome continua o do Qlik');
+});
+
+teste('lote Q: Nova campanha acha a empresa pelo código do cliente', async ({ page }) => {
+  await abrir(page, { rota: '#/nova' });
+  await escolherNoCombo(page, '#n-empresa', '4821', 'Casa do Criador');
+  igual(await page.inputValue('#n-empresa'), 'Casa do Criador', 'empresa escolhida pelo código');
+});
+
+teste('lote Q: campanha importada tem selo, origem e serve de modelo', async ({ page }) => {
+  await abrir(page, { rota: '#/historico' });
+  afirma(/importada/.test(await page.locator('#hs-itens').innerText()), 'histórico marca a importada');
+  const c = (await db(page)).campanhas.find(x => x.importada);
+  await page.goto(`${BASE}/?papel=aprovador#/campanhas/${c.id}`);
+  await page.locator('.det-selos', { hasText: 'Importada' }).waitFor();
+  afirma(/Planilha antiga/.test(await page.locator('#conteudo').innerText()), 'origem: planilha antiga');
+  await page.click('[data-modelo]');
+  await page.waitForFunction(() => location.hash.startsWith('#/nova/de/'));
+  igual(await page.inputValue('#n-empresa'), 'Casa do Criador', 'modelo traz a empresa');
+  igual(await page.inputValue('#n-campanha'), 'Campanha WellPet', 'modelo traz o nome');
+});
+
+teste('lote Q: com 1.500 clientes do Qlik, lê tudo (acima de 1.000) e desenha aos poucos', async ({ page }) => {
+  const t0 = Date.now();
+  await abrir(page, { rota: '#/gestao', extra: '&muitas=1500' });
+  igual(await page.locator('#gs-resumo').innerText(), '1.503 empresas', 'leu as 1.503 ativas (não parou em 1.000)');
+  igual(await page.locator('#gs-itens a[href^="#/gestao/empresas/"]').count(), 60, 'desenha 60 de cada vez');
+  await page.click('#gs-mais');
+  igual(await page.locator('#gs-itens a[href^="#/gestao/empresas/"]').count(), 360, 'Mostrar mais acrescenta');
+  await page.fill('#gs-busca', '1499'); await page.waitForTimeout(400);
+  igual(await page.locator('#gs-itens a[href^="#/gestao/empresas/"]').count(), 1, 'busca no meio das 1.503');
+  await page.goto(`${BASE}/?papel=aprovador&muitas=1500#/nova`);
+  await page.waitForSelector('#n-empresa');
+  await escolherNoCombo(page, '#n-empresa', 'cliente qlik 1500', 'CLIENTE QLIK 1500 LTDA');
+  relatorio.volume = { empresas: 1503, ms: Date.now() - t0 };
 });
 
 // ============================================================

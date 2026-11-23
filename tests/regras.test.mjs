@@ -2,7 +2,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  calc, banda, posRegua, lerValor, valorCampo, pct, brl, contem, cpfValido, maskCPF, maskCNPJ,
+  calc, banda, posRegua, lerValor, valorCampo, pct, brl, contem, cpfValido, cnpjValido, maskCPF, maskCNPJ,
   maskTelefone, telefoneValido, dataCivil, dataBR, dias, dataExcel, colunaExcel, errosRecebedor,
   nomeCompleto, emailValido,
 } from '../public/js/lib/regras.js';
@@ -131,4 +131,11 @@ test('datas: soma de dias, mês inteiro e hora no fuso', async () => {
   assert.equal(quandoBR('2026-11-18T13:32:00Z', agora), 'hoje, 10:32');
   assert.equal(quandoBR('2026-11-17T13:32:00Z', agora), 'ontem, 10:32');
   assert.equal(quandoBR('2026-11-10T13:32:00Z', agora), '10/11/2026, 10:32');
+});
+
+test('cnpjValido confere os dígitos verificadores', () => {
+  assert.equal(cnpjValido('11.222.333/0001-81'), true);
+  assert.equal(cnpjValido('11.111.111/1111-11'), false);
+  assert.equal(cnpjValido('11.222.333/0001-82'), false);
+  assert.equal(cnpjValido('123'), false);
 });

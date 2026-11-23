@@ -46,7 +46,7 @@ function desenhar(el, ctx) {
       <tbody>${vis.map(c => html`<tr data-id="${c.id}">
         <td data-rotulo="Decisão" class="tabular">${dataBR(c.data_decisao)}</td>
         <td data-rotulo="Empresa" class="principal"><a href="#/campanhas/${c.id}">${c.cliente}</a></td>
-        <td data-rotulo="Campanha">${c.campanha}</td>
+        <td data-rotulo="Campanha">${c.campanha}${c.importada ? html` <small class="campo-dica">(importada)</small>` : ''}</td>
         <td data-rotulo="Laboratório">${c.laboratorio}</td>
         <td data-rotulo="Custo" class="num"><span class="valor">R$ ${brl(calc(c).total)}</span></td>
         <td data-rotulo="Status">${selo(c.status)}</td>

@@ -3,8 +3,9 @@
 //  Erro de gravação aparece dentro do próprio diálogo, que fica aberto.
 // ============================================================
 import { html, $ } from '../lib/dom.js';
-import { soDigitos, maskCNPJ, maskCPF, maskTelefone, telefoneValido, errosRecebedor, hojeCivil } from '../lib/regras.js';
-import { cadastros } from '../dados/cadastros.js';
+import { icone } from './icones.js';
+import { soDigitos, cnpjValido, maskCNPJ, maskCPF, maskTelefone, telefoneValido, errosRecebedor, hojeCivil } from '../lib/regras.js';
+import { cadastros, ehDoQlik } from '../dados/cadastros.js';
 import { detalhar } from '../dados/erros.js';
 import { abrirDialogo, erroNoDialogo } from './avisos.js';
 import { campo, areaTexto, ligarMascaras, aplicarErros } from './campos.js';
@@ -14,15 +15,18 @@ const val = (d, id) => ($('#' + id, d)?.value ?? '').trim();
 // Abre o cadastro (ou edição) de empresa. Devolve a empresa gravada ou null.
 export async function dialogoEmpresa(empresa = null, { nome = '' } = {}) {
   const e = empresa || {};
+  const qlik = ehDoQlik(e);   // nome, CNPJ e cidade só mudam pela sincronização do Qlik
+  const trava = qlik ? { readonly: true, 'aria-readonly': 'true' } : {};
   let salva = null, desligar = () => {};
   const corpo = html`
-    ${campo({ id: 'de-nome', rotulo: 'Nome da empresa', valor: e.nome ?? nome, obrigatorio: true,
-              dica: 'Razão social ou nome da loja, como aparece na nota.', atributos: { autocomplete: 'organization', autofocus: true } })}
+    ${qlik ? html`<p class="nota">${icone('info')}<span>Empresa do Qlik (cód. ${e.codigo_cliente}): nome, CNPJ e cidade são atualizados pela sincronização. Aqui você edita telefone e observações.</span></p>` : ''}
+    ${campo({ id: 'de-nome', rotulo: 'Nome da empresa', valor: e.nome ?? nome, obrigatorio: !qlik,
+              dica: qlik ? '' : 'Razão social ou nome da loja, como aparece na nota.', atributos: qlik ? trava : { autocomplete: 'organization', autofocus: true } })}
     <div class="grade-2 quebra">
-      ${campo({ id: 'de-cnpj', rotulo: 'CNPJ', valor: e.cnpj ? maskCNPJ(e.cnpj) : '', mascara: 'cnpj', opcional: true })}
-      ${campo({ id: 'de-telefone', rotulo: 'Telefone', valor: e.telefone ? maskTelefone(e.telefone) : '', mascara: 'tel', opcional: true })}
+      ${campo({ id: 'de-cnpj', rotulo: 'CNPJ', valor: e.cnpj ? maskCNPJ(e.cnpj) : '', mascara: 'cnpj', opcional: !qlik, atributos: trava })}
+      ${campo({ id: 'de-telefone', rotulo: 'Telefone', valor: e.telefone ? maskTelefone(e.telefone) : '', mascara: 'tel', opcional: true, atributos: qlik ? { autofocus: true } : {} })}
     </div>
-    ${campo({ id: 'de-cidade', rotulo: 'Cidade', valor: e.cidade ?? '', opcional: true })}
+    ${campo({ id: 'de-cidade', rotulo: 'Cidade', valor: e.cidade ?? '', opcional: !qlik, atributos: trava })}
     ${areaTexto({ id: 'de-observacoes', rotulo: 'Observações', valor: e.observacoes ?? '', opcional: true })}`;
 
   await abrirDialogo({
@@ -35,14 +39,15 @@ export async function dialogoEmpresa(empresa = null, { nome = '' } = {}) {
     aoAbrir: d => { desligar = ligarMascaras(d); },
     antesDeFechar: async (_v, d) => {
       erroNoDialogo(d, '');
-      const dados = {
-        nome: val(d, 'de-nome'), cnpj: val(d, 'de-cnpj'), telefone: val(d, 'de-telefone'),
-        cidade: val(d, 'de-cidade'), observacoes: val(d, 'de-observacoes'),
-      };
+      const dados = qlik
+        ? { telefone: val(d, 'de-telefone'), observacoes: val(d, 'de-observacoes') }
+        : { nome: val(d, 'de-nome'), cnpj: val(d, 'de-cnpj'), telefone: val(d, 'de-telefone'),
+            cidade: val(d, 'de-cidade'), observacoes: val(d, 'de-observacoes') };
       const erros = {};
-      if (dados.nome.length < 2) erros['de-nome'] = 'Informe o nome da empresa.';
+      if (!qlik && dados.nome.length < 2) erros['de-nome'] = 'Informe o nome da empresa.';
       const cnpj = soDigitos(dados.cnpj);
       if (cnpj && cnpj.length !== 14) erros['de-cnpj'] = 'O CNPJ precisa ter 14 números.';
+      else if (cnpj && !cnpjValido(cnpj)) erros['de-cnpj'] = 'CNPJ inválido. Confira os números.';
       else if (cnpj && cadastros.empresas({ inativas: true }).some(x => x.cnpj === cnpj && String(x.id) !== String(e.id))) {
         erros['de-cnpj'] = 'Já existe uma empresa com este CNPJ.';
       }

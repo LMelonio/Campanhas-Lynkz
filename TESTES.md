@@ -5,9 +5,9 @@ push (`.github/workflows/testes.yml`).
 
 | Camada | Comando | O que cobre | Resultado em 18/11/2026 |
 |---|---|---|---|
-| Regras | `npm test` | Custo, faixas, CPF, máscaras, valores pt-BR, datas no fuso, Excel (`public/js/lib/regras.js`) | 14 de 14 |
-| Banco | `npm run test:banco` | Instalação nova, migração v1 → v2 com dados antigos, permissões por papel, triggers, idempotência, rollback | 85 verificações + 24 da validação 06 |
-| Navegador | `npm run test:e2e` | Todas as telas e fluxos, celular e desktop, acessibilidade (inclusive modo escuro), Excel, modo offline, banco desatualizado | 70 de 70 (v2.1.0) |
+| Regras e scripts | `npm test` | Custo, faixas, CPF, CNPJ, máscaras, valores pt-BR, datas no fuso, Excel; planilhas antigas → linhas; clientes do Qlik (Engine API simulada) | 26 de 26 (v2.3.0) |
+| Banco | `npm run test:banco` | Instalação nova, migração v1 → v2 → v2.3 com dados antigos, permissões por papel, triggers, cargas do Qlik e das planilhas, unir empresas, idempotência, rollback | todas ok (v2.3.0) |
+| Navegador | `npm run test:e2e` | Todas as telas e fluxos, celular e desktop, acessibilidade (inclusive modo escuro), Excel, modo offline, banco desatualizado | 75 de 75 (v2.3.0) |
 | Cloudflare | `npx wrangler deploy --dry-run` | Configuração de publicação válida, 44 arquivos de `public/` | ok |
 
 Além disso, foram feitas checagens manuais nesta rodada:

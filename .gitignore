@@ -14,3 +14,10 @@ sql/migracoes/D10-PARA-EXECUTAR.sql
 
 # app.js da v1 que o editor às vezes recria na raiz (o app de verdade está em public/js/)
 /app.js
+
+# Chaves e dados pessoais dos scripts de carga (Qlik, planilhas antigas)
+.env
+.env.*
+!.env.exemplo
+dados-privados/
+*.xlsx

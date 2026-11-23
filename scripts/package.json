@@ -1,0 +1,10 @@
+{
+  "name": "lynkz-campanhas-scripts",
+  "private": true,
+  "type": "module",
+  "description": "Dependências só dos scripts de carga (Qlik e planilhas antigas). Não fazem parte do app.",
+  "dependencies": {
+    "ws": "^8.18.0",
+    "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz"
+  }
+}

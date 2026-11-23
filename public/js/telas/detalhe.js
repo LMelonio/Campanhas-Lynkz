@@ -6,7 +6,7 @@
 import { html, pintar, $, ao } from '../lib/dom.js';
 import { calc, banda, pct, brl, dataBR, dias, maskCPF, maskTelefone, soDigitos, STATUS } from '../lib/regras.js';
 import { icone } from '../ui/icones.js';
-import { selo, regua, vazio, carregando, FAIXAS } from '../ui/pecas.js';
+import { selo, seloNeutro, regua, vazio, carregando, FAIXAS } from '../ui/pecas.js';
 import { botaoCopiar, ligarCopiar } from '../ui/copiar.js';
 import { abrirDialogo, erroNoDialogo } from '../ui/avisos.js';
 import { areaTexto, aplicarErros } from '../ui/campos.js';
@@ -84,7 +84,7 @@ function corpo(c, ctx) {
         ${empresa
           ? html`<a class="det-empresa" href="#/gestao/empresas/${empresa.id}">${icone('gestao')}${c.cliente}</a>`
           : html`<span class="det-empresa">${c.cliente}</span>`}
-        ${selo(c.status)}
+        <span class="det-selos">${c.importada ? seloNeutro('Importada') : ''}${selo(c.status)}</span>
       </div>
       <h2 class="det-titulo">${c.campanha}</h2>
       <p class="det-sub">${c.laboratorio} · <span class="dd-copiar">${c.codigo}${botaoCopiar(c.codigo, 'código', 'Código copiado')}</span></p>
@@ -117,7 +117,8 @@ function corpo(c, ctx) {
 
       ${painel('Solicitação', html`
         ${linha('Solicitante', c.solicitante_nome)}
-        ${linha('Enviada em', dataBR(c.criado_em))}
+        ${linha(c.importada ? 'Registrada em' : 'Enviada em', dataBR(c.criado_em))}
+        ${c.importada ? linha('Origem', 'Planilha antiga (antes do app)') : ''}
         ${c.status !== STATUS.PENDENTE ? html`
           ${linha('Decidida por', c.aprovador_nome)}
           ${linha('Data da decisão', dataBR(c.data_decisao))}` : ''}`)}
@@ -164,7 +165,7 @@ function desenhar() {
     ctx.cabecalho({ titulo: 'Campanha', voltar: '#/campanhas' });
     ctx.barraDeAcao(false);
     pintar(el, ctx.campanhas.erro ? estadoLista({ erro: ctx.campanhas.erro }) : ctx.campanhas.carregado
-      ? vazio({ icone: 'busca', titulo: 'Campanha não encontrada', texto: 'Ela pode ter sido removida da sua visão ou o endereço está errado.', acao: { href: '#/campanhas', rotulo: 'Ver campanhas' } })
+      ? vazio({ icone: 'busca', titulo: 'Campanha não encontrada', texto: 'O endereço pode estar errado ou esta campanha não está liberada para o seu acesso.', acao: { href: '#/campanhas', rotulo: 'Ver campanhas' } })
       : carregando(2));
     return;
   }

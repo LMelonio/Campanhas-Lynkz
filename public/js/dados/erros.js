@@ -14,6 +14,7 @@ const CONSTRAINTS = {
   empresas_cnpj_unico:           ['Já existe uma empresa com este CNPJ.', 'cnpj'],
   empresas_nome_valido:          ['Informe o nome da empresa (pelo menos 2 letras).', 'nome'],
   empresas_cnpj_valido:          ['O CNPJ precisa ter 14 números.', 'cnpj'],
+  empresas_cnpj_dv:              ['CNPJ inválido. Confira os números.', 'cnpj'],
   empresas_telefone_valido:      ['Informe o telefone com DDD (10 ou 11 números).', 'telefone'],
   balconistas_empresa_cpf_unico: ['Já existe um balconista com este CPF nesta empresa.', 'cpf'],
   balconistas_cpf_valido:        ['CPF inválido. Confira os números.', 'cpf'],

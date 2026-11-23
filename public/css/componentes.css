@@ -46,6 +46,8 @@
   min-width: 0; max-width: 100%;   /* campo de data não estoura a coluna no celular */
 }
 .campo textarea { min-height: 88px; resize: vertical; line-height: 1.5; }
+/* Campo travado (dados que vêm do Qlik): visível e selecionável, mas com cara de leitura. */
+.campo input[readonly] { background: var(--card-2); color: var(--ink-2); }
 .campo input::placeholder, .campo textarea::placeholder { color: var(--ink-3); opacity: 1; }
 .campo input:focus, .campo select:focus, .campo textarea:focus { outline: 3px solid var(--foco); outline-offset: 0; border-color: var(--foco); }
 .campo input[readonly] { background: var(--card-2); color: var(--ink-2); }
@@ -53,7 +55,8 @@
 .campo-erro { display: flex; gap: 6px; align-items: flex-start; font-size: var(--t-12); font-weight: 600; color: var(--erro); line-height: 1.45; }
 .campo-erro svg.ico { width: 16px; height: 16px; margin-top: 1px; }
 /* Erro nunca só pela cor: borda de 2 px + ícone + texto. */
-.campo.tem-erro input, .campo.tem-erro select, .campo.tem-erro textarea { border: 2px solid var(--erro); background: var(--erro-soft); }
+/* Mesmo peso do seletor base (.campo input:not():not()) para a borda de erro aparecer de fato. */
+.campo.tem-erro input:not([type="checkbox"]):not([type="radio"]), .campo.tem-erro select, .campo.tem-erro textarea { border: 2px solid var(--erro); background: var(--erro-soft); }
 .grade-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 0 var(--e-3); }
 @media (max-width: 380px) { .grade-2.quebra { grid-template-columns: 1fr; } }
 
@@ -208,6 +211,11 @@
   background: none; color: var(--ink-2); font-size: var(--t-14); font-weight: 600; white-space: nowrap;
 }
 .filtro[aria-pressed="true"] { background: var(--red); color: var(--on-red); }
+/* Celular estreito: as 4 abas de status quebram em 2×2 em vez de esconder "Todas" fora da tela. */
+@media (max-width: 420px) {
+  .filtros { flex-wrap: wrap; }
+  .filtro { flex: 1 1 40%; }
+}
 .filtro .n { font-variant-numeric: tabular-nums; opacity: .9; margin-left: 2px; }
 
 /* ---------- chips ---------- */
@@ -389,3 +397,5 @@ kbd {
 .atalhos { display: grid; gap: var(--e-2); }
 .atalhos > div { display: flex; align-items: center; gap: var(--e-3); font-size: var(--t-14); }
 .atalhos dt { min-width: 32px; }
+
+.det-selos { display: inline-flex; flex-wrap: wrap; gap: var(--e-1); justify-content: flex-end; }

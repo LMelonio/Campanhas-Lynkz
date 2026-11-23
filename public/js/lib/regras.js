@@ -121,6 +121,20 @@ export function cpfValido(cpf) {
   return dv(10) === n[9] && dv(11) === n[10];
 }
 
+// CNPJ: dígitos verificadores (módulo 11, pesos 5..2/9..2) e sem sequência repetida.
+export function cnpjValido(cnpj) {
+  const d = soDigitos(cnpj);
+  if (d.length !== 14 || /^(\d)\1{13}$/.test(d)) return false;
+  const n = d.split('').map(Number);
+  const dv = tam => {
+    let soma = 0, peso = tam - 7;
+    for (let i = 0; i < tam; i++) { soma += n[i] * peso--; if (peso < 2) peso = 9; }
+    const resto = soma % 11;
+    return resto < 2 ? 0 : 11 - resto;
+  };
+  return dv(12) === n[12] && dv(13) === n[13];
+}
+
 export function maskCPF(v) {
   const d = soDigitos(v).slice(0, 11);
   return d.replace(/(\d{3})(\d)/, '$1.$2')

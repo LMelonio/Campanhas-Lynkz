@@ -99,7 +99,7 @@ export function cartao(c, { ativo = false } = {}) {
     ${miniRegua(c)}
     <div class="cartao-pe">
       <span class="cartao-valor num-display valor">R$ ${brl(k.total)}</span>
-      <span class="cartao-quando">${icone('historico')}${dataBR(c.criado_em)} · ${c.codigo}</span>
+      <span class="cartao-quando">${icone('historico')}${dataBR(c.criado_em)} · ${c.codigo}${c.importada ? ' · importada' : ''}</span>
     </div>
   </a>`;
 }

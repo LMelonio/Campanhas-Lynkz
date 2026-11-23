@@ -17,6 +17,7 @@ import { icone } from '../ui/icones.js';
 import { regua, FAIXAS } from '../ui/pecas.js';
 import { campo, selecao, areaTexto, interruptor, ligarMascaras, aplicarErros, limparErro, marcarErro } from '../ui/campos.js';
 import { combo } from '../ui/combo.js';
+import { textoBuscaEmpresa } from '../dados/cadastros.js';
 import { dialogoEmpresa } from '../ui/cadastro-dialogos.js';
 
 const C = window.CONFIG;
@@ -419,7 +420,7 @@ export function montar(el, ctx, params) {
       ${ini.clienteSemCadastro ? html`<p class="nota nota-alerta">${icone('info')}<span>A campanha original era de “${ini.clienteSemCadastro}”, que ainda não está no cadastro. Escolha ou cadastre a empresa.</span></p>` : ''}
 
       <section class="painel"><h2 class="painel-titulo">Empresa e laboratório</h2><div class="painel-corpo">
-        ${campo({ id: 'n-empresa', rotulo: 'Empresa', obrigatorio: true, dica: 'Digite para buscar. Não achou? Dá para cadastrar na hora.', atributos: { placeholder: 'Nome, cidade ou CNPJ' } })}
+        ${campo({ id: 'n-empresa', rotulo: 'Empresa', obrigatorio: true, dica: 'Digite para buscar. Não achou? Dá para cadastrar na hora.', atributos: { placeholder: 'Nome, código, cidade ou CNPJ' } })}
         ${campo({ id: 'n-laboratorio', rotulo: 'Laboratório', obrigatorio: true, atributos: { placeholder: 'Selecione ou digite para buscar' } })}
       </div></section>
 
@@ -502,8 +503,9 @@ export function montar(el, ctx, params) {
 
   st.comboEmpresa = combo($('#n-empresa', el), {
     opcoes: () => ctx.cadastros.empresas().map(e => ({
-      valor: e.id, rotulo: e.nome, detalhe: e.cidade || '',
-      busca: `${e.cidade || ''} ${e.cnpj || ''} ${ctx.cadastros.balconistasDa(e.id).map(b => b.nome_completo).join(' ')}`,
+      valor: e.id, rotulo: e.nome,
+      detalhe: [e.nome_fantasia && e.nome_fantasia !== e.nome ? e.nome_fantasia : '', e.cidade, e.codigo_cliente ? `cód. ${e.codigo_cliente}` : ''].filter(Boolean).join(' · '),
+      busca: textoBuscaEmpresa(e, ctx.cadastros.balconistasDa(e.id)),
     })),
     valor: ini.empresaId ?? null,
     vazio: 'Nenhuma empresa com esse nome.',

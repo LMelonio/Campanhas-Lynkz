@@ -1,4 +1,4 @@
-# Projeto: Aprovação de Campanhas Promocionais — LYNKZ (v2)
+# Projeto: Aprovação de Campanhas Promocionais — LYNKZ (v2.3)
 
 App de celular e computador (PWA) onde coordenadores de campo solicitam campanhas promocionais
 para empresas clientes e a gerência aprova ou reprova. Empresas e balconistas ficam cadastrados.
@@ -31,8 +31,11 @@ public/                  ← TUDO que vai para o ar (raiz do site)
         ui/     icones.js  avisos.js  campos.js  combo.js  pecas.js  cadastro-dialogos.js
                 estado.js (carregando/erro/vazio)  senha.js (campo de senha)  copiar.js
         telas/  inicio.js  campanhas.js  detalhe.js  nova.js  historico.js  gestao.js  perfil.js
-sql/          schema.sql (instalação nova)  migracoes/ (00–06, com rollback e validação)
-tests/        regras.test.mjs (unidade) · banco/ (Postgres) · e2e/ (navegador)   → TESTES.md
+sql/          schema.sql (instalação nova)  migracoes/ (00–07, com rollback e validação)
+scripts/      package.json (ws, xlsx — só dos scripts) · sincronizar-clientes-qlik.mjs · importar-planilhas.mjs · de-para-empresas.json
+              lib/ env.mjs (.env) · qlik.mjs (Engine API) · planilhas.mjs (xlsx → linhas) · supabase-rpc.mjs
+              Só rodam no computador ou no GitHub Actions, com o .env. NUNCA importados por public/.
+tests/        regras.test.mjs · scripts.test.mjs (unidade) · banco/ (Postgres) · e2e/ (navegador)   → TESTES.md
 dev/          servidor.mjs (servidor local) · supabase-simulado.js (banco falso em memória)
 deploy/       nginx.conf (servidor próprio)
 wrangler.jsonc  package.json  .github/workflows/testes.yml
@@ -71,6 +74,19 @@ histórico do app quando existe.
 - **Rotas com query:** `params.query` (ex.: `#/campanhas?status=Aprovada&mes=atual&rebate=1`); a lista mostra um chip com ×.
 - **avisos:** `toast(msg, {acao, duracao, tom, aoFechar})`, `abrirDialogo({titulo, descricao, corpo, acoes, aoAbrir, antesDeFechar})`, `confirmar()`.
 - **campos:** `campo`, `selecao`, `areaTexto`, `interruptor`, `ligarMascaras(raiz)`, `aplicarErros(raiz, {id: msg})`.
+
+## Clientes do Qlik e histórico (v2.3)
+
+- `empresas` tem `codigo_cliente`, `nome_fantasia`, `uf`, `vendedor`, `origem` ('app' | 'qlik' | 'planilha'), `sincronizado_em`.
+  Empresa com `codigo_cliente`: nome, CNPJ e cidade só mudam pela sincronização (trigger `ao_proteger_qlik`);
+  no app o diálogo trava esses campos e grava só telefone e observações. Use `ehDoQlik(e)` de `dados/cadastros.js`.
+- Busca de empresa (Gestão e Nova): `textoBuscaEmpresa(e, balconistas)` — nome, fantasia, código, cidade, UF, CNPJ, vendedor, balconistas.
+- `cadastros.carregar()` lê em blocos de 1.000 (`range`) — o Supabase corta em 1.000 linhas. Gestão desenha 60 por vez.
+- `campanhas.importada = true`: veio de planilha antiga (selo "Importada", origem no detalhe, coluna Origem no Excel).
+  O app não grava essa coluna (fora do grant de insert em `reaplicar_permissoes_campanhas`).
+- Cargas: `importar_clientes_qlik(jsonb)` e `importar_historico_planilha(jsonb)`, só service_role / SQL Editor.
+  Chaves no `.env` (modelo em `.env.exemplo`), nunca em `public/`. Passo a passo: `QLIK-E-HISTORICO.md`.
+- Simulador: `?muitas=1500` cria 1.500 clientes do Qlik para testar volume.
 
 ## Regras de código
 

@@ -12,6 +12,7 @@
 //  aprovador e o solicitante, balconista da mesma empresa, CPF único por
 //  empresa. Os dados ficam no sessionStorage da aba (fechar a aba zera).
 //  Para recomeçar do zero: ?zerar=1
+//  Muitas empresas do Qlik (testar volume e a leitura em blocos de 1.000): ?muitas=1500
 //
 //  Para testar falhas (lidos a cada consulta, dá para tirar da URL sem recarregar):
 //    ?sem=campanhas_app,empresas   → essas tabelas "não existem" (PGRST205, banco desatualizado)
@@ -20,7 +21,7 @@
 // ============================================================
 const q = new URLSearchParams(location.search);
 const PAPEL = q.get('papel') === 'coordenador' ? 'coordenador' : 'aprovador';
-const CHAVE = 'simulado-db-v2';
+const CHAVE = 'simulado-db-v3' + (q.get('muitas') ? '-m' + q.get('muitas') : '');
 if (q.get('zerar')) sessionStorage.removeItem(CHAVE);
 
 const USUARIOS = {
@@ -35,11 +36,17 @@ const dia = dd => agora(dd).slice(0, 10);
 
 function semente() {
   const empresas = [
-    { id: 1, nome: 'Agropecuária São Luís', cnpj: '12345678000190', cidade: 'São Luís', telefone: '9832210000', observacoes: null, ativo: true, criado_em: agora(60), criado_por: 'u-coord', atualizado_em: null, atualizado_por: null },
+    { id: 1, nome: 'Agropecuária São Luís', cnpj: '12345678000195', cidade: 'São Luís', telefone: '9832210000', observacoes: null, ativo: true, criado_em: agora(60), criado_por: 'u-coord', atualizado_em: null, atualizado_por: null },
     { id: 2, nome: 'Pet Center Imperatriz', cnpj: '11222333000181', cidade: 'Imperatriz', telefone: '99988887777', observacoes: 'Compra concentrada no começo do mês.', ativo: true, criado_em: agora(50), criado_por: 'u-bia', atualizado_em: null, atualizado_por: null },
-    { id: 3, nome: 'Casa do Criador', cnpj: null, cidade: 'Caxias', telefone: null, observacoes: null, ativo: true, criado_em: agora(40), criado_por: 'u-coord', atualizado_em: null, atualizado_por: null },
+    { id: 3, nome: 'Casa do Criador', nome_fantasia: 'Criador Agropet', cnpj: null, cidade: 'Caxias', uf: 'MA', vendedor: 'Bia Souza', codigo_cliente: '4821', origem: 'qlik', sincronizado_em: agora(0, 3), telefone: null, observacoes: null, ativo: true, criado_em: agora(40), criado_por: 'u-coord', atualizado_em: null, atualizado_por: null },
     { id: 4, nome: 'Agro Antiga (fechou)', cnpj: null, cidade: 'Bacabal', telefone: null, observacoes: null, ativo: false, criado_em: agora(200), criado_por: 'u-coord', atualizado_em: null, atualizado_por: null },
   ];
+  // ?muitas=N: N clientes do Qlik a mais (volume real da base).
+  const muitas = Math.min(+q.get('muitas') || 0, 5000);
+  for (let i = 0; i < muitas; i++) {
+    empresas.push({ id: 100 + i, nome: `CLIENTE QLIK ${String(i + 1).padStart(4, '0')} LTDA`, nome_fantasia: null, cnpj: null, cidade: i % 2 ? 'SAO LUIS' : 'CAXIAS', uf: 'MA',
+      vendedor: 'Bia Souza', codigo_cliente: String(9000 + i), origem: 'qlik', sincronizado_em: agora(0, 3), telefone: null, observacoes: null, ativo: true, criado_em: agora(10), criado_por: null, atualizado_em: null, atualizado_por: null });
+  }
   const balconistas = [
     { id: 1, empresa_id: 1, nome_completo: 'Maria Silva Santos', cpf: '52998224725', data_nascimento: '1992-04-12', email: 'maria.silva@exemplo.com', telefone: '98999990001', ativo: true, criado_em: agora(30) },
     { id: 2, empresa_id: 2, nome_completo: 'João Pedro Lima', cpf: '11144477735', data_nascimento: '1988-09-30', email: 'joao.lima@exemplo.com', telefone: '99999990002', ativo: true, criado_em: agora(29) },
@@ -50,9 +57,9 @@ function semente() {
     id: ++n, codigo: 'C2611' + String(1000 + n), tipo: null, mecanica: null, investimento_lynkz: 0, investimento_industria: 0,
     forma_pagamento: 'Desconto em nota', data_inicio: dia(-1), data_fim: dia(-30), tipo_meta: 'Mensal', meta: 0,
     rebate_pct: 0, rebate_teto: 0, rebate_base: null, rebate_gatilho: null, observacoes: null, status: 'Pendente',
-    aprovador_nome: null, data_decisao: null, motivo: null, empresa_id: null, balconista_id: null,
+    aprovador_nome: null, data_decisao: null, motivo: null, empresa_id: null, balconista_id: null, importada: false,
     swile_nome_completo: null, swile_cpf: null, swile_data_nascimento: null, swile_email: null, swile_telefone: null,
-    ...o, solicitante_nome: USUARIOS[o.solicitante_id].nome,
+    solicitante_nome: USUARIOS[o.solicitante_id]?.nome ?? null, ...o,
   });
   const campanhas = [
     camp({ cliente: 'Agropecuária São Luís', empresa_id: 1, laboratorio: 'Biogénesis Bagó Pet', campanha: 'Vacinas Novembro', tipo: 'Rebate por meta', investimento_lynkz: 1500, investimento_industria: 800, meta: 40000, rebate_pct: 2, rebate_base: 'Sell-in (compras do cliente)', rebate_gatilho: 'Ao atingir 100% da meta', solicitante_id: 'u-coord', criado_em: agora(3) }),
@@ -61,9 +68,12 @@ function semente() {
     camp({ cliente: 'Casa do Criador', empresa_id: 3, laboratorio: 'Ouro Fino', campanha: 'Antiparasitários Verão', investimento_lynkz: 3000, investimento_industria: 2000, meta: 20000, solicitante_id: 'u-coord', criado_em: agora(1) }),
     camp({ cliente: 'Agropecuária São Luís', empresa_id: 1, laboratorio: 'Vansil', campanha: 'Combo Vermífugos', investimento_lynkz: 900, meta: 18000, status: 'Aprovada', aprovador_nome: 'Ana Aprovadora', data_decisao: dia(4), solicitante_id: 'u-coord', criado_em: agora(6) }),
     camp({ cliente: 'Pet Center Imperatriz', empresa_id: 2, laboratorio: 'Farmina', campanha: 'Ração Premium', investimento_lynkz: 2500, meta: 12000, status: 'Reprovada', motivo: 'Custo acima do padrão para a meta informada.', aprovador_nome: 'Ana Aprovadora', data_decisao: dia(5), solicitante_id: 'u-coord', criado_em: agora(7) }),
+    camp({ codigo: 'H2609001', cliente: 'Casa do Criador', empresa_id: 3, laboratorio: 'Ouro Fino', campanha: 'Campanha WellPet', tipo: 'Campanha de balconista',
+      mecanica: 'R$ 3,00 por dose de WellPet vendida', forma_pagamento: 'Bonificação em produto', investimento_lynkz: 159, data_inicio: '2026-08-01', data_fim: '2026-08-31', tipo_meta: null,
+      status: 'Aprovada', aprovador_nome: 'Charles Machado', data_decisao: '2026-09-30', solicitante_id: null, solicitante_nome: 'Alexandre Froes', importada: true, criado_em: '2026-09-30T15:00:00.000Z' }),
     camp({ cliente: 'Cliente da v1 Ltda', laboratorio: 'Boehringer', campanha: 'Campanha antiga sem cadastro', investimento_lynkz: 400, meta: 10000, status: 'Aprovada', aprovador_nome: 'Ana Aprovadora', data_decisao: dia(40), solicitante_id: 'u-bia', criado_em: agora(42) }),
   ];
-  return { empresas, balconistas, campanhas, seq: { empresas: 4, balconistas: 3, campanhas: n } };
+  return { empresas, balconistas, campanhas, seq: { empresas: 100 + muitas, balconistas: 3, campanhas: n } };
 }
 
 let db = (() => { try { return JSON.parse(sessionStorage.getItem(CHAVE)) || semente(); } catch { return semente(); } })();
@@ -97,7 +107,7 @@ function inserir(tabela, d) {
   if (tabela === 'empresas') {
     if (String(d.nome || '').trim().length < 2) return { error: erro('violates check constraint "empresas_nome_valido"', '23514') };
     if (d.cnpj && db.empresas.some(e => e.cnpj === d.cnpj)) return { error: erro('duplicate key value violates unique constraint "empresas_cnpj_unico"', '23505') };
-    const r = { cnpj: null, cidade: null, telefone: null, observacoes: null, ativo: true, ...d, id: ++db.seq.empresas, criado_em: new Date().toISOString(), criado_por: u.id, atualizado_em: null, atualizado_por: null };
+    const r = { cnpj: null, cidade: null, telefone: null, observacoes: null, ativo: true, nome_fantasia: null, uf: null, vendedor: null, codigo_cliente: null, origem: 'app', sincronizado_em: null, ...d, id: ++db.seq.empresas, criado_em: new Date().toISOString(), criado_por: u.id, atualizado_em: null, atualizado_por: null };
     db.empresas.push(r); return { row: r };
   }
   if (tabela === 'balconistas') {
@@ -117,7 +127,7 @@ function inserir(tabela, d) {
     }
     const empresa = db.empresas.find(e => e.id == d.empresa_id);
     const id = ++db.seq.campanhas;
-    const r = { ...d, id, codigo: 'C2611' + String(1000 + id), criado_em: new Date().toISOString(), cliente: empresa ? empresa.nome : d.cliente,
+    const r = { ...d, id, importada: false, codigo: 'C2611' + String(1000 + id), criado_em: new Date().toISOString(), cliente: empresa ? empresa.nome : d.cliente,
       empresa_id: d.empresa_id == null ? null : +d.empresa_id, balconista_id: d.balconista_id == null ? null : +d.balconista_id,
       solicitante_nome: u.nome, aprovador_nome: null, data_decisao: null, motivo: null };
     db.campanhas.push(r); return { row: r };
@@ -134,6 +144,13 @@ function atualizar(tabela, linhas, d) {
     }
     linhas.forEach(c => Object.assign(c, d, { aprovador_nome: u.nome, data_decisao: hojeFortaleza() }));
     return { rows: linhas };
+  }
+  if (tabela === 'empresas') {
+    for (const e of linhas) {
+      if (e.codigo_cliente && ['nome', 'cnpj', 'cidade'].some(k => k in d && (d[k] ?? null) !== (e[k] ?? null))) {
+        return { error: erro('Nome, CNPJ e cidade desta empresa vêm do Qlik e não podem ser alterados no app.') };
+      }
+    }
   }
   if (tabela === 'balconistas' && 'cpf' in d) {
     for (const b of linhas) {
@@ -155,12 +172,13 @@ function emitir(tabela, eventType, row) {
 
 // ---------- construtor de consultas ----------
 class Consulta {
-  constructor(tabela) { this.tabela = tabela; this.op = 'select'; this.filtros = []; this.ordem = null; this.modo = null; this.retornar = false; }
+  constructor(tabela) { this.tabela = tabela; this.op = 'select'; this.filtros = []; this.ordem = []; this.modo = null; this.retornar = false; }
   select() { if (this.op !== 'select') this.retornar = true; return this; }
   insert(d) { this.op = 'insert'; this.dados = d; return this; }
   update(d) { this.op = 'update'; this.dados = d; return this; }
   eq(col, val) { this.filtros.push([col, val]); return this; }
-  order(col, { ascending = true } = {}) { this.ordem = [col, ascending]; return this; }
+  order(col, { ascending = true } = {}) { this.ordem.push([col, ascending]); return this; }
+  range(de, ate) { this.faixa = [de, ate]; return this; }
   limit(n) { this.limite = n; return this; }
   single() { this.modo = 'single'; return this; }
   maybeSingle() { this.modo = 'maybe'; return this; }
@@ -198,10 +216,12 @@ class Consulta {
     }
     let linhas = tabela.filter(casa).map(r => (nome === 'campanhas' ? verView(r) : { ...r }));
     if (nome === 'campanhas' && !view) linhas = linhas.map(r => { const x = { ...r }; SWILE.forEach(k => delete x[k]); delete x.swile_visivel; return x; });
-    if (this.ordem) {
-      const [c, asc] = this.ordem;
-      linhas.sort((a, b) => String(a[c] ?? '').localeCompare(String(b[c] ?? ''), 'pt-BR') * (asc ? 1 : -1));
+    if (this.ordem.length) {
+      const cmp = (x, y) => (typeof x === 'number' && typeof y === 'number' ? x - y : String(x ?? '').localeCompare(String(y ?? ''), 'pt-BR'));
+      linhas.sort((a, b) => { for (const [c, asc] of this.ordem) { const r = cmp(a[c], b[c]); if (r) return asc ? r : -r; } return 0; });
     }
+    // Como o PostgREST do Supabase: no máximo 1.000 linhas por consulta.
+    linhas = this.faixa ? linhas.slice(this.faixa[0], this.faixa[1] + 1) : linhas.slice(0, 1000);
     return this.fim(linhas);
   }
 

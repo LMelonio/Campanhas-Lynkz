@@ -9,6 +9,7 @@ import { exigir } from './erros.js';
 
 let empresasMap = new Map();
 let balconistasMap = new Map();
+let porEmpresa = null;   // índice empresa_id → balconistas (refeito quando algo muda)
 let carregado = false;
 let ultimoErro = null;   // mensagem da última carga que falhou (null = ok)
 let canal = null;
@@ -21,6 +22,25 @@ function avisar(evento) {
     try { fn(evento); } catch (e) { console.error(e); }
   }
 }
+
+// O Supabase devolve no máximo 1.000 linhas por consulta. Com os clientes do
+// Qlik passam disso: lê em blocos até acabar.
+const BLOCO = 1000;
+async function lerTudo(tabela, ordem) {
+  const todas = [];
+  for (let de = 0; ; de += BLOCO) {
+    const parte = exigir(await sb.from(tabela).select('*').order(ordem).order('id').range(de, de + BLOCO - 1)) || [];
+    todas.push(...parte);
+    if (parte.length < BLOCO) return todas;
+  }
+}
+
+// Empresa que veio do Qlik: nome, CNPJ e cidade só mudam pela sincronização.
+export const ehDoQlik = e => !!e?.codigo_cliente;
+
+// Texto usado nas buscas de empresa (Gestão e Nova campanha).
+export const textoBuscaEmpresa = (e, balcs = []) =>
+  [e.nome, e.nome_fantasia, e.cidade, e.uf, e.cnpj, e.codigo_cliente, e.vendedor, ...balcs.map(b => b.nome_completo)].filter(Boolean).join(' ');
 
 const textoOuNulo = v => { const s = String(v ?? '').trim(); return s || null; };
 const digitosOuNulo = v => soDigitos(v) || null;
@@ -56,12 +76,10 @@ export const cadastros = {
 
   async carregar() {
     try {
-      const [emp, bal] = await Promise.all([
-        sb.from('empresas').select('*').order('nome'),
-        sb.from('balconistas').select('*').order('nome_completo'),
-      ]);
-      empresasMap = new Map((exigir(emp) || []).map(e => [String(e.id), e]));
-      balconistasMap = new Map((exigir(bal) || []).map(b => [String(b.id), b]));
+      const [emp, bal] = await Promise.all([lerTudo('empresas', 'nome'), lerTudo('balconistas', 'nome_completo')]);
+      empresasMap = new Map(emp.map(e => [String(e.id), e]));
+      balconistasMap = new Map(bal.map(b => [String(b.id), b]));
+      porEmpresa = null;
     } catch (e) {
       ultimoErro = e.message;
       avisar({ tipo: 'erro' });
@@ -83,9 +101,17 @@ export const cadastros = {
   balconista(id) { return id == null ? null : balconistasMap.get(String(id)) || null; },
 
   balconistasDa(empresaId, { inativos = false } = {}) {
-    return [...balconistasMap.values()]
-      .filter(b => String(b.empresa_id) === String(empresaId) && (inativos || b.ativo))
-      .sort((a, b) => ordemPt(a.nome_completo, b.nome_completo));
+    if (!porEmpresa) {
+      porEmpresa = new Map();
+      for (const b of balconistasMap.values()) {
+        const k = String(b.empresa_id);
+        if (!porEmpresa.has(k)) porEmpresa.set(k, []);
+        porEmpresa.get(k).push(b);
+      }
+      for (const l of porEmpresa.values()) l.sort((a, b) => ordemPt(a.nome_completo, b.nome_completo));
+    }
+    const lista = porEmpresa.get(String(empresaId)) || [];
+    return inativos ? [...lista] : lista.filter(b => b.ativo);
   },
 
   async salvarEmpresa(dados, id = null) {
@@ -104,6 +130,7 @@ export const cadastros = {
       ? await sb.from('balconistas').insert(campos).select('*').single()
       : await sb.from('balconistas').update(campos).eq('id', id).select('*').single());
     balconistasMap.set(String(linha.id), linha);
+    porEmpresa = null;
     avisar({ tipo: 'balconista', id: linha.id, registro: linha });
     return linha;
   },
@@ -119,6 +146,7 @@ export const cadastros = {
       const r = await sb.from(tabela).select('*').eq('id', id).maybeSingle();
       if (r.error) return;
       if (r.data) mapa.set(String(id), r.data); else mapa.delete(String(id));
+      if (mapa === balconistasMap) porEmpresa = null;
       avisar({ tipo, id, registro: r.data, origem: 'remota' });
     };
     canal = sb.channel('cadastros-ao-vivo')
@@ -132,6 +160,7 @@ export const cadastros = {
     ouvintes.clear();
     empresasMap = new Map();
     balconistasMap = new Map();
+    porEmpresa = null;
     carregado = false;
     ultimoErro = null;
   },

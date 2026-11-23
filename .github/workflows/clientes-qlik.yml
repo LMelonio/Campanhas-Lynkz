@@ -1,0 +1,34 @@
+# Sincroniza os clientes do Qlik com as empresas do app, todo dia de seg a sáb
+# às 07:23 (São Paulo), e também quando você clica em "Run workflow".
+# Precisa dos secrets no GitHub (Settings → Secrets and variables → Actions):
+#   QLIK_API_KEY, QLIK_APP_ID, SUPABASE_SERVICE_ROLE_KEY
+# e, se os nomes dos campos forem diferentes do padrão, das variáveis QLIK_CAMPO_*.
+name: Clientes do Qlik
+on:
+  schedule:
+    - cron: '23 10 * * 1-6'
+  workflow_dispatch:
+jobs:
+  sincronizar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - run: npm install --no-audit --no-fund
+        working-directory: scripts
+      - run: npm run qlik:clientes
+        env:
+          QLIK_TENANT: terrazoo.us.qlikcloud.com
+          QLIK_API_KEY: ${{ secrets.QLIK_API_KEY }}
+          QLIK_APP_ID: ${{ secrets.QLIK_APP_ID }}
+          QLIK_CAMPO_CODIGO: ${{ vars.QLIK_CAMPO_CODIGO || 'Cód. Cliente' }}
+          QLIK_CAMPO_NOME: ${{ vars.QLIK_CAMPO_NOME || 'Razão Social Cliente' }}
+          QLIK_CAMPO_FANTASIA: ${{ vars.QLIK_CAMPO_FANTASIA || '' }}
+          QLIK_CAMPO_DOCUMENTO: ${{ vars.QLIK_CAMPO_DOCUMENTO || 'CPF CNPJ Cliente' }}
+          QLIK_CAMPO_CIDADE: ${{ vars.QLIK_CAMPO_CIDADE || 'Cidade' }}
+          QLIK_CAMPO_UF: ${{ vars.QLIK_CAMPO_UF || 'UF' }}
+          QLIK_CAMPO_VENDEDOR: ${{ vars.QLIK_CAMPO_VENDEDOR || 'Vendedor' }}
+          SUPABASE_URL: https://clfnsuzglasmguzwodxq.supabase.co
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}

@@ -115,9 +115,14 @@ function desenharLista() {
     ? html`${visiveis.map(c => cartao(c, { ativo: String(c.id) === String(s.id) }))}
       ${lista.length > visiveis.length ? html`<button type="button" class="btn btn-fantasma btn-largo" id="cp-mais">Mostrar mais (${lista.length - visiveis.length} restantes)</button>` : ''}`
     : vazio({
-        icone: filtrando ? 'busca' : 'check',
-        titulo: filtrando ? 'Nada encontrado' : 'Nada por aqui',
-        texto: filtrando ? 'Tente outro nome, código ou laboratório, ou limpe os filtros.' : 'Campanhas com este status aparecem aqui.',
+        // "Só as minhas" ligado por padrão e nenhuma campanha enviada ainda: não é busca sem resultado.
+        ...(filtros.minhas && !filtros.busca && !filtros.lab && !ctx.campanhas.todas().some(c => c.solicitante_id === ctx.perfil?.id)
+          ? { icone: 'check', titulo: 'Você ainda não enviou campanhas', texto: 'Use o botão Nova campanha para enviar a primeira.' }
+          : {
+              icone: filtrando ? 'busca' : 'check',
+              titulo: filtrando ? 'Nada encontrado' : 'Nada por aqui',
+              texto: filtrando ? 'Tente outro nome, código ou laboratório, ou limpe os filtros.' : 'Campanhas com este status aparecem aqui.',
+            }),
       }));
   if (idFoco) (caixa.querySelector(`[data-id="${CSS.escape(idFoco)}"]`) || document.getElementById(idFoco))?.focus({ preventScroll: true });
 }

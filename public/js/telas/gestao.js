@@ -13,38 +13,46 @@ import { estadoLista } from '../ui/estado.js';
 import { campoBusca, ligarBusca } from '../ui/campos.js';
 import { dialogoEmpresa, dialogoBalconista } from '../ui/cadastro-dialogos.js';
 import { CHAVE_EMPRESA_SUGERIDA } from './nova.js';
+import { ehDoQlik, textoBuscaEmpresa } from '../dados/cadastros.js';
 
-const filtros = { busca: '', inativas: false, balcInativos: false };
+const PASSO = 60;   // empresas desenhadas por vez (com o Qlik são milhares)
+const filtros = { busca: '', inativas: false, balcInativos: false, limite: PASSO };
 let s = null;   // { el, ctx, params, desligar[] }
 
 // ---------- lista ----------
 function desenharLista() {
   const { el, ctx } = s;
-  const todas = ctx.campanhas.todas();
-  const lista = ctx.cadastros.empresas({ inativas: filtros.inativas }).filter(e => !filtros.busca || contem(filtros.busca,
-    `${e.nome} ${e.cidade || ''} ${e.cnpj || ''} ${ctx.cadastros.balconistasDa(e.id).map(b => b.nome_completo).join(' ')}`));
+  // Conta campanhas por empresa uma vez só (antes era uma varredura por empresa).
+  const nCamp = new Map();
+  for (const c of ctx.campanhas.todas()) if (c.empresa_id != null) nCamp.set(String(c.empresa_id), (nCamp.get(String(c.empresa_id)) || 0) + 1);
+  const lista = ctx.cadastros.empresas({ inativas: filtros.inativas }).filter(e => !filtros.busca
+    || contem(filtros.busca, textoBuscaEmpresa(e, ctx.cadastros.balconistasDa(e.id))));
+  const visiveis = lista.slice(0, filtros.limite);
 
   const est = estadoLista({ carregado: ctx.cadastros.carregado, erro: ctx.cadastros.erro });
   if (est) { pintar($('#gs-resumo', el), ''); pintar($('#gs-itens', el), est); return; }
-  pintar($('#gs-resumo', el), `${lista.length} ${lista.length === 1 ? 'empresa' : 'empresas'}`);
+  pintar($('#gs-resumo', el), `${lista.length.toLocaleString('pt-BR')} ${lista.length === 1 ? 'empresa' : 'empresas'}`);
   pintar($('#gs-itens', el), lista.length
-    ? html`<ul class="empresas">${lista.map(e => {
+    ? html`<ul class="empresas">${visiveis.map(e => {
         const nb = ctx.cadastros.balconistasDa(e.id).length;
-        const nc = todas.filter(c => String(c.empresa_id) === String(e.id)).length;
+        const nc = nCamp.get(String(e.id)) || 0;
+        const local = [e.cidade, e.uf].filter(Boolean).join(' / ');
         return html`<li><a class="empresa-item" href="#/gestao/empresas/${e.id}">
           <span class="empresa-icone" aria-hidden="true">${icone('gestao')}</span>
           <span class="empresa-texto">
             <strong>${e.nome}${e.ativo ? '' : html` ${seloNeutro('Desativada')}`}</strong>
-            <small>${[e.cidade, e.cnpj ? maskCNPJ(e.cnpj) : ''].filter(Boolean).join(' · ') || 'Sem cidade e CNPJ'}</small>
+            ${e.nome_fantasia && e.nome_fantasia !== e.nome ? html`<small>${e.nome_fantasia}</small>` : ''}
+            <small>${[e.codigo_cliente ? `Cód. ${e.codigo_cliente}` : '', local, e.cnpj ? maskCNPJ(e.cnpj) : ''].filter(Boolean).join(' · ') || 'Sem cidade e CNPJ'}</small>
             <small>${nb} ${nb === 1 ? 'balconista' : 'balconistas'} · ${nc} ${nc === 1 ? 'campanha' : 'campanhas'}</small>
           </span>
           ${icone('seta')}
         </a></li>`;
-      })}</ul>`
+      })}</ul>
+      ${lista.length > visiveis.length ? html`<button type="button" class="btn btn-fantasma btn-largo" id="gs-mais">Mostrar mais (${(lista.length - visiveis.length).toLocaleString('pt-BR')} restantes)</button>` : ''}`
     : vazio({
         icone: 'gestao',
         titulo: filtros.busca ? 'Nenhuma empresa encontrada' : 'Nenhuma empresa cadastrada',
-        texto: filtros.busca ? 'A busca também procura pelo nome dos balconistas.' : 'Cadastre a primeira para usá-la nas campanhas.',
+        texto: filtros.busca ? 'A busca procura nome, nome fantasia, código do cliente, cidade, CNPJ, vendedor e balconistas.' : 'Cadastre a primeira para usá-la nas campanhas.',
       }));
 }
 
@@ -60,7 +68,7 @@ function montarLista() {
       <button type="button" class="btn btn-primario" id="gs-nova">${icone('mais')} Cadastrar empresa</button>
     </div>
     <div class="ferramentas ferramentas-linha-larga">
-      ${campoBusca({ id: 'gs-busca', rotulo: 'Buscar empresas', valor: filtros.busca, placeholder: 'Empresa, cidade, CNPJ ou balconista' })}
+      ${campoBusca({ id: 'gs-busca', rotulo: 'Buscar empresas', valor: filtros.busca, placeholder: 'Nome, código, cidade, CNPJ ou balconista' })}
       <label class="interruptor sem-caixa" for="gs-inativas">
         <input type="checkbox" role="switch" id="gs-inativas"${filtros.inativas ? html` checked` : ''}>
         <span class="interruptor-trilho" aria-hidden="true"></span>
@@ -70,10 +78,11 @@ function montarLista() {
     <p class="lista-resumo" id="gs-resumo" role="status"></p>
     <div id="gs-itens"></div>`);
 
-  const buscar = debounce(v => { filtros.busca = v; desenharLista(); }, 200);
+  const buscar = debounce(v => { filtros.busca = v; filtros.limite = PASSO; desenharLista(); }, 200);
   s.desligar.push(
     ao(el, 'input', '#gs-busca', (e, i) => buscar(i.value)),
-    ao(el, 'change', '#gs-inativas', (e, cb) => { filtros.inativas = cb.checked; desenharLista(); }),
+    ao(el, 'change', '#gs-inativas', (e, cb) => { filtros.inativas = cb.checked; filtros.limite = PASSO; desenharLista(); }),
+    ao(el, 'click', '#gs-mais', () => { filtros.limite += PASSO * 5; desenharLista(); }),
     ao(el, 'click', '#gs-nova', async () => {
       const e = await dialogoEmpresa();
       if (e) { ctx.toast(`Empresa ${e.nome} cadastrada.`, { tom: 'sucesso' }); ctx.navegar(`#/gestao/empresas/${e.id}`); }
@@ -107,7 +116,7 @@ function desenharFicha() {
     <header class="det-cabeca">
       <div class="det-linha"><span class="det-empresa">${icone('gestao')}Empresa</span>${e.ativo ? '' : seloNeutro('Desativada')}</div>
       <h2 class="det-titulo">${e.nome}</h2>
-      <p class="det-sub">${[e.cidade, e.cnpj ? maskCNPJ(e.cnpj) : ''].filter(Boolean).join(' · ') || 'Sem cidade e CNPJ'}</p>
+      <p class="det-sub">${[e.nome_fantasia && e.nome_fantasia !== e.nome ? e.nome_fantasia : '', [e.cidade, e.uf].filter(Boolean).join(' / '), e.cnpj ? maskCNPJ(e.cnpj) : ''].filter(Boolean).join(' · ') || 'Sem cidade e CNPJ'}</p>
     </header>
 
     <dl class="numeros numeros-3">
@@ -124,12 +133,16 @@ function desenharFicha() {
             <button type="button" class="btn ${e.ativo ? 'btn-perigo' : 'btn-fantasma'} btn-pequeno" id="fx-ativo">${e.ativo ? 'Desativar' : 'Reativar'}</button>
           </span>
         </h3>
+        ${ehDoQlik(e) ? html`<p class="painel-corpo nota">${icone('info')}<span>Nome, CNPJ e cidade vêm do Qlik${e.sincronizado_em ? ` (atualizado em ${dataBR(e.sincronizado_em)})` : ''}. Aqui você edita telefone e observações.</span></p>` : ''}
         <dl class="linhas">
+          ${e.codigo_cliente ? html`<div><dt>Código do cliente</dt><dd>${e.codigo_cliente}</dd></div>` : ''}
+          ${e.nome_fantasia ? html`<div><dt>Nome fantasia</dt><dd>${e.nome_fantasia}</dd></div>` : ''}
           <div><dt>CNPJ</dt><dd>${e.cnpj ? maskCNPJ(e.cnpj) : '—'}</dd></div>
-          <div><dt>Cidade</dt><dd>${e.cidade || '—'}</dd></div>
+          <div><dt>Cidade</dt><dd>${[e.cidade, e.uf].filter(Boolean).join(' / ') || '—'}</dd></div>
+          ${e.vendedor ? html`<div><dt>Vendedor</dt><dd>${e.vendedor}</dd></div>` : ''}
           <div><dt>Telefone</dt><dd>${e.telefone ? maskTelefone(e.telefone) : '—'}</dd></div>
           ${e.observacoes ? html`<div class="empilhada"><dt>Observações</dt><dd>${e.observacoes}</dd></div>` : ''}
-          <div><dt>Cadastrada em</dt><dd>${dataBR(e.criado_em)}</dd></div>
+          <div><dt>Cadastrada em</dt><dd>${dataBR(e.criado_em)}${e.origem === 'planilha' ? ' (planilha antiga)' : ''}</dd></div>
           ${e.atualizado_em ? html`<div><dt>Última alteração</dt><dd>${dataBR(e.atualizado_em)}</dd></div>` : ''}
         </dl>
       </section>
