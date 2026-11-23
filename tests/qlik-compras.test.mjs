@@ -32,7 +32,7 @@ function qlikFalso({ campoInexistente = null, medidaComErro = false } = {}) {
         const d = defs.get(m.handle);
         const nDims = d.qDimensions.length;
         const info = d.qDimensions.map(x => (x.qDef.qFieldDefs[0] === campoInexistente ? { qError: { qErrorCode: 7 } } : {}));
-        const linhas = nDims === 3 ? NOTAS.length : nDims === 1 ? 1 : 0;
+        const linhas = nDims === 2 ? NOTAS.length : nDims === 1 ? 1 : 0;
         return responder({ qLayout: { qHyperCube: {
           qSize: { qcx: nDims + 1, qcy: linhas }, qDimensionInfo: info,
           qMeasureInfo: [medidaComErro ? { qError: { qErrorCode: 1 } } : {}],
@@ -42,8 +42,8 @@ function qlikFalso({ campoInexistente = null, medidaComErro = false } = {}) {
       if (m.method === 'GetHyperCubeData') {
         const nDims = defs.get(m.handle).qDimensions.length;
         const p = m.params.qPages[0];
-        const matriz = nDims === 3
-          ? NOTAS.slice(p.qTop, p.qTop + p.qHeight).map(([n, s, d, v]) => [{ qText: n }, { qText: s }, { qNum: d }, { qNum: v }])
+        const matriz = nDims === 2
+          ? NOTAS.slice(p.qTop, p.qTop + p.qHeight).map(([n, s, d, v]) => [{ qText: n }, { qText: s }, { qNum: v }, { qNum: d }])
           : [[{ qText: 'OURO FINO SAUDE ANIMAL' }, { qNum: 1600.49 }]];
         return responder({ qDataPages: [{ qMatrix: matriz }] });
       }
@@ -66,10 +66,19 @@ test('filtro do Qlik: cliente, laboratório, período e filtros fixos', () => {
   const set = montarConjunto(PEDIDO);
   assert.match(set, /\[Cód\. Cliente\]=\{'4821'\}/);
   assert.match(set, /\[Nome Fantasia Fornecedor\]=\{"\*Ouro Fino\*"\}/);
-  assert.match(set, new RegExp(`\\[Data Emissão\\]=\\{">=${serialQlik('2026-10-01')}<=${serialQlik('2026-10-31')}"\\}`));
+  const [a, b] = [serialQlik('2026-10-01'), serialQlik('2026-10-31')];
+  assert.ok(set.includes(`[Data Venda]={"=Num([Data Venda])>=${a} and Num([Data Venda])<=${b}"}`), set);
   assert.match(set, /\[Unidade de Negócio\]=\{'ATACADO'\}/);
   assert.match(set, /\[Intercompany Geral\]=\{'REGULAR'\}/);
-  assert.match(expressao(CONFIG_PADRAO, set), /^Sum\(\{<.*>\} \[Receita \(- dev\.\)\]\)$/);
+  assert.match(expressao(CONFIG_PADRAO, set), /^Sum\(\{<.*>\} \[Valor Faturamento Bruto s\/ Devolução Vendas\]\)$/);
+  assert.ok(!set.includes('Tipo_Periodo_Mes_vendas'), 'sem filtro de período-tipo (não muda o total)');
+});
+
+test('laboratório que no Qlik é marca usa o campo de marca', () => {
+  const set = montarConjunto({ ...PEDIDO, padraoFornecedor: 'marca:CATLIFE' });
+  assert.match(set, /\[Marca do Produto\]=\{"CATLIFE"\}/);
+  assert.ok(!set.includes('Nome Fantasia Fornecedor'));
+  assert.match(montarConjunto({ ...PEDIDO, padraoFornecedor: 'OURO FINO*' }), /\[Nome Fantasia Fornecedor\]=\{"OURO FINO\*"\}/);
 });
 
 test('texto vindo do usuário não vira expressão do Qlik', () => {
@@ -91,6 +100,17 @@ test('consulta: total, notas em ordem de data e fornecedores encontrados', async
   const expr = enviados.find(e => e.method === 'CreateSessionObject').params.qProp.qHyperCubeDef.qMeasures[0].qDef.qDef;
   assert.match(expr, /4821/);
   engine.fechar();
+});
+
+test('notas: a data é medida (Min), nunca dimensão — senão a mesma nota se repete em vários dias', async () => {
+  // Erro visto no Qlik real: com filtro de data no conjunto, a medida ignora a data da linha.
+  const { soquete, enviados } = qlikFalso();
+  await consultarCompras(abrirEngine(soquete), PEDIDO);
+  const cubos = enviados.filter(e => e.method === 'CreateSessionObject').map(e => e.params.qProp.qHyperCubeDef);
+  const notas = cubos.find(c => c.qDimensions.length === 2);
+  assert.ok(notas, 'cubo das notas tem só nota e série como dimensões');
+  assert.ok(!notas.qDimensions.some(d => d.qDef.qFieldDefs[0] === 'Data Venda'), 'data fora das dimensões');
+  assert.match(notas.qMeasures[1].qDef.qDef, /^Min\(\{<.*>\} \[Data Venda\]\)$/);
 });
 
 test('campo que não existe no Qlik dá mensagem que diz o que fazer', async () => {

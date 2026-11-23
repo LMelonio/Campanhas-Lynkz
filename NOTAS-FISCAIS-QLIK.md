@@ -20,24 +20,31 @@ Nova campanha ──POST /api/qlik/compras (token do login)──▶ Worker do C
 |---|---|
 | Cliente | `Cód. Cliente` = código do cliente da empresa (vem da sincronização de clientes) |
 | Laboratório | `Nome Fantasia Fornecedor`, comparado pelo padrão do laboratório (abaixo) |
-| Período | `Data Emissão`, de início a fim da campanha |
+| Período | `Data Venda`, de início a fim da campanha (filtro por expressão `Num(...)`: a busca numérica não funciona neste app) |
 | Filtros fixos | `Unidade de Negócio = ATACADO` e `Intercompany Geral = REGULAR` |
-| Valor | `Sum({SET} [Receita (- dev.)])` — o total inclui devoluções |
-| Notas | `Núm. Nota Fiscal Vendas`, `Série Nota Fiscal Vendas`, `Data Emissão` |
+| Valor | `Sum({SET} [Valor Faturamento Bruto s/ Devolução Vendas])` — é o campo da medida `v_receita_sem_devolucao`; o total inclui devoluções |
+| Notas | `Núm. Nota Fiscal Vendas` e `Série Nota Fiscal Vendas`; a data da nota vem como `Min(Data Venda)` (nunca como dimensão: repetiria a nota em vários dias) |
 
 O quadro mostra também **qual fornecedor do Qlik** o padrão do laboratório pegou, para o usuário conferir.
 
 ### Laboratório do app × fornecedor do Qlik
 
-O app compara pelo **primeiro nome** do laboratório, sem acento: "Ouro Fino" → `*Ouro*`,
-"Biogénesis Bagó Pet" → `*Biog*`. O Qlik ignora maiúsculas e aceita `*`. Quando o nome no Qlik for muito
-diferente, diga o padrão em `public/config.js`:
+O app compara pelo **primeiro nome** do laboratório, sem acento (`*Avert*`, `*Boehringer*`…). O Qlik
+ignora maiúsculas e aceita `*`. Onde isso pega fornecedor errado, `public/config.js` tem o mapa
+`LABORATORIO_QLIK`, já preenchido com o que foi conferido em 23/11/2026:
 
-```js
-LABORATORIO_QLIK: { "Organnact Pet": "*Organnact*", "Biogénesis Bagó Pet": "*Biog*" },
-```
+| Laboratório do app | Padrão | Fornecedores do Qlik que pega |
+|---|---|---|
+| Ouro Fino | `OURO FINO*` | OURO FINO, OURO FINO AGRO, … PET LTDA, S.A. (sem pegar "COURO") |
+| Biogénesis Bagó Pet | `BIOGEN*` | BIOGENES BAGO PET, BIOGENESIS |
+| Pet Delícia | `PET DELICIA*` | PET DELICIA |
+| Pet Nutrition | `PET NUTRITION*` | PET NUTRITION IND.E COM.DE ALIMEN (sem HILLS PET NUTRITION) |
 
-"Recurso próprio" não consulta nada (não é fornecedor).
+**Pendente:** BePet, Bionatural, Catlife, Coolors, Pet Next e Nova D+ não existem como fornecedor no Qlik.
+Existem só como valores do campo `Marca do Produto`, mas sem produto nem venda ligados (zero em todo o
+histórico). Para esses a consulta volta "nenhuma nota" até alguém descobrir com que nome eles vendem
+(talvez dentro de outro fornecedor). O mapa aceita `"marca:NOME"` se um dia a marca passar a ter venda.
+"Recurso próprio" não consulta nada.
 
 ## Colocar no ar (nesta ordem)
 
@@ -59,9 +66,10 @@ LABORATORIO_QLIK: { "Organnact Pet": "*Organnact*", "Biogénesis Bagó Pet": "*B
 7. **Testar de verdade:** abra a Nova campanha com uma empresa que tem código do Qlik, escolha um
    laboratório e o mês passado. Compare o total com o relatório do Qlik.
 
-> **Importante:** os nomes de campos e a expressão do valor vêm do Painel Vendedor e **ainda não foram
-> conferidos contra o app do Qlik de vocês**. Os testes automáticos usam um Qlik simulado. O passo 4
-> existe justamente para isso: rode antes de liberar para os coordenadores.
+> **Conferido no Qlik real em 23/11/2026** (só leitura): os 7 campos existem; o filtro por `Data Venda`
+> funciona; com Boehringer em set–out/2026, um cliente com 13 notas teve **total = soma das notas
+> (R$ 8.813,71) e nenhuma nota repetida**. Não foi comparado com um relatório do Qlik feito à mão:
+> faça essa conferência uma vez (passo 7) antes de liberar para os coordenadores.
 
 ## Rodar no computador
 

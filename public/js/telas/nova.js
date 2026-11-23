@@ -330,7 +330,7 @@ function desenharResultadoCompras() {
           <span class="valor">${moeda(n.valor)}</span>
         </label></li>`)}</ul>
         <p class="campo-dica" id="notas-soma" aria-live="polite"></p>
-      </fieldset>` : html`<p class="nota">${icone('info')}<span>Nenhuma nota fiscal encontrada nesse período.</span></p>`}`);
+      </fieldset>` : html`<p class="nota">${icone('info')}<span>Nenhuma nota fiscal encontrada nesse período. Se você esperava compras, confira se o laboratório está mapeado em LABORATORIO_QLIK (public/config.js).</span></p>`}`);
   atualizarSomaNotas();
 }
 

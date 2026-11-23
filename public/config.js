@@ -31,6 +31,18 @@ window.CONFIG = {
 
   // Listas dos menus suspensos. Edite à vontade.
   LABORATORIOS: ["Recurso próprio","Avert","BePet","Biogénesis Bagó Pet","Bionatural","Boehringer","Catlife","Centagro","Coolors","Farmina","Kelco","Nova D+","Nutripharme","OmniLab","Organnact Pet","Ouro Fino","Pet Delícia","Pet Next","Pet Nutrition","Premier","Special Dog","Vansil"],
+  // Como cada laboratório aparece no Qlik (conferido com npm run qlik:descobrir em 23/11/2026).
+  // Texto = padrão do "Nome Fantasia Fornecedor" (* = qualquer trecho, sem diferenciar maiúsculas).
+  // Quem não está aqui usa *primeira palavra*. Também aceita "marca:XXX" (campo Marca do Produto).
+  // BePet, Bionatural, Catlife, Coolors, Pet Next e Nova D+ NÃO têm fornecedor com esse nome no Qlik
+  // (existem só como marca, sem vendas ligadas): para eles a consulta volta vazia até alguém dizer
+  // com que nome vendem no Qlik.
+  LABORATORIO_QLIK: {
+    "Biogénesis Bagó Pet": "BIOGEN*",
+    "Ouro Fino": "OURO FINO*",
+    "Pet Delícia": "PET DELICIA*",
+    "Pet Nutrition": "PET NUTRITION*",
+  },
   TIPOS: ["Campanha de prescrição","Bonificação (leve X pague Y)","Campanha de balconista","Rebate por meta","Ponto extra / exposição","Encarte / tabloide","Combo de produtos","Ação de sell-out","Patrocínio de eventos"],
   METAS: ["Mensal","Trimestral","Anual","Do mês da campanha"],
   // "Swile" é usado como string literal numa CHECK constraint do banco

@@ -15,7 +15,8 @@ export const CONFIG_PADRAO = {
   campos: {
     cliente:    'Cód. Cliente',
     fornecedor: 'Nome Fantasia Fornecedor',
-    data:       'Data Emissão',
+    marca:      'Marca do Produto',   // laboratórios que no Qlik são marca, não fornecedor ("marca:CATLIFE")
+    data:       'Data Venda',         // conferido no app: tem vendas até o dia; 'Data Emissão' não serve
     nota:       'Núm. Nota Fiscal Vendas',
     serie:      'Série Nota Fiscal Vendas',
   },
@@ -24,8 +25,9 @@ export const CONFIG_PADRAO = {
     { campo: 'Unidade de Negócio', valor: 'ATACADO' },
     { campo: 'Intercompany Geral', valor: 'REGULAR' },
   ],
-  // {SET} vira o filtro (cliente, fornecedor, período e filtros fixos).
-  expressaoValor: 'Sum({SET} [Receita (- dev.)])',
+  // {SET} vira o filtro (cliente, laboratório, período e filtros fixos). É o mesmo campo da medida
+  // v_receita_sem_devolucao do app (a medida em si não aceita filtro extra).
+  expressaoValor: 'Sum({SET} [Valor Faturamento Bruto s/ Devolução Vendas])',
 };
 
 export class ErroQlik extends Error {
@@ -52,13 +54,23 @@ export function serialQlik(iso) {
 }
 export const dataDoSerial = n => new Date(Math.round((n - 25569) * 86400000)).toISOString().slice(0, 10);
 
-// Modificador de conjunto: <[Cód. Cliente]={'123'}, [Fornecedor]={"*OURO*"}, [Data]={">=46000<=46030"}, …>
+// O laboratório do app pode ser fornecedor (padrão) ou marca do produto ("marca:CATLIFE").
+export function alvoLaboratorio(config, padrao) {
+  const seguro = valorSeguro(padrao, 'Laboratório');
+  const m = /^marca:\s*(.+)$/i.exec(seguro);
+  return m ? { campo: config.campos.marca, padrao: m[1].trim() } : { campo: config.campos.fornecedor, padrao: seguro };
+}
+
+// Modificador de conjunto: <[Cód. Cliente]={'123'}, [Fornecedor]={"OURO*"}, [Data Venda]={"=Num(..)>=A and Num(..)<=B"}, …>
+// A data usa expressão: a busca numérica (">=46000<=46030") não casa neste app do Qlik.
 export function montarConjunto({ config = CONFIG_PADRAO, codigoCliente, padraoFornecedor, inicio, fim }) {
   const c = config.campos;
+  const alvo = alvoLaboratorio(config, padraoFornecedor);
+  const dt = `Num(${nomeCampo(c.data)})`;
   const partes = [
     `${nomeCampo(c.cliente)}={'${valorSeguro(codigoCliente, 'Código do cliente')}'}`,
-    `${nomeCampo(c.fornecedor)}={"${valorSeguro(padraoFornecedor, 'Laboratório')}"}`,
-    `${nomeCampo(c.data)}={">=${serialQlik(inicio)}<=${serialQlik(fim)}"}`,
+    `${nomeCampo(alvo.campo)}={"${alvo.padrao}"}`,
+    `${nomeCampo(c.data)}={"=${dt}>=${serialQlik(inicio)} and ${dt}<=${serialQlik(fim)}"}`,
     ...(config.filtros || []).map(f => `${nomeCampo(f.campo)}={'${valorSeguro(f.valor, 'Filtro')}'}`),
   ];
   return `<${partes.join(', ')}>`;
@@ -141,26 +153,28 @@ export async function consultarCompras(engine, { appId, config = CONFIG_PADRAO, 
   const t = await criarCubo(engine, hDoc, { qDimensions: [], qMeasures: [medida], qInitialDataFetch: [] }, 'valor');
   const total = arredonda(t.cubo.qGrandTotalRow?.[0]?.qNum);
 
-  // 2) notas
+  // 2) notas. A data NÃO pode ser dimensão: o filtro de data do conjunto faz a medida ignorar a data
+  // da linha, e a mesma nota apareceria em vários dias com o valor cheio (erro visto no Qlik real).
+  // Por isso a data vem como medida: a menor data da nota dentro do período.
+  const medidaData = { qDef: { qDef: `Min({${conjunto}} ${nomeCampo(c.data)})` } };
   const n = await criarCubo(engine, hDoc, {
     qDimensions: [
       { qDef: { qFieldDefs: [c.nota] }, qNullSuppression: true },
       { qDef: { qFieldDefs: [c.serie] }, qNullSuppression: false },
-      { qDef: { qFieldDefs: [c.data] }, qNullSuppression: false },
     ],
-    qMeasures: [medida], qSuppressZero: true, qInitialDataFetch: [],
+    qMeasures: [medida, medidaData], qSuppressZero: true, qInitialDataFetch: [],
   }, 'nota fiscal');
   const linhas = await lerLinhas(engine, n.h, n.cubo.qSize.qcy, 4);
   const notas = linhas.map(l => ({
     numero: limpa(l[0].qText), serie: limpa(l[1].qText),
-    data: Number.isFinite(l[2].qNum) ? dataDoSerial(l[2].qNum) : null,
-    valor: arredonda(l[3].qNum),
+    valor: arredonda(l[2].qNum),
+    data: Number.isFinite(l[3].qNum) ? dataDoSerial(l[3].qNum) : null,
   })).filter(x => x.numero)
      .sort((a, b) => String(a.data).localeCompare(String(b.data)) || a.numero.localeCompare(b.numero, 'pt-BR', { numeric: true }));
 
   // 3) quais fornecedores o padrão do laboratório pegou (o usuário confere)
   const f = await criarCubo(engine, hDoc, {
-    qDimensions: [{ qDef: { qFieldDefs: [c.fornecedor] }, qNullSuppression: true }],
+    qDimensions: [{ qDef: { qFieldDefs: [alvoLaboratorio(config, padraoFornecedor).campo] }, qNullSuppression: true }],
     qMeasures: [medida], qSuppressZero: true, qInitialDataFetch: [],
   }, 'fornecedor');
   const fornecedores = (await lerLinhas(engine, f.h, f.cubo.qSize.qcy, 2)).map(l => limpa(l[0].qText)).filter(Boolean).sort();
