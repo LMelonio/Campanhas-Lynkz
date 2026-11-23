@@ -25,10 +25,10 @@ jobs:
           QLIK_APP_ID: ${{ secrets.QLIK_APP_ID }}
           QLIK_CAMPO_CODIGO: ${{ vars.QLIK_CAMPO_CODIGO || 'Cód. Cliente' }}
           QLIK_CAMPO_NOME: ${{ vars.QLIK_CAMPO_NOME || 'Razão Social Cliente' }}
-          QLIK_CAMPO_FANTASIA: ${{ vars.QLIK_CAMPO_FANTASIA || '' }}
+          QLIK_CAMPO_FANTASIA: ${{ vars.QLIK_CAMPO_FANTASIA || 'Nome Cliente' }}
           QLIK_CAMPO_DOCUMENTO: ${{ vars.QLIK_CAMPO_DOCUMENTO || 'CPF CNPJ Cliente' }}
-          QLIK_CAMPO_CIDADE: ${{ vars.QLIK_CAMPO_CIDADE || 'Cidade' }}
-          QLIK_CAMPO_UF: ${{ vars.QLIK_CAMPO_UF || 'UF' }}
-          QLIK_CAMPO_VENDEDOR: ${{ vars.QLIK_CAMPO_VENDEDOR || 'Vendedor' }}
+          QLIK_CAMPO_CIDADE: ${{ vars.QLIK_CAMPO_CIDADE || 'Município Cliente' }}
+          QLIK_CAMPO_UF: ${{ vars.QLIK_CAMPO_UF || 'UF Cliente' }}
+          QLIK_CAMPO_VENDEDOR: ${{ vars.QLIK_CAMPO_VENDEDOR || 'Vendedor B2B' }}
           SUPABASE_URL: https://clfnsuzglasmguzwodxq.supabase.co
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}

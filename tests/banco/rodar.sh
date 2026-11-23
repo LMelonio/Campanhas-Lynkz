@@ -21,6 +21,9 @@ rodar -d campanhas_teste_novo -f testes.sql 2>&1 | sed -n 's/^psql.*NOTICE:  \(o
 rodar -d campanhas_teste_novo -f $SQL/migracoes/07-validacao.sql -t -A -F' ' | tee /tmp/val7a.txt
 if grep -q '^[0-9]* f ' /tmp/val7a.txt; then echo "FALHOU: validação 07 com linha false"; exit 1; fi
 rodar -d campanhas_teste_novo -f testes-07.sql 2>&1 | sed -n 's/^psql.*NOTICE:  \(ok.*\)/\1/p; /PASSARAM/p'
+rodar -d campanhas_teste_novo -f $SQL/migracoes/08-validacao.sql -t -A -F' ' | tee /tmp/val8a.txt
+if grep -q '^[0-9]* f ' /tmp/val8a.txt; then echo "FALHOU: validação 08 com linha false"; exit 1; fi
+rodar -d campanhas_teste_novo -f testes-08.sql 2>&1 | sed -n 's/^psql.*NOTICE:  \(ok.*\)/\1/p; /PASSARAM/p'
 
 echo "== 2. Migração v1.3.1 → v2 (04 e 05 sobre o schema antigo)"
 banco campanhas_teste_mig
@@ -31,6 +34,7 @@ rodar -d campanhas_teste_mig -c "insert into campanhas (cliente, laboratorio, ca
 rodar -d campanhas_teste_mig -f $SQL/migracoes/04-gestao-empresas-balconistas.sql >/dev/null 2>&1
 rodar -d campanhas_teste_mig -f $SQL/migracoes/05-data-decisao-fuso.sql >/dev/null 2>&1
 rodar -d campanhas_teste_mig -f $SQL/migracoes/07-clientes-qlik-e-historico.sql >/dev/null
+rodar -d campanhas_teste_mig -f $SQL/migracoes/08-notas-fiscais.sql >/dev/null
 rodar -d campanhas_teste_mig -f $SQL/migracoes/06-validacao-v2.sql -t -A -F' ' | tee /tmp/val2.txt
 # Cada linha sai como "12 f Nome do teste": o f/t é a 2ª coluna. Um "! grep" não
 # para o script com set -e (o bash ignora comandos com !), por isso o if explícito.
@@ -43,6 +47,9 @@ rodar -d campanhas_teste_mig -f testes.sql 2>&1 | sed -n 's/^psql.*NOTICE:  \(ok
 rodar -d campanhas_teste_mig -f $SQL/migracoes/07-validacao.sql -t -A -F' ' | tee /tmp/val7b.txt
 if grep -q '^[0-9]* f ' /tmp/val7b.txt; then echo "FALHOU: validação 07 com linha false"; exit 1; fi
 rodar -d campanhas_teste_mig -f testes-07.sql 2>&1 | sed -n 's/^psql.*NOTICE:  \(ok.*\)/\1/p; /PASSARAM/p'
+rodar -d campanhas_teste_mig -f $SQL/migracoes/08-validacao.sql -t -A -F' ' | tee /tmp/val8b.txt
+if grep -q '^[0-9]* f ' /tmp/val8b.txt; then echo "FALHOU: validação 08 com linha false"; exit 1; fi
+rodar -d campanhas_teste_mig -f testes-08.sql 2>&1 | sed -n 's/^psql.*NOTICE:  \(ok.*\)/\1/p; /PASSARAM/p'
 
 echo "== 2b. Migração a partir do banco de produção: v1 SEM a parte B (02) → só 04 + 05"
 banco campanhas_teste_semb
@@ -66,9 +73,14 @@ echo "== 3. Rodar as migrações de novo não quebra (idempotência)"
 rodar -d campanhas_teste_mig -f $SQL/migracoes/04-gestao-empresas-balconistas.sql >/dev/null 2>&1
 rodar -d campanhas_teste_mig -f $SQL/migracoes/05-data-decisao-fuso.sql >/dev/null 2>&1
 rodar -d campanhas_teste_mig -f $SQL/migracoes/07-clientes-qlik-e-historico.sql >/dev/null
-echo "ok  04, 05 e 07 rodam duas vezes"
+rodar -d campanhas_teste_mig -f $SQL/migracoes/08-notas-fiscais.sql >/dev/null
+echo "ok  04, 05, 07 e 08 rodam duas vezes"
 
-echo "== 4. Rollback (07, 05 e 04) volta ao formato da v1"
+echo "== 4. Rollback (08, 07, 05 e 04) volta ao formato da v1"
+rodar -d campanhas_teste_mig -f $SQL/migracoes/08-rollback.sql >/dev/null
+test "$(rodar -d campanhas_teste_mig -t -A -c "select count(*) from information_schema.tables where table_name='campanha_notas'")" = 0
+test "$(rodar -d campanhas_teste_mig -t -A -c "select count(*) > 0 from campanhas")" = t
+echo "ok  rollback da 08 tira as notas e mantém as campanhas"
 rodar -d campanhas_teste_mig -f $SQL/migracoes/07-rollback.sql >/dev/null
 test "$(rodar -d campanhas_teste_mig -t -A -c "select count(*) from information_schema.columns where table_name='empresas' and column_name in ('codigo_cliente','origem')")" = 0
 test "$(rodar -d campanhas_teste_mig -t -A -c "select count(*) > 0 from campanhas")" = t

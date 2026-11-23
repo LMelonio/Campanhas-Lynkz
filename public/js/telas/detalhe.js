@@ -29,6 +29,38 @@ function painel(titulo, conteudo, extra = '') {
   return html`<section class="painel"><h3 class="painel-titulo">${titulo}${extra}</h3><dl class="linhas">${conteudo}</dl></section>`;
 }
 
+// Notas fiscais marcadas na campanha (carregadas sob demanda, uma vez por campanha).
+const notasCache = new Map();
+
+function painelNotas(c) {
+  if (!c.compras_consultado_em) return '';
+  const notas = notasCache.get(String(c.id));
+  const total = notas ? notas.reduce((t, n) => t + +n.valor, 0) : 0;
+  return html`<section class="painel" id="det-notas"><h3 class="painel-titulo">Compras e notas fiscais</h3>
+    <dl class="linhas">
+      ${linha('Comprou no período', +c.compras_periodo || +c.compras_periodo === 0 ? `R$ ${brl(c.compras_periodo)}` : '')}
+      ${linha('Consultado no Qlik em', dataBR(c.compras_consultado_em))}
+    </dl>
+    ${!notas ? html`<p class="painel-corpo campo-dica">Carregando as notas…</p>`
+      : notas.length ? html`<ul class="notas-lista painel-corpo">${notas.map(n => html`<li class="nota-linha">
+          <span><strong>NF ${n.numero}${n.serie ? ` · série ${n.serie}` : ''}</strong> <small>${n.data_emissao ? dataBR(n.data_emissao) : ''}</small></span>
+          <span class="valor">R$ ${brl(n.valor)}</span></li>`)}
+          <li class="nota-linha nota-total"><span>${notas.length} ${notas.length === 1 ? 'nota' : 'notas'} na campanha</span><span class="valor">R$ ${brl(total)}</span></li></ul>`
+      : html`<p class="painel-corpo campo-dica">Nenhuma nota foi marcada nesta campanha.</p>`}
+  </section>`;
+}
+
+async function carregarNotas(ctx, c) {
+  if (!c.compras_consultado_em || notasCache.has(String(c.id))) return;
+  try {
+    notasCache.set(String(c.id), await ctx.campanhas.notasDa(c.id));
+  } catch (e) {
+    console.warn('Notas fiscais não carregaram', e);
+    return;
+  }
+  if (atual && String(atual.id) === String(c.id)) desenhar();
+}
+
 const pctTexto = n => (+n).toLocaleString('pt-BR', { maximumFractionDigits: 3 }) + '%';
 
 function painelRecebedor(c, ctx) {
@@ -115,6 +147,8 @@ function corpo(c, ctx) {
 
       ${painelRecebedor(c, ctx)}
 
+      ${painelNotas(c)}
+
       ${painel('Solicitação', html`
         ${linha('Solicitante', c.solicitante_nome)}
         ${linha(c.importada ? 'Registrada em' : 'Enviada em', dataBR(c.criado_em))}
@@ -178,6 +212,7 @@ function desenhar() {
   pintar(el, html`${corpo(c, ctx)}${b}`);
   window.scrollTo(0, rolagem);
   if (seletorFoco) ($(seletorFoco, el) || $('[data-aprovar], [data-desfazer]', el))?.focus({ preventScroll: true });
+  carregarNotas(ctx, c);
 }
 
 // Próxima pendente (a mais antiga, sem contar a que acabou de sair da fila).

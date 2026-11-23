@@ -58,6 +58,7 @@ function semente() {
     forma_pagamento: 'Desconto em nota', data_inicio: dia(-1), data_fim: dia(-30), tipo_meta: 'Mensal', meta: 0,
     rebate_pct: 0, rebate_teto: 0, rebate_base: null, rebate_gatilho: null, observacoes: null, status: 'Pendente',
     aprovador_nome: null, data_decisao: null, motivo: null, empresa_id: null, balconista_id: null, importada: false,
+    compras_periodo: null, compras_consultado_em: null,
     swile_nome_completo: null, swile_cpf: null, swile_data_nascimento: null, swile_email: null, swile_telefone: null,
     solicitante_nome: USUARIOS[o.solicitante_id]?.nome ?? null, ...o,
   });
@@ -73,10 +74,11 @@ function semente() {
       status: 'Aprovada', aprovador_nome: 'Charles Machado', data_decisao: '2026-09-30', solicitante_id: null, solicitante_nome: 'Alexandre Froes', importada: true, criado_em: '2026-09-30T15:00:00.000Z' }),
     camp({ cliente: 'Cliente da v1 Ltda', laboratorio: 'Boehringer', campanha: 'Campanha antiga sem cadastro', investimento_lynkz: 400, meta: 10000, status: 'Aprovada', aprovador_nome: 'Ana Aprovadora', data_decisao: dia(40), solicitante_id: 'u-bia', criado_em: agora(42) }),
   ];
-  return { empresas, balconistas, campanhas, seq: { empresas: 100 + muitas, balconistas: 3, campanhas: n } };
+  return { empresas, balconistas, campanhas, campanha_notas: [], seq: { empresas: 100 + muitas, balconistas: 3, campanhas: n, campanha_notas: 0 } };
 }
 
 let db = (() => { try { return JSON.parse(sessionStorage.getItem(CHAVE)) || semente(); } catch { return semente(); } })();
+db.campanha_notas ||= []; db.seq.campanha_notas ||= 0;
 const gravarDb = () => { try { sessionStorage.setItem(CHAVE, JSON.stringify(db)); } catch { /* cheio */ } };
 gravarDb();
 
@@ -127,10 +129,20 @@ function inserir(tabela, d) {
     }
     const empresa = db.empresas.find(e => e.id == d.empresa_id);
     const id = ++db.seq.campanhas;
-    const r = { ...d, id, importada: false, codigo: 'C2611' + String(1000 + id), criado_em: new Date().toISOString(), cliente: empresa ? empresa.nome : d.cliente,
+    const r = { compras_periodo: null, compras_consultado_em: null, ...d, id, importada: false, codigo: 'C2611' + String(1000 + id), criado_em: new Date().toISOString(), cliente: empresa ? empresa.nome : d.cliente,
       empresa_id: d.empresa_id == null ? null : +d.empresa_id, balconista_id: d.balconista_id == null ? null : +d.balconista_id,
       solicitante_nome: u.nome, aprovador_nome: null, data_decisao: null, motivo: null };
     db.campanhas.push(r); return { row: r };
+  }
+  if (tabela === 'campanha_notas') {
+    const c = db.campanhas.find(x => x.id == d.campanha_id);
+    if (!c || c.solicitante_id !== u.id || c.status !== 'Pendente') return { error: erro('new row violates row-level security policy for table "campanha_notas"', '42501') };
+    if (!String(d.numero || '').trim()) return { error: erro('violates check constraint "campanha_notas_numero_valido"', '23514') };
+    if (db.campanha_notas.some(n => n.campanha_id == d.campanha_id && n.numero === d.numero && (n.serie || '') === (d.serie || ''))) {
+      return { error: erro('duplicate key value violates unique constraint "campanha_notas_unica"', '23505') };
+    }
+    const r = { serie: '', data_emissao: null, valor: 0, ...d, campanha_id: +d.campanha_id, id: ++db.seq.campanha_notas, criado_em: new Date().toISOString() };
+    db.campanha_notas.push(r); return { row: r };
   }
   return { error: erro('permission denied', '42501') };
 }
@@ -203,10 +215,18 @@ class Consulta {
     const casa = r => this.filtros.every(([c, v]) => String(r[c]) === String(v));
 
     if (this.op === 'insert') {
-      const res = inserir(nome, this.dados);
-      if (res.error) return { data: null, error: res.error };
-      gravarDb(); emitir(nome, 'INSERT', res.row);
-      return this.fim(this.retornar ? [res.row] : []);
+      const lote = Array.isArray(this.dados) ? this.dados : [this.dados];
+      const feitas = [];
+      for (const dado of lote) {
+        const res = inserir(nome, dado);
+        if (res.error) {   // tudo ou nada, como um insert de várias linhas no Postgres
+          feitas.forEach(r => db[nome].splice(db[nome].indexOf(r), 1));
+          return { data: null, error: res.error };
+        }
+        feitas.push(res.row);
+      }
+      gravarDb(); feitas.forEach(r => emitir(nome, 'INSERT', r));
+      return this.fim(this.retornar ? feitas : []);
     }
     if (this.op === 'update') {
       const res = atualizar(nome, tabela.filter(casa), this.dados);

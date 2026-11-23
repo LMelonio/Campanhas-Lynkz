@@ -48,6 +48,7 @@ function colunas(cad) {
     ['Data da Decisão', c => dataExcel(c.data_decisao), 'data'],
     ['Motivo da Reprova', c => c.motivo || ''],
     ['Origem', c => (c.importada ? 'Planilha antiga' : 'App')],
+    ['Comprou no período (Qlik)', c => (c.compras_consultado_em ? +c.compras_periodo : ''), 'moeda'],
     ['Observações', c => c.observacoes || ''],
     ['Balconista (cadastro)', c => balc(c)?.nome_completo || ''],
     ['Nome do Recebedor Swile', c => c.swile_nome_completo || ''],

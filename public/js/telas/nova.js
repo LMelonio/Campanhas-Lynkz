@@ -11,7 +11,7 @@
 import { html, pintar, $, $$, ao, debounce, armazenamento } from '../lib/dom.js';
 import {
   calc, banda, brl, pct, lerValor, valorCampo, soDigitos, normaliza, maskCPF, maskTelefone,
-  errosRecebedor, hojeCivil, horaBR, somaDias, periodoMes, dias, STATUS,
+  errosRecebedor, hojeCivil, horaBR, somaDias, periodoMes, dias, dataBR, STATUS,
 } from '../lib/regras.js';
 import { icone } from '../ui/icones.js';
 import { regua, FAIXAS } from '../ui/pecas.js';
@@ -19,6 +19,7 @@ import { campo, selecao, areaTexto, interruptor, ligarMascaras, aplicarErros, li
 import { combo } from '../ui/combo.js';
 import { textoBuscaEmpresa } from '../dados/cadastros.js';
 import { dialogoEmpresa } from '../ui/cadastro-dialogos.js';
+import { consultarCompras, laboratorioConsultavel } from '../dados/qlik.js';
 
 const C = window.CONFIG;
 const CHAVE_RASCUNHO = 'lynkz_rascunho_campanha_v2';
@@ -289,6 +290,85 @@ function atualizarPeriodo() {
   });
 }
 
+// ---------- compras no Qlik e notas fiscais ----------
+// O que o cliente comprou do laboratório no período, vindo do Qlik, e as
+// notas fiscais que o solicitante marca como participantes da campanha.
+const moeda = n => `R$ ${brl(n)}`;
+
+function pintarCompras(conteudo) {
+  const corpo = $('#compras-corpo', st.el);
+  if (corpo) pintar(corpo, conteudo);
+}
+
+function marcadasDe(compras) {
+  return compras ? compras.notas.filter((_, i) => compras.marcadas.has(i)) : [];
+}
+
+function atualizarSomaNotas() {
+  const compras = st?.compras;
+  const el = $('#notas-soma', st?.el);
+  if (!compras || !el) return;
+  const m = marcadasDe(compras);
+  el.textContent = m.length
+    ? `${m.length} ${m.length === 1 ? 'nota marcada' : 'notas marcadas'} · ${moeda(m.reduce((t, n) => t + n.valor, 0))}`
+    : 'Nenhuma nota marcada.';
+}
+
+function desenharResultadoCompras() {
+  const c = st.compras;
+  const forn = c.fornecedores.length ? c.fornecedores.join(', ') : 'o laboratório escolhido';
+  pintarCompras(html`
+    <p class="compras-total" role="status">${icone('info')}<span>No período de ${dataBR(c.inicio)} a ${dataBR(c.fim)}, este cliente comprou <strong class="valor">${moeda(c.total)}</strong> de ${forn}.</span></p>
+    <p class="campo-dica">Vem do Qlik. Confira se o fornecedor acima é mesmo o laboratório da campanha.</p>
+    ${c.notas.length ? html`
+      <fieldset class="campo notas-fiscais" data-campo="n-notas">
+        <legend class="campo-rotulo">Notas fiscais que participam da campanha <span class="campo-opc">(opcional)</span></legend>
+        <div class="notas-acoes"><button type="button" class="btn btn-texto" id="notas-todas">Marcar todas</button><button type="button" class="btn btn-texto" id="notas-nenhuma">Limpar</button></div>
+        <ul class="notas-lista">${c.notas.map((n, i) => html`<li><label class="pessoa">
+          <input type="checkbox" data-nota="${i}"${c.marcadas.has(i) ? html` checked` : ''}>
+          <span class="pessoa-nome"><strong>NF ${n.numero}${n.serie ? ` · série ${n.serie}` : ''}</strong><small>${n.data ? dataBR(n.data) : 'sem data'}</small></span>
+          <span class="valor">${moeda(n.valor)}</span>
+        </label></li>`)}</ul>
+        <p class="campo-dica" id="notas-soma" aria-live="polite"></p>
+      </fieldset>` : html`<p class="nota">${icone('info')}<span>Nenhuma nota fiscal encontrada nesse período.</span></p>`}`);
+  atualizarSomaNotas();
+}
+
+// Consulta de novo quando empresa, laboratório ou datas mudam. Só consulta
+// com os quatro preenchidos, e descarta a resposta de uma consulta antiga.
+async function atualizarCompras() {
+  if (!st) return;
+  const meu = st;
+  const empresa = st.ctx.cadastros.empresa(st.comboEmpresa.valor());
+  const lab = st.comboLab.valor();
+  const inicio = v('n-inicio'), fim = v('n-fim');
+
+  const aviso = texto => { st.compras = null; pintarCompras(html`<p class="campo-dica">${texto}</p>`); };
+  st.consulta?.abort();
+  if (!empresa || !lab) return aviso('Escolha a empresa e o laboratório para ver quanto o cliente comprou.');
+  if (!empresa.codigo_cliente) return aviso('Esta empresa não tem código de cliente do Qlik, então não há compras para consultar.');
+  if (!laboratorioConsultavel(lab)) return aviso('Este laboratório não é um fornecedor do Qlik. Siga sem notas fiscais.');
+  if (!inicio || !fim) return aviso('Informe o início e o fim da campanha para ver as compras do período.');
+  if (fim < inicio) return aviso('O fim está antes do início.');
+
+  const chave = [empresa.codigo_cliente, lab, inicio, fim].join('|');
+  if (st.compras?.chave === chave) return desenharResultadoCompras();
+
+  st.compras = null;
+  const controle = st.consulta = new AbortController();
+  pintarCompras(html`<p class="campo-dica" role="status">Consultando o Qlik…</p>`);
+  try {
+    const r = await consultarCompras({ codigoCliente: empresa.codigo_cliente, laboratorio: lab, inicio, fim, sinal: controle.signal });
+    if (st !== meu || controle.signal.aborted) return;
+    st.compras = { ...r, chave, inicio, fim, marcadas: new Set() };
+    desenharResultadoCompras();
+  } catch (e) {
+    if (e.name === 'AbortError' || st !== meu) return;
+    st.compras = null;
+    pintarCompras(html`<p class="nota nota-alerta" role="alert">${icone('info')}<span>${e.message || 'Não foi possível consultar o Qlik.'}</span><button type="button" class="btn btn-texto" id="compras-tentar">Tentar de novo</button></p>`);
+  }
+}
+
 // Valores iniciais a partir de uma campanha (reenviar reprovada ou usar como modelo).
 // comoModelo: não copia as datas (o período de outra campanha quase nunca serve).
 function valoresDaCampanha(c, ctx, { comoModelo = false } = {}) {
@@ -351,6 +431,8 @@ async function enviar() {
     }
 
     const rb = marcado('n-rebate');
+    // Só vale a consulta que bate com o que está na tela agora.
+    const comprasAtuais = st.compras && st.compras.chave === [empresa.codigo_cliente, st.comboLab.valor(), v('n-inicio'), v('n-fim')].join('|') ? st.compras : null;
     const c = await ctx.campanhas.criar({
       cliente: empresa.nome, empresa_id: empresa.id, balconista_id: balconistaId,
       laboratorio: st.comboLab.valor(), campanha: v('n-campanha'),
@@ -370,12 +452,16 @@ async function enviar() {
       swile_email: ehSwile ? dados.email.toLowerCase() : null,
       swile_telefone: ehSwile ? soDigitos(dados.telefone) : null,
       observacoes: v('n-observacoes') || null,
+      compras_periodo: comprasAtuais ? comprasAtuais.total : null,
+      compras_consultado_em: comprasAtuais ? comprasAtuais.consultado_em : null,
       status: STATUS.PENDENTE,
       solicitante_id: ctx.perfil.id, solicitante_nome: ctx.perfil.nome,
     });
     st.enviado = true;
     limparRascunho();
-    ctx.toast('Enviada. Já está na fila de aprovação.', { tom: 'sucesso' });
+    let notasOk = true;
+    try { await ctx.campanhas.salvarNotas(c.id, marcadasDe(comprasAtuais)); } catch (e) { notasOk = false; console.warn('Notas não gravadas', e); }
+    ctx.toast(notasOk ? 'Enviada. Já está na fila de aprovação.' : 'Enviada, mas não consegui gravar as notas fiscais. Avise o aprovador.', { tom: notasOk ? 'sucesso' : 'erro', duracao: notasOk ? undefined : 10000 });
     ctx.navegar(`#/campanhas/${c.id}`, { substituir: true });
   } catch (e) {
     const MAPA = { cpf: PESSOAIS.cpf, nome_completo: PESSOAIS.nome_completo, email: PESSOAIS.email, telefone: PESSOAIS.telefone, data_fim: 'n-fim' };
@@ -440,6 +526,10 @@ export function montar(el, ctx, params) {
         </div>
       </div></section>
 
+      <section class="painel" id="bloco-compras"><h2 class="painel-titulo">Compras e notas fiscais</h2>
+        <div class="painel-corpo" id="compras-corpo"></div>
+      </section>
+
       <section class="painel"><h2 class="painel-titulo">Investimento</h2><div class="painel-corpo">
         <div class="grade-2">
           ${campo({ id: 'n-inv-lynkz', rotulo: 'LYNKZ (R$)', valor: val('n-inv-lynkz'), mascara: 'valor' })}
@@ -498,7 +588,7 @@ export function montar(el, ctx, params) {
   st.comboLab = combo($('#n-laboratorio', el), {
     opcoes: () => (C.LABORATORIOS || []).map(l => ({ valor: l, rotulo: l })),
     valor: (C.LABORATORIOS || []).find(l => normaliza(l) === normaliza(ini.laboratorio || '')) || null,
-    aoEscolher: () => { limparErro(form, 'n-laboratorio'); salvar(); },
+    aoEscolher: () => { limparErro(form, 'n-laboratorio'); salvar(); atualizarComprasDepois(); },
   });
 
   st.comboEmpresa = combo($('#n-empresa', el), {
@@ -523,10 +613,12 @@ export function montar(el, ctx, params) {
       st.rascunhoSemPessoais = false;
       desenharRecebedor();
       salvar();
+      atualizarComprasDepois();
     },
   });
 
   const salvar = debounce(salvarRascunho, 400);
+  const atualizarComprasDepois = debounce(atualizarCompras, 500);
 
   // Primeiro desenho do bloco "Quem recebe" com o que veio do rascunho/campanha.
   desenharRecebedor({ dados: ini.dadosPessoais || null });
@@ -559,8 +651,21 @@ export function montar(el, ctx, params) {
       const fim = $('#n-fim', el);
       if (i.value) fim.min = i.value; else fim.removeAttribute('min');
     }),
-    ao(form, 'change', '#n-inicio, #n-fim', atualizarPeriodo),
-    ao(form, 'input', '#n-inicio, #n-fim', atualizarPeriodo),
+    ao(form, 'change', '#n-inicio, #n-fim', () => { atualizarPeriodo(); atualizarComprasDepois(); }),
+    ao(form, 'input', '#n-inicio, #n-fim', () => { atualizarPeriodo(); atualizarComprasDepois(); }),
+    ao(form, 'change', 'input[data-nota]', (e, cb) => {
+      const i = +cb.dataset.nota;
+      if (cb.checked) st.compras?.marcadas.add(i); else st.compras?.marcadas.delete(i);
+      atualizarSomaNotas();
+    }),
+    ao(form, 'click', '#notas-todas, #notas-nenhuma', (e, b) => {
+      if (!st.compras) return;
+      st.compras.marcadas = new Set(b.id === 'notas-todas' ? st.compras.notas.map((_, i) => i) : []);
+      $$('input[data-nota]', form).forEach(cb => { cb.checked = st.compras.marcadas.has(+cb.dataset.nota); });
+      atualizarSomaNotas();
+    }),
+    ao(form, 'click', '#compras-tentar', () => atualizarCompras()),
+    () => st.consulta?.abort(),
     ao(form, 'click', '[data-periodo]', (e, b) => {
       const [a, z] = periodosRapidos()[b.dataset.periodo];
       for (const [id, valor] of [['n-inicio', a], ['n-fim', z]]) {
@@ -589,6 +694,7 @@ export function montar(el, ctx, params) {
   // Foco automático só com mouse: no celular o teclado e a lista não sobem sozinhos.
   if (!origem && !rascunho && matchMedia('(pointer: fine)').matches) setTimeout(() => $('#n-empresa', el)?.focus({ preventScroll: true }), 0);
   atualizarPeriodo();
+  atualizarCompras();
 
   const meu = st;
   return () => {

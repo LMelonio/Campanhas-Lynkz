@@ -46,7 +46,17 @@ export const campanhas = {
 
   async carregar() {
     try {
-      lista = exigir(await sb.from(FONTE).select('*').order('criado_em', { ascending: false })) || [];
+      // O Supabase devolve no máximo 1.000 linhas por consulta: lê em blocos.
+      const BLOCO = 1000;
+      const todas = [];
+      for (let de = 0; ; de += BLOCO) {
+        const parte = exigir(await sb.from(FONTE).select('*')
+          .order('criado_em', { ascending: false }).order('id', { ascending: false })
+          .range(de, de + BLOCO - 1)) || [];
+        todas.push(...parte);
+        if (parte.length < BLOCO) break;
+      }
+      lista = todas;
     } catch (e) {
       ultimoErro = e.message;
       avisar({ tipo: 'erro' });
@@ -90,6 +100,19 @@ export const campanhas = {
     const { linha } = await relerLinha(id);
     avisar({ tipo: 'linha', id, campanha: linha, nova: true, origem: 'local' });
     return linha;
+  },
+
+  // Notas fiscais marcadas na Nova campanha: [{numero, serie, data, valor}].
+  async salvarNotas(campanhaId, notas) {
+    if (!notas.length) return;
+    exigir(await sb.from('campanha_notas').insert(notas.map(n => ({
+      campanha_id: campanhaId, numero: n.numero, serie: n.serie || '', data_emissao: n.data || null, valor: n.valor,
+    }))));
+  },
+
+  async notasDa(campanhaId) {
+    return exigir(await sb.from('campanha_notas').select('*').eq('campanha_id', campanhaId)
+      .order('data_emissao').order('numero')) || [];
   },
 
   // Só decide se ainda estiver Pendente. Se outra pessoa decidiu antes,

@@ -1,4 +1,4 @@
-# Projeto: Aprovação de Campanhas Promocionais — LYNKZ (v2.3)
+# Projeto: Aprovação de Campanhas Promocionais — LYNKZ (v2.4)
 
 App de celular e computador (PWA) onde coordenadores de campo solicitam campanhas promocionais
 para empresas clientes e a gerência aprova ou reprova. Empresas e balconistas ficam cadastrados.
@@ -87,6 +87,17 @@ histórico do app quando existe.
 - Cargas: `importar_clientes_qlik(jsonb)` e `importar_historico_planilha(jsonb)`, só service_role / SQL Editor.
   Chaves no `.env` (modelo em `.env.exemplo`), nunca em `public/`. Passo a passo: `QLIK-E-HISTORICO.md`.
 - Simulador: `?muitas=1500` cria 1.500 clientes do Qlik para testar volume.
+
+## Compras no Qlik e notas fiscais (v2.4)
+
+- `worker/index.js` (Cloudflare Worker, só `/api/*`; o resto é arquivo estático) consulta o Qlik pela Engine API.
+  `worker/qlik-engine.js` não conhece plataforma: recebe um "soquete" e é testado em Node (`tests/qlik-compras.test.mjs`).
+  A chave `QLIK_API_KEY` é segredo do Worker; **nunca** vai para `public/` nem para `wrangler.jsonc`.
+- Campos, filtros e expressão do valor vêm de `QLIK_CAMPOS`, `QLIK_FILTROS`, `QLIK_EXPRESSAO_VALOR` (variáveis do Worker).
+  Valor vindo do usuário só entra na expressão por `valorSeguro()` (sem aspas, chaves, `$`, `;`).
+- App: `dados/qlik.js` (`consultarCompras`, `padraoFornecedor`), quadro "Compras e notas fiscais" em `telas/nova.js`,
+  `campanhas.salvarNotas/notasDa`. Notas ficam em `campanha_notas` (só o solicitante grava, só Pendente, imutável).
+- Qlik simulado para `npm run dev` e e2e: `dev/qlik-simulado.mjs`. Passo a passo: `NOTAS-FISCAIS-QLIK.md`.
 
 ## Regras de código
 

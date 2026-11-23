@@ -191,7 +191,7 @@
   box-shadow: var(--sombra); text-decoration: none; color: inherit;
 }
 .cartao:hover { border-color: var(--line-2); }
-.cartao[aria-current="true"] { border-color: var(--red); box-shadow: 0 0 0 1px var(--red); }
+.cartao[aria-current="true"] { border-color: var(--ink); box-shadow: 0 0 0 1px var(--ink); }
 .cartao-topo { display: flex; align-items: flex-start; gap: var(--e-3); }
 .cartao-nome { flex: 1 1 auto; font-size: var(--t-16); font-weight: 650; line-height: 1.3; }
 .cartao-sub { font-size: var(--t-14); color: var(--ink-2); }
@@ -224,7 +224,7 @@
   min-height: 36px; padding: 0 var(--e-3); border-radius: var(--r-pill);
   border: 1px solid var(--line-2); background: var(--card); color: var(--ink); font-size: var(--t-14);
 }
-.chip:hover, .chip[aria-pressed="true"] { border-color: var(--red); background: var(--red-soft); color: var(--red-ink); }
+.chip:hover, .chip[aria-pressed="true"] { border-color: var(--ink); background: var(--card-2); color: var(--ink); }
 
 /* ---------- opções de pessoa ---------- */
 .pessoas { border: 0; padding: 0; margin: 0 0 var(--e-4); display: grid; gap: var(--e-2); min-width: 0; }
@@ -234,8 +234,8 @@
   padding: var(--e-3) var(--e-4); border: 1px solid var(--line-2); border-radius: var(--r-ctrl);
   background: var(--card); cursor: pointer;
 }
-.pessoa input { width: 20px; height: 20px; accent-color: var(--red); margin: 0; flex: 0 0 auto; }
-.pessoa:has(input:checked) { border: 2px solid var(--red); padding: calc(var(--e-3) - 1px) calc(var(--e-4) - 1px); }
+.pessoa input { width: 20px; height: 20px; accent-color: var(--ink); margin: 0; flex: 0 0 auto; }
+.pessoa:has(input:checked) { border: 2px solid var(--ink); padding: calc(var(--e-3) - 1px) calc(var(--e-4) - 1px); }
 .pessoa-nome { font-weight: 600; font-size: var(--t-14); }
 .pessoa-nome small { display: block; font-weight: 400; color: var(--ink-2); font-size: var(--t-12); }
 
@@ -289,6 +289,10 @@
   display: grid; gap: var(--e-2); pointer-events: none;
 }
 body.sem-barra .avisos { bottom: calc(96px + env(safe-area-inset-bottom)); }
+@media (min-width: 900px) {
+  .avisos { left: auto; right: var(--e-5, 24px); bottom: var(--e-5, 24px); width: min(420px, 40vw); }
+  body.sem-barra .avisos { bottom: var(--e-5, 24px); }
+}
 .toast {
   pointer-events: auto; display: flex; align-items: center; gap: var(--e-3);
   padding: var(--e-3) var(--e-2) var(--e-3) var(--e-4); min-height: 48px;
@@ -379,7 +383,7 @@ dialog.dialogo[open] { animation: sobe .22s ease; display: flex; flex-direction:
 
 /* chip de filtro vindo da URL (com ×) */
 .chips-filtro { margin: var(--e-3) 0 0; }
-.chip-filtro { display: inline-flex; align-items: center; gap: var(--e-1); min-height: var(--tap); border-color: var(--red); background: var(--red-soft); color: var(--red-ink); font-weight: 600; }
+.chip-filtro { display: inline-flex; align-items: center; gap: var(--e-1); min-height: var(--tap); border-color: var(--ink); background: var(--card-2); color: var(--ink); font-weight: 600; }
 .chip-filtro svg.ico { width: 16px; height: 16px; }
 
 /* ---------- copiar e atalhos ---------- */
@@ -399,3 +403,15 @@ kbd {
 .atalhos dt { min-width: 32px; }
 
 .det-selos { display: inline-flex; flex-wrap: wrap; gap: var(--e-1); justify-content: flex-end; }
+
+/* ---------- compras no Qlik e notas fiscais ---------- */
+.compras-total { display: flex; gap: var(--e-2); align-items: flex-start; margin: 0 0 var(--e-2); font-size: var(--t-14); line-height: 1.5; }
+.compras-total svg.ico { flex: 0 0 auto; width: 18px; height: 18px; margin-top: 2px; }
+.notas-fiscais { border: 0; padding: 0; margin: var(--e-3) 0 0; min-width: 0; }
+.notas-acoes { display: flex; gap: var(--e-2); margin: 0 0 var(--e-2); }
+.notas-lista { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--e-2); }
+.notas-lista .pessoa { justify-content: space-between; }
+.notas-lista .pessoa .pessoa-nome { flex: 1 1 auto; min-width: 0; }
+.nota-linha { display: flex; justify-content: space-between; gap: var(--e-3); font-size: var(--t-14); padding: var(--e-2) 0; border-bottom: 1px solid var(--line); }
+.nota-linha small { color: var(--ink-2); margin-left: var(--e-1); }
+.nota-total { font-weight: 700; border-bottom: 0; }

@@ -13,6 +13,7 @@ import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { qlikSimulado, ROTA_QLIK } from './qlik-simulado.mjs';
 
 const PROJETO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const RAIZ = path.join(PROJETO, 'public');
@@ -24,6 +25,11 @@ const TIPOS = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; ch
 
 http.createServer((rq, rs) => {
   let p = decodeURIComponent(new URL(rq.url, 'http://x').pathname);
+  if (p === ROTA_QLIK && rq.method === 'POST') {
+    if (!REAL) return qlikSimulado(rq, rs);
+    rs.writeHead(501, { 'Content-Type': 'application/json' });
+    return rs.end(JSON.stringify({ erro: 'No modo --real use "npm run cf:dev" (o Worker com a chave do Qlik).' }));
+  }
   if (p.endsWith('/')) p += 'index.html';
   const f = !REAL && p === '/js/lib/supabase.js' ? SIMULADO : path.join(RAIZ, p);
   if (!(f.startsWith(RAIZ + path.sep) || f === SIMULADO) || !fs.existsSync(f) || fs.statSync(f).isDirectory()) {

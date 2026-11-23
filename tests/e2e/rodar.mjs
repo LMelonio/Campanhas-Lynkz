@@ -12,6 +12,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { createRequire } from 'node:module';
+import { qlikSimulado, ROTA_QLIK } from '../../dev/qlik-simulado.mjs';
 
 const AQUI = path.dirname(fileURLToPath(import.meta.url));
 const PROJETO = path.resolve(AQUI, '../..');
@@ -37,6 +38,7 @@ const TIPOS = { '.html': 'text/html', '.js': 'text/javascript', '.mjs': 'text/ja
 const servidor = http.createServer((rq, rs) => {
   let p = decodeURIComponent(new URL(rq.url, 'http://x').pathname);
   if (p === '/') p = '/index.html';
+  if (p === ROTA_QLIK && rq.method === 'POST') return qlikSimulado(rq, rs);
   const f = p === '/js/lib/supabase.js' ? SIMULADO : path.join(RAIZ, p);
   if (!(f.startsWith(RAIZ) || f === SIMULADO) || !fs.existsSync(f) || fs.statSync(f).isDirectory()) { rs.writeHead(404); rs.end('404'); return; }
   rs.writeHead(200, { 'Content-Type': TIPOS[path.extname(f)] || 'application/octet-stream', 'Cache-Control': 'no-store' });
@@ -1111,6 +1113,105 @@ teste('lote Q: com 1.500 clientes do Qlik, lê tudo (acima de 1.000) e desenha a
 });
 
 // ============================================================
+//  v2.4 — LOTE R: compras no Qlik e notas fiscais da campanha
+// ============================================================
+async function prepararCompras(page, { termo = '4821', empresa = 'Casa do Criador' } = {}) {
+  await abrir(page, { rota: '#/nova' });
+  await escolherNoCombo(page, '#n-empresa', termo, empresa);
+  await escolherNoCombo(page, '#n-laboratorio', 'ouro', 'Ouro Fino');
+  await page.fill('#n-inicio', '2026-10-01'); await page.fill('#n-fim', '2026-10-31');
+  await page.dispatchEvent('#n-fim', 'change');
+}
+// Troca o código de cliente da Casa do Criador no banco simulado e recarrega (4820 = sem notas, 9999 = Qlik com erro).
+async function trocarCodigo(page, codigo) {
+  await page.evaluate(c => {
+    const d = JSON.parse(sessionStorage.getItem('simulado-db-v3'));
+    d.empresas.find(e => e.id === 3).codigo_cliente = c;
+    sessionStorage.setItem('simulado-db-v3', JSON.stringify(d));
+  }, codigo);
+  await page.goto(`${BASE}/?papel=aprovador#/nova`);
+  await page.waitForSelector('#app:not([hidden])');
+  await page.waitForSelector('#n-empresa');
+  await escolherNoCombo(page, '#n-empresa', 'casa do criador', 'Casa do Criador');
+  await escolherNoCombo(page, '#n-laboratorio', 'ouro', 'Ouro Fino');
+  await page.fill('#n-inicio', '2026-10-01'); await page.fill('#n-fim', '2026-10-31');
+  await page.dispatchEvent('#n-fim', 'change');
+}
+
+teste('lote R: cliente + laboratório + período mostram o que comprou e as notas; a soma acompanha a marcação', async ({ page }) => {
+  await prepararCompras(page);
+  await page.locator('.compras-total').waitFor();
+  const t = await page.locator('#compras-corpo').innerText();
+  afirma(/R\$\s*1\.600,49/.test(t) && /OURO FINO SAUDE ANIMAL/.test(t) && /01\/10\/2026 a 31\/10\/2026/.test(t), 'total, fornecedor e período na frase');
+  igual(await page.locator('input[data-nota]').count(), 3, 'três notas listadas');
+  igual(await page.locator('#notas-soma').innerText(), 'Nenhuma nota marcada.', 'começa sem nenhuma marcada');
+  await page.check('input[data-nota="0"]'); await page.check('input[data-nota="1"]');
+  afirma(/2 notas marcadas · R\$\s*1\.500,50/.test(await page.locator('#notas-soma').innerText()), 'soma das duas marcadas');
+  await page.click('#notas-todas');
+  afirma(/3 notas marcadas/.test(await page.locator('#notas-soma').innerText()), 'marcar todas');
+  await page.click('#notas-nenhuma');
+  igual(await page.locator('input[data-nota]:checked').count(), 0, 'limpar desmarca');
+});
+
+teste('lote R: empresa sem código do Qlik e "Recurso próprio" não consultam nada', async ({ page }) => {
+  await abrir(page, { rota: '#/nova' });
+  await escolherNoCombo(page, '#n-empresa', 'pet center', 'Pet Center Imperatriz');
+  await escolherNoCombo(page, '#n-laboratorio', 'ouro', 'Ouro Fino');
+  await page.fill('#n-inicio', '2026-10-01'); await page.fill('#n-fim', '2026-10-31'); await page.dispatchEvent('#n-fim', 'change');
+  await page.locator('#compras-corpo', { hasText: 'não tem código de cliente do Qlik' }).waitFor();
+  await escolherNoCombo(page, '#n-empresa', '4821', 'Casa do Criador');
+  await escolherNoCombo(page, '#n-laboratorio', 'recurso', 'Recurso próprio');
+  await page.locator('#compras-corpo', { hasText: 'não é um fornecedor do Qlik' }).waitFor();
+});
+
+teste('lote R: cliente sem compras no período avisa', async ({ page }) => {
+  await abrir(page, { rota: '#/nova' });
+  await trocarCodigo(page, '4820');
+  await page.locator('#compras-corpo', { hasText: 'Nenhuma nota fiscal encontrada' }).waitFor();
+});
+
+teste('lote R: erro do Qlik oferece tentar de novo e não trava o envio da campanha', async ({ page }) => {
+  await abrir(page, { rota: '#/nova' });
+  await trocarCodigo(page, '9999');
+  await page.locator('#compras-tentar').waitFor();
+  afirma(/Não foi possível consultar o Qlik/.test(await page.locator('#compras-corpo').innerText()), 'mensagem do erro');
+  await page.fill('#n-campanha', 'Sem Qlik'); await page.fill('#n-inv-lynkz', '100'); await page.fill('#n-meta', '5.000');
+  await page.selectOption('#n-pagamento', 'Desconto em nota');
+  await page.locator('[data-enviar]:visible').first().click();
+  await page.waitForFunction(() => /#\/campanhas\/\d+$/.test(location.hash));
+  const c = (await db(page)).campanhas.at(-1);
+  igual(c.campanha, 'Sem Qlik', 'campanha enviada mesmo com o Qlik fora'); igual(c.compras_consultado_em, null, 'sem consulta registrada');
+});
+
+teste('lote R: enviar grava o total consultado e só as notas marcadas; o detalhe mostra', async ({ page }) => {
+  await prepararCompras(page);
+  await page.locator('input[data-nota]').first().waitFor();
+  await page.check('input[data-nota="0"]'); await page.check('input[data-nota="2"]');
+  await page.fill('#n-campanha', 'Com notas'); await page.fill('#n-inv-lynkz', '200'); await page.fill('#n-meta', '8.000');
+  await page.selectOption('#n-pagamento', 'Desconto em nota');
+  await page.locator('[data-enviar]:visible').first().click();
+  await page.waitForFunction(() => /#\/campanhas\/\d+$/.test(location.hash));
+  const d = await db(page);
+  const c = d.campanhas.at(-1);
+  igual(c.compras_periodo, 1600.49, 'total consultado gravado'); afirma(!!c.compras_consultado_em, 'data da consulta gravada');
+  const notas = d.campanha_notas.filter(n => n.campanha_id === c.id);
+  igual(notas.map(n => n.numero).sort().join(','), '209001,211500', 'só as duas marcadas');
+  igual(notas.find(n => n.numero === '211500').serie, '2', 'série gravada');
+  await page.locator('#det-notas', { hasText: 'NF 209001' }).waitFor();
+  const painel = await page.locator('#det-notas').innerText();
+  afirma(/1\.600,49/.test(painel) && /NF 211500 · série 2/.test(painel) && /2 notas na campanha/.test(painel), 'detalhe lista as notas e o total');
+});
+
+teste('lote R: mudar o período consulta de novo e zera a marcação', async ({ page }) => {
+  await prepararCompras(page);
+  await page.locator('input[data-nota]').first().waitFor();
+  await page.check('input[data-nota="0"]');
+  await page.fill('#n-fim', '2026-11-15'); await page.dispatchEvent('#n-fim', 'change');
+  await page.locator('.compras-total', { hasText: '15/11/2026' }).waitFor();
+  igual(await page.locator('input[data-nota]:checked').count(), 0, 'marcação vem zerada na nova consulta');
+});
+
+// ============================================================
 //  v2.1 — telas novas no modo escuro: legíveis e sem problema grave de acessibilidade
 // ============================================================
 for (const largura of [390, 1440]) {
@@ -1181,7 +1282,7 @@ for (const t of testes.filter(t => !filtro || t.nome.includes(filtro))) {
   try {
     const r = await t.fn({ page, contexto, erros });
     if (typeof r === 'string') { res = 'pulado'; detalhe = r; }
-    const graves = erros.filter(e => !/favicon|ERR_INTERNET_DISCONNECTED|net::ERR_FAILED|Erro sem tradução/.test(e));
+    const graves = erros.filter(e => !/favicon|ERR_INTERNET_DISCONNECTED|net::ERR_FAILED|Erro sem tradução|status of 502/.test(e));
     if (graves.length) throw new Falha('erros no console:\n      ' + graves.join('\n      '));
   } catch (e) {
     res = 'falhou'; detalhe = e instanceof Falha ? e.message : (e.stack || String(e)).split('\n').slice(0, 4).join('\n      ');

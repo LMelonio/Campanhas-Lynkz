@@ -16,11 +16,11 @@ import WebSocket from 'ws';
 export const CAMPOS_PADRAO = {
   codigo:    'Cód. Cliente',
   nome:      'Razão Social Cliente',
-  fantasia:  '',
+  fantasia:  'Nome Cliente',
   documento: 'CPF CNPJ Cliente',
-  cidade:    'Cidade',
-  uf:        'UF',
-  vendedor:  'Vendedor',
+  cidade:    'Município Cliente',
+  uf:        'UF Cliente',
+  vendedor:  'Vendedor B2B',
 };
 
 export function camposDoEnv(env) {

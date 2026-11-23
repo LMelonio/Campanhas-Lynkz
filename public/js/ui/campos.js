@@ -141,6 +141,13 @@ export function marcarErro(raiz, id, msg) {
   if (e) { pintar(e, html`${icone('alerta')}<span>${msg}</span>`); e.hidden = false; }
   const ctl = $('input, select, textarea', c);
   if (ctl) ctl.setAttribute('aria-invalid', 'true');
+  // Assim que o valor muda, o erro some (volta se salvar de novo e ainda estiver errado).
+  if (!c._limpaErro) {
+    c._limpaErro = true;
+    const limpa = () => { if (c.classList.contains('tem-erro')) limparErro(raiz, id); };
+    c.addEventListener('input', limpa);
+    c.addEventListener('change', limpa);
+  }
   return true;
 }
 
