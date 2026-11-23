@@ -44,7 +44,7 @@ wrangler.jsonc  package.json  .github/workflows/testes.yml
 ## Rotas
 
 `#/inicio` · `#/campanhas` · `#/campanhas/:id` · `#/nova` · `#/nova/de/:id` (reenviar com ajustes) ·
-`#/historico` · `#/gestao` · `#/gestao/empresas/:id` · `#/perfil`
+`#/historico` · `#/gestao` · `#/gestao/empresas/:id` · `#/perfil` · `#/usuarios` (só administrador)
 
 Links `<a href="#/…">` passam pelo roteador (`pushState` com índice); o "Voltar" do topo usa o
 histórico do app quando existe.
@@ -122,6 +122,23 @@ histórico do app quando existe.
 - Cartões de campanha e empresa **não** levam `aria-label`: o nome vem do conteúdo e o axe barra rótulo que não repete o texto visível (WCAG 2.5.3).
 - Simulador: tem `sb.rpc('enviar_campanha')` atômico e a faixa de valores da campanha.
 
+## Usuários e balconistas (v2.8)
+
+- Na tela, papel `aprovador` = **Administrador** e `coordenador` = **Usuário** (`ROTULO_PAPEL`/`rotuloPapel()` em `lib/regras.js`).
+  No banco os nomes continuam os mesmos: não renomeie as policies nem a CHECK de `perfis.papel`.
+- `#/usuarios` (`telas/usuarios.js` + `dados/usuarios.js`): o administrador libera contas, troca papel, nome e acesso.
+  Só pela função `definir_perfil()` (migração 12, security definer): confere `eh_aprovador()`, ninguém tira o
+  próprio papel nem o próprio acesso, tudo vai para `auditoria_perfis`. `perfis` continua sem UPDATE pela API.
+  O primeiro administrador é feito uma vez no SQL Editor (topo da migração 12).
+- Empresas vêm do Qlik: **não existe mais "Cadastrar empresa"** (nem na Gestão nem no combo da Nova). `dialogoEmpresa` só edita.
+- Até **2 balconistas por empresa, contando os desativados** (`LIMITES.balconistas_por_empresa`; gatilho
+  `limitar_balconistas_empresa` da migração 12, que não vale para SQL Editor/service_role). Para trocar a pessoa, edita-se o cadastro.
+  `tests/regras.test.mjs` confere o número com `sql/schema.sql`.
+- Gestão: "Cadastrar balconista" abre `dialogoBalconista(null)` — passo 1 escolhe a empresa (combo com "x de 2"), passo 2 os dados
+  (fieldset travado até haver empresa com vaga). Na ficha, `dialogoBalconista(empresaId)`.
+- Nova: com 2 cadastros na empresa, some "Outra pessoa"; escolhe-se um dos balconistas ativos.
+- Simulador: `perfis` ficam no banco simulado (com a conta nova `u-novo`, desativada), `sb.rpc('definir_perfil')` e o limite de 2.
+
 ## Regras de código
 
 - Português do Brasil em nomes, comentários e textos.
@@ -178,7 +195,7 @@ As regras vivem no banco (RLS, triggers, permissões por coluna). A tela só esc
 
 | Tema | Decisão |
 |---|---|
-| Quem cadastra empresas e balconistas | Todo usuário ativo cadastra e edita. Nada é apagado, só desativado. |
+| Quem cadastra empresas e balconistas | Empresas vêm do Qlik (app só edita telefone/observações). Todo usuário ativo cadastra e edita balconistas, até 2 por empresa. Nada é apagado, só desativado. |
 | Privacidade dos balconistas | CPF, nascimento, e-mail e telefone visíveis a todo usuário ativo. |
 | Dados Swile na campanha (`swile_*`) | Continuam visíveis só ao aprovador e ao solicitante. |
 | Fuso das datas | `America/Fortaleza` (Maranhão, UTC-3). |

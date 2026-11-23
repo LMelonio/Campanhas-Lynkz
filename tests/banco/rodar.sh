@@ -30,6 +30,9 @@ rodar -d campanhas_teste_novo -f testes-10.sql 2>&1 | sed -n 's/^psql.*NOTICE:  
 rodar -d campanhas_teste_novo -f $SQL/migracoes/11-validacao.sql -t -A -F' ' | tee /tmp/val11a.txt
 if grep -q '^[0-9]* f ' /tmp/val11a.txt; then echo "FALHOU: validação 11 com linha false"; exit 1; fi
 rodar -d campanhas_teste_novo -f testes-11.sql 2>&1 | sed -n 's/^psql.*NOTICE:  \(ok.*\)/\1/p; /PASSARAM/p; /ERROR/p; /FALHOU/p'
+rodar -d campanhas_teste_novo -f $SQL/migracoes/12-validacao.sql -t -A -F' ' | tee /tmp/val12a.txt
+if grep -q '^[0-9]* f ' /tmp/val12a.txt; then echo "FALHOU: validação 12 com linha false"; exit 1; fi
+rodar -d campanhas_teste_novo -f testes-12.sql 2>&1 | sed -n 's/^psql.*NOTICE:  \(ok.*\)/\1/p; /PASSARAM/p; /ERROR/p; /FALHOU/p'
 
 echo "== 2. Migração v1.3.1 → v2 (04 e 05 sobre o schema antigo)"
 banco campanhas_teste_mig
@@ -44,6 +47,7 @@ rodar -d campanhas_teste_mig -f $SQL/migracoes/08-notas-fiscais.sql >/dev/null
 rodar -d campanhas_teste_mig -f $SQL/migracoes/09-marca-da-consulta.sql >/dev/null
 rodar -d campanhas_teste_mig -f $SQL/migracoes/10-seguranca.sql >/dev/null
 rodar -d campanhas_teste_mig -f $SQL/migracoes/11-enviar-campanha.sql >/dev/null
+rodar -d campanhas_teste_mig -f $SQL/migracoes/12-usuarios-e-balconistas.sql >/dev/null
 rodar -d campanhas_teste_mig -f $SQL/migracoes/06-validacao-v2.sql -t -A -F' ' | tee /tmp/val2.txt
 # Cada linha sai como "12 f Nome do teste": o f/t é a 2ª coluna. Um "! grep" não
 # para o script com set -e (o bash ignora comandos com !), por isso o if explícito.
@@ -65,6 +69,9 @@ rodar -d campanhas_teste_mig -f testes-10.sql 2>&1 | sed -n 's/^psql.*NOTICE:  \
 rodar -d campanhas_teste_mig -f $SQL/migracoes/11-validacao.sql -t -A -F' ' | tee /tmp/val11b.txt
 if grep -q '^[0-9]* f ' /tmp/val11b.txt; then echo "FALHOU: validação 11 com linha false"; exit 1; fi
 rodar -d campanhas_teste_mig -f testes-11.sql 2>&1 | sed -n 's/^psql.*NOTICE:  \(ok.*\)/\1/p; /PASSARAM/p; /ERROR/p; /FALHOU/p'
+rodar -d campanhas_teste_mig -f $SQL/migracoes/12-validacao.sql -t -A -F' ' | tee /tmp/val12b.txt
+if grep -q '^[0-9]* f ' /tmp/val12b.txt; then echo "FALHOU: validação 12 com linha false"; exit 1; fi
+rodar -d campanhas_teste_mig -f testes-12.sql 2>&1 | sed -n 's/^psql.*NOTICE:  \(ok.*\)/\1/p; /PASSARAM/p; /ERROR/p; /FALHOU/p'
 
 echo "== 2b. Migração a partir do banco de produção: v1 SEM a parte B (02) → só 04 + 05"
 banco campanhas_teste_semb
@@ -92,9 +99,13 @@ rodar -d campanhas_teste_mig -f $SQL/migracoes/08-notas-fiscais.sql >/dev/null
 rodar -d campanhas_teste_mig -f $SQL/migracoes/09-marca-da-consulta.sql >/dev/null
 rodar -d campanhas_teste_mig -f $SQL/migracoes/10-seguranca.sql >/dev/null
 rodar -d campanhas_teste_mig -f $SQL/migracoes/11-enviar-campanha.sql >/dev/null
-echo "ok  04, 05, 07, 08, 09, 10 e 11 rodam duas vezes"
+rodar -d campanhas_teste_mig -f $SQL/migracoes/12-usuarios-e-balconistas.sql >/dev/null
+echo "ok  04, 05, 07, 08, 09, 10, 11 e 12 rodam duas vezes"
 
-echo "== 4. Rollback (11, 10, 09, 08, 07, 05 e 04) volta ao formato da v1"
+echo "== 4. Rollback (12, 11, 10, 09, 08, 07, 05 e 04) volta ao formato da v1"
+rodar -d campanhas_teste_mig -f $SQL/migracoes/12-rollback.sql >/dev/null
+test "$(rodar -d campanhas_teste_mig -t -A -c "select to_regprocedure('public.definir_perfil(uuid,text,boolean,text)') is null and not exists (select 1 from pg_trigger where tgname = 'ao_limitar_balconistas_empresa')")" = t
+echo "ok  rollback da 12 remove a função e o limite e mantém os dados"
 rodar -d campanhas_teste_mig -f $SQL/migracoes/11-rollback.sql >/dev/null
 test "$(rodar -d campanhas_teste_mig -t -A -c "select to_regprocedure('public.enviar_campanha(jsonb,jsonb,jsonb)') is null")" = t
 echo "ok  rollback da 11 remove a função e mantém os dados"

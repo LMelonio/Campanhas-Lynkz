@@ -166,3 +166,12 @@ test('LIMITES de texto batem com campanhas_textos_tamanho do banco', () => {
   const doBanco = Object.fromEntries([...c.matchAll(/texto_ate\((\w+),\s*(\d+)\)/g)].map(m => [m[1], Number(m[2])]));
   assert.deepEqual(doBanco, { ...LIMITES.textos });
 });
+
+test('limite de balconistas por empresa bate com o gatilho do banco (migração 12)', () => {
+  const sql = readFileSync(new URL('../sql/schema.sql', import.meta.url), 'utf8');
+  const i = sql.indexOf('function public.limitar_balconistas_empresa()');
+  assert.ok(i > 0, 'limitar_balconistas_empresa não encontrada em sql/schema.sql');
+  const m = sql.slice(i, i + 1200).match(/count\(\*\) from public\.balconistas where empresa_id = new\.empresa_id\) >= (\d+)/);
+  assert.ok(m, 'contagem do limite não encontrada');
+  assert.equal(Number(m[1]), LIMITES.balconistas_por_empresa);
+});

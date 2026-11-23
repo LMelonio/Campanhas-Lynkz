@@ -2,7 +2,7 @@
 //  PERFIL — dados, resumo, Excel, sair e versão.
 // ============================================================
 import { html, pintar, ao } from '../lib/dom.js';
-import { STATUS, PAPEL, quandoBR } from '../lib/regras.js';
+import { STATUS, quandoBR, rotuloPapel } from '../lib/regras.js';
 import { icone } from '../ui/icones.js';
 import { seloNeutro } from '../ui/pecas.js';
 import { exportarExcel } from '../exportar.js';
@@ -25,7 +25,7 @@ function desenhar(el, ctx) {
         <h2 class="perfil-nome">${p.nome}</h2>
         <p class="perfil-email">${p.email}</p>
         ${ctx.ultimoAcesso ? html`<p class="perfil-acesso">Último acesso: ${quandoBR(ctx.ultimoAcesso)}</p>` : ''}
-        ${seloNeutro(p.papel === PAPEL.APROVADOR ? 'Aprovador' : 'Coordenador')}
+        ${seloNeutro(rotuloPapel(p.papel))}
       </div>
     </section>
 

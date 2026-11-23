@@ -15,6 +15,9 @@ export const PAPEL = Object.freeze({
   APROVADOR: 'aprovador',
   COORDENADOR: 'coordenador',
 });
+// Como o papel aparece na tela. No banco continua "aprovador" / "coordenador".
+export const ROTULO_PAPEL = Object.freeze({ aprovador: 'Administrador', coordenador: 'Usuário' });
+export const rotuloPapel = papel => ROTULO_PAPEL[papel] || 'Usuário';
 
 // Fuso das datas do app (Maranhão, UTC-3). O banco usa o mesmo em registrar_decisao().
 export const FUSO = 'America/Fortaleza';
@@ -23,6 +26,7 @@ export const FUSO = 'America/Fortaleza';
 // campanhas_valores_faixa e campanhas_textos_tamanho (sql/schema.sql);
 // tests/regras.test.mjs confere que os dois lados batem.
 export const LIMITES = Object.freeze({
+  balconistas_por_empresa: 2,   // contando os desativados (migração 12)
   rebate_pct: 100,
   meta: 1000000000,
   investimento_lynkz: 10000000,

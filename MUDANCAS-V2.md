@@ -1,3 +1,26 @@
+# Mudanças da v2.8.0 (23/11/2026) — usuários no app e balconistas por empresa
+
+**Banco — rodar `sql/migracoes/12-usuarios-e-balconistas.sql` (depois `12-validacao.sql`; desfazer: `12-rollback.sql`)**
+- Função `definir_perfil()`: o administrador libera contas, escolhe administrador ou usuário e troca o nome, pelo app.
+  Ninguém tira o próprio papel de administrador nem o próprio acesso. Tudo continua em `auditoria_perfis`.
+- Gatilho `limitar_balconistas_empresa`: no máximo 2 balconistas por empresa, contando os desativados.
+- Sem administrador ainda? Rode uma vez o "PRIMEIRO ADMINISTRADOR" do topo da migração 12.
+
+**Usuários (menu novo, só para administrador)**
+- Contas novas aparecem em "Sem acesso" com **Liberar acesso** de um toque.
+- "Editar" troca nome, papel (Administrador / Usuário) e acesso. Dar ou tirar administrador pede confirmação.
+- Na tela inteira o papel aparece como **Administrador** ou **Usuário** (antes: Aprovador / Coordenador).
+
+**Gestão**
+- "Cadastrar empresa" saiu (as empresas vêm do Qlik). No lugar: **Cadastrar balconista**, que primeiro pede a empresa
+  (a lista mostra "x de 2 balconistas" e avisa quando está no limite) e só então libera os dados.
+- Lista e ficha mostram as vagas ("Balconistas: 1 de 2"). Com 2 cadastros, "Cadastrar" fica travado e a ficha explica
+  que, para trocar a pessoa, edita-se o cadastro.
+
+**Nova campanha**
+- O combo de empresa não cadastra mais empresa; sem resultado, explica que o cliente novo é cadastrado no sistema (Qlik).
+- Com 2 balconistas na empresa, "Outra pessoa" some: escolhe-se um dos dois.
+
 # Mudanças da v2.7.0 (23/11/2026) — origem: MELHORIAS-V2.7.md
 
 **Banco — rodar `sql/migracoes/11-enviar-campanha.sql` (depois `11-validacao.sql`; desfazer: `11-rollback.sql`)**

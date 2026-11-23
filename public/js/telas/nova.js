@@ -19,7 +19,7 @@ import { campo, selecao, areaTexto, interruptor, ligarMascaras, aplicarErros, li
 import { combo } from '../ui/combo.js';
 import { confirmar } from '../ui/avisos.js';
 import { textoBuscaEmpresa, camposBalconista } from '../dados/cadastros.js';
-import { dialogoEmpresa } from '../ui/cadastro-dialogos.js';
+import { empresaCheia } from '../ui/cadastro-dialogos.js';
 import { consultarCompras, laboratorioConsultavel } from '../dados/qlik.js';
 
 const C = window.CONFIG;
@@ -86,9 +86,9 @@ function diferente(balc, d) {
     || balc.telefone !== soDigitos(d.telefone);
 }
 
-function pessoaPadrao(balcs) {
+function pessoaPadrao(balcs, cheia = false) {
   if (balcs.length === 1) return String(balcs[0].id);
-  if (recebedorObrigatorio()) return balcs.length ? null : 'outra';
+  if (recebedorObrigatorio()) return balcs.length || cheia ? null : 'outra';
   return 'nenhuma';
 }
 
@@ -117,17 +117,20 @@ function desenharRecebedor({ dados = null } = {}) {
   }
 
   const balcs = st.ctx.cadastros.balconistasDa(empresaId);
-  const validas = new Set([...balcs.map(b => String(b.id)), 'outra', ...(obrig ? [] : ['nenhuma'])]);
-  if (!validas.has(st.pessoa)) st.pessoa = pessoaPadrao(balcs);
+  // Até 2 balconistas por empresa (contando desativados): com o limite cheio, só dá para escolher.
+  const cheia = empresaCheia(empresaId);
+  const validas = new Set([...balcs.map(b => String(b.id)), ...(cheia ? [] : ['outra']), ...(obrig ? [] : ['nenhuma'])]);
+  if (!validas.has(st.pessoa)) st.pessoa = pessoaPadrao(balcs, cheia);
   const p = st.pessoa;
 
   pintar(corpo, html`
     <fieldset class="campo pessoas" data-campo="n-pessoa" aria-describedby="n-pessoa-erro">
-      <legend>${balcs.length ? 'Escolha o balconista' : 'Nenhum balconista cadastrado nesta empresa'}</legend>
+      <legend>${balcs.length ? 'Escolha o balconista' : cheia ? 'Os balconistas desta empresa estão desativados' : 'Nenhum balconista cadastrado nesta empresa'}</legend>
       ${balcs.map(b => html`<label class="pessoa"><input type="radio" name="n-pessoa" value="${b.id}"${p === String(b.id) ? html` checked` : ''}>
         <span class="pessoa-nome">${b.nome_completo}<small>CPF ${maskCPF(b.cpf)} · ${maskTelefone(b.telefone)}</small></span></label>`)}
-      <label class="pessoa"><input type="radio" name="n-pessoa" value="outra"${p === 'outra' ? html` checked` : ''}>
-        <span class="pessoa-nome">${balcs.length ? 'Outra pessoa' : 'Cadastrar quem recebe'}<small>Preencha os dados abaixo</small></span></label>
+      ${cheia ? (balcs.length ? html`<p class="campo-dica">Esta empresa já tem 2 balconistas cadastrados (o limite). Para trocar a pessoa, edite o cadastro na <a href="#/gestao/empresas/${empresaId}">ficha da empresa</a>.</p>` : html`<p class="nota">${icone('info')}<span>A empresa já tem 2 balconistas cadastrados, os dois desativados. Reative um na <a href="#/gestao/empresas/${empresaId}">ficha da empresa</a>.</span></p>`)
+        : html`<label class="pessoa"><input type="radio" name="n-pessoa" value="outra"${p === 'outra' ? html` checked` : ''}>
+        <span class="pessoa-nome">${balcs.length ? 'Outra pessoa' : 'Cadastrar quem recebe'}<small>Preencha os dados abaixo</small></span></label>`}
       ${obrig ? '' : html`<label class="pessoa"><input type="radio" name="n-pessoa" value="nenhuma"${p === 'nenhuma' ? html` checked` : ''}>
         <span class="pessoa-nome">Não informar agora</span></label>`}
       <p class="campo-erro" id="n-pessoa-erro" hidden></p>
@@ -194,7 +197,7 @@ function atualizarResumo() {
 // ---------- validação ----------
 function validar() {
   const e = {};
-  if (!st.comboEmpresa.valor()) e['n-empresa'] = 'Escolha a empresa (ou cadastre uma nova).';
+  if (!st.comboEmpresa.valor()) e['n-empresa'] = 'Escolha a empresa.';
   if (!st.comboLab.valor()) e['n-laboratorio'] = 'Escolha o laboratório.';
   if (!v('n-campanha')) e['n-campanha'] = 'Dê um nome à campanha.';
   if (v('n-inicio') && v('n-fim') && v('n-fim') < v('n-inicio')) e['n-fim'] = 'O fim está antes do início.';
@@ -534,7 +537,7 @@ export function montar(el, ctx, params) {
       ${ini.clienteSemCadastro ? html`<p class="nota nota-alerta">${icone('info')}<span>A campanha original era de “${ini.clienteSemCadastro}”, que ainda não está no cadastro. Escolha ou cadastre a empresa.</span></p>` : ''}
 
       <section class="painel"><h2 class="painel-titulo">Empresa e laboratório</h2><div class="painel-corpo">
-        ${campo({ id: 'n-empresa', rotulo: 'Empresa', obrigatorio: true, dica: 'Digite para buscar. Não achou? Dá para cadastrar na hora.', atributos: { placeholder: 'Nome, código, cidade ou CNPJ' } })}
+        ${campo({ id: 'n-empresa', rotulo: 'Empresa', obrigatorio: true, dica: 'Digite nome, nome fantasia, código, cidade ou CNPJ.', atributos: { placeholder: 'Nome, código, cidade ou CNPJ' } })}
         ${campo({ id: 'n-laboratorio', rotulo: 'Laboratório', obrigatorio: true, atributos: { placeholder: 'Selecione ou digite para buscar' } })}
       </div></section>
 
@@ -626,15 +629,7 @@ export function montar(el, ctx, params) {
       busca: textoBuscaEmpresa(e, ctx.cadastros.balconistasDa(e.id)),
     })),
     valor: ini.empresaId ?? null,
-    vazio: 'Nenhuma empresa com esse nome.',
-    criar: {
-      rotulo: termo => `Cadastrar a empresa “${termo}”`,
-      aoCriar: async termo => {
-        const e = await dialogoEmpresa(null, { nome: termo });
-        if (e) { st.comboEmpresa.definir(e.id); ctx.toast(`Empresa ${e.nome} cadastrada.`, { tom: 'sucesso' }); }
-        $('#n-empresa', el).focus();
-      },
-    },
+    vazio: 'Nenhuma empresa com esse nome. As empresas vêm do Qlik: se o cliente é novo, peça o cadastro no sistema.',
     aoEscolher: () => {
       limparErro(form, 'n-empresa');
       st.pessoa = null;

@@ -2,7 +2,7 @@
 //  APP — casca, rotas por hash e contexto das telas.
 //
 //  Rotas:  #/inicio  #/campanhas  #/campanhas/:id  #/nova  #/nova/de/:id
-//          #/historico  #/gestao  #/gestao/empresas/:id  #/perfil
+//          #/historico  #/gestao  #/gestao/empresas/:id  #/perfil  #/usuarios (só administrador)
 //
 //  Cada tela exporta montar(el, ctx, params) → desmontar e, se fizer
 //  sentido, atualizar(params) (troca de parâmetro sem remontar a tela).
@@ -13,7 +13,7 @@ import { cadastros } from './dados/cadastros.js';
 import { conferirBanco } from './dados/saude.js';
 import { sb } from './lib/supabase.js';
 import { html, pintar, $, $$ } from './lib/dom.js';
-import { PAPEL, STATUS, brl, calc } from './lib/regras.js';
+import { PAPEL, STATUS, brl, calc, rotuloPapel } from './lib/regras.js';
 import { toast, confirmar } from './ui/avisos.js';
 import { icone } from './ui/icones.js';
 import { carregando } from './ui/pecas.js';
@@ -23,12 +23,13 @@ import * as telaNova from './telas/nova.js';
 import * as telaHistorico from './telas/historico.js';
 import * as telaGestao from './telas/gestao.js';
 import * as telaPerfil from './telas/perfil.js';
+import * as telaUsuarios from './telas/usuarios.js';
 
 const C = window.CONFIG;
 
 const TELAS = {
   inicio: telaInicio, campanhas: telaCampanhas, nova: telaNova,
-  historico: telaHistorico, gestao: telaGestao, perfil: telaPerfil,
+  historico: telaHistorico, gestao: telaGestao, perfil: telaPerfil, usuarios: telaUsuarios,
 };
 
 const ROTAS = [
@@ -41,6 +42,7 @@ const ROTAS = [
   [/^\/gestao$/,                 'gestao',    () => ({})],
   [/^\/gestao\/empresas\/(\d+)$/, 'gestao',   m => ({ empresa: m[1] })],
   [/^\/perfil$/,                 'perfil',    () => ({})],
+  [/^\/usuarios$/,               'usuarios',  () => ({})],
 ];
 
 // "#/campanhas?status=Pendente" → caminho "/campanhas", query { status: 'Pendente' }.
@@ -61,6 +63,7 @@ const NAV = [
   { nome: 'campanhas', rotulo: 'Campanhas', href: '#/campanhas', ico: 'campanhas', contador: true },
   { nome: 'historico', rotulo: 'Histórico', href: '#/historico', ico: 'historico' },
   { nome: 'gestao',    rotulo: 'Gestão',    href: '#/gestao',    ico: 'gestao' },
+  { nome: 'usuarios',  rotulo: 'Usuários',  href: '#/usuarios',  ico: 'pessoa', soAdmin: true },
   { nome: 'perfil',    rotulo: 'Perfil',    href: '#/perfil',    ico: 'perfil' },
 ];
 
@@ -177,10 +180,10 @@ function montarCasca() {
     <div class="menu-marca"><img src="assets/logo.png" alt="${C.MARCA || 'LYNKZ'}" width="96" height="22"><span>${C.SUBMARCA || 'Campanhas'}</span></div>
     <a class="btn btn-primario btn-largo menu-nova" href="#/nova" data-nav="nova">${icone('mais')} Nova campanha</a>
     <ul class="menu-lista">
-      ${NAV.map(n => html`<li><a class="menu-item" href="${n.href}" data-nav="${n.nome}">${icone(n.ico)}${n.rotulo}${n.contador ? html`<span class="contador" data-contador hidden></span>` : ''}</a></li>`)}
+      ${NAV.filter(n => !n.soAdmin || ctx.ehAprovador).map(n => html`<li><a class="menu-item" href="${n.href}" data-nav="${n.nome}">${icone(n.ico)}${n.rotulo}${n.contador ? html`<span class="contador" data-contador hidden></span>` : ''}</a></li>`)}
     </ul>
     <div class="menu-rodape">
-      <p class="menu-usuario">${p.nome}<small>${p.papel === PAPEL.APROVADOR ? 'Aprovador' : 'Coordenador'} · ${p.email}</small></p>
+      <p class="menu-usuario">${p.nome}<small>${rotuloPapel(p.papel)} · ${p.email}</small></p>
       <button class="btn btn-fantasma btn-pequeno" type="button" id="menu-sair">${icone('sair')} Sair</button>
       <p class="versao">Versão ${C.VERSAO}</p>
     </div>`);

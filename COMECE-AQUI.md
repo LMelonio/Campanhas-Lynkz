@@ -8,6 +8,18 @@ Custo: **R$ 0**. O volume de 5 coordenadores cabe folgado nos planos gratuitos.
 
 ---
 
+## Atualizar da v2.7 para a v2.8 (5 min)
+
+1. No **SQL Editor**, rode `sql/migracoes/12-usuarios-e-balconistas.sql`. Deve dar `Success`.
+2. Rode `sql/migracoes/12-validacao.sql`: **5 linhas com `ok = true`**. Se a linha 5 der `false`, ainda não
+   existe administrador: rode a linha "PRIMEIRO ADMINISTRADOR" do topo da migração 12 com o seu e-mail.
+   A segunda tabela do resultado lista empresas que já passavam de 2 balconistas (só informativo).
+3. Publique o app (Parte 3). O rodapé do menu deve mostrar **Versão 2.8.0**.
+
+Desfazer: volte o app para a v2.7 e rode `sql/migracoes/12-rollback.sql` (nenhum dado é apagado).
+
+---
+
 ## Parte 0 — Já usa a v1? Atualize para a v2 (20 min)
 
 Pule esta parte se for uma instalação nova (vá para a Parte 1).
@@ -99,21 +111,22 @@ Guarde esse endereço: é o seu app. A partir daí, **cada mudança enviada ao G
 
 ---
 
-## Parte 5 — Virar o aprovador (2 min)
+## Parte 5 — Virar o primeiro administrador (2 min)
 
 1. No Supabase → **Authentication** → **Users** → **Add user** → **Create new user**: seu e-mail,
    uma senha e marque **Auto Confirm User**.
-2. Abra o app e entre com esse e-mail e senha.
+2. Abra o app e entre com esse e-mail e senha (a conta nova entra sem acesso: é normal).
 3. Volte no Supabase → **SQL Editor** → **New query** e rode isto, trocando pelo seu e-mail:
 
 ```sql
-update perfis set papel = 'aprovador' where email = 'seu.email@empresa.com.br';
+update perfis set papel = 'aprovador', ativo = true where email = 'seu.email@empresa.com.br';
 ```
 
-4. No app, saia e entre de novo. Agora você é o aprovador — só você vê os botões de decisão.
+4. No app, saia e entre de novo. Agora você é **administrador**: aprova e recusa campanhas e vê o menu **Usuários**.
 
-> **Todo mundo que entra vira coordenador automaticamente.** Só quem você promover com esse
-> comando pode aprovar. É proposital: assim ninguém libera verba por engano.
+> **Daqui em diante, tudo pelo app.** Quem cria conta aparece em **Usuários → Sem acesso**. Toque em
+> **Liberar acesso** e, se a pessoa também for aprovar campanhas, em **Editar → Administrador**.
+> Ninguém consegue tirar o próprio papel de administrador: sempre sobra pelo menos um.
 
 ---
 

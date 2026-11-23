@@ -1,7 +1,7 @@
 # LYNKZ Campanhas
 
 App web (celular e computador, instalável) para **solicitar e aprovar campanhas promocionais** da
-LYNKZ Distribuidora, com cadastro de empresas e balconistas. Versão **2.7.0**.
+LYNKZ Distribuidora, com cadastro de empresas e balconistas. Versão **2.8.0**.
 
 - Front-end: HTML, CSS e JavaScript puros (módulos ES), **sem build**. A pasta `public/` é o site.
 - Banco e login: **Supabase** (PostgreSQL com RLS; regras de acesso no banco, não na tela).

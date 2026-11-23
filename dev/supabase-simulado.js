@@ -74,11 +74,15 @@ function semente() {
       status: 'Aprovada', aprovador_nome: 'Charles Machado', data_decisao: '2026-09-30', solicitante_id: null, solicitante_nome: 'Alexandre Froes', importada: true, criado_em: '2026-09-30T15:00:00.000Z' }),
     camp({ cliente: 'Cliente da v1 Ltda', laboratorio: 'Boehringer', campanha: 'Campanha antiga sem cadastro', investimento_lynkz: 400, meta: 10000, status: 'Aprovada', aprovador_nome: 'Ana Aprovadora', data_decisao: dia(40), solicitante_id: 'u-bia', criado_em: agora(42) }),
   ];
-  return { empresas, balconistas, campanhas, campanha_notas: [], seq: { empresas: 100 + muitas, balconistas: 3, campanhas: n, campanha_notas: 0 } };
+  // Perfis: os 3 de sempre + uma conta nova esperando liberação (tela Usuários).
+  const perfis = { ...JSON.parse(JSON.stringify(USUARIOS)),
+    'u-novo': { id: 'u-novo', email: 'diego@lynkz.com.br', nome: 'diego', papel: 'coordenador', ativo: false, criado_em: agora(1) } };
+  return { perfis, empresas, balconistas, campanhas, campanha_notas: [], seq: { empresas: 100 + muitas, balconistas: 3, campanhas: n, campanha_notas: 0 } };
 }
 
 let db = (() => { try { return JSON.parse(sessionStorage.getItem(CHAVE)) || semente(); } catch { return semente(); } })();
 db.campanha_notas ||= []; db.seq.campanha_notas ||= 0;
+db.perfis ||= JSON.parse(JSON.stringify(USUARIOS));
 const gravarDb = () => { try { sessionStorage.setItem(CHAVE, JSON.stringify(db)); } catch { /* cheio */ } };
 gravarDb();
 
@@ -92,7 +96,7 @@ function cpfValido(cpf) {
   const dv = f => { let s = 0, p = f; for (let i = 0; i < f - 1; i++) s += n[i] * p--; const r = s % 11; return r < 2 ? 0 : 11 - r; };
   return dv(10) === n[9] && dv(11) === n[10];
 }
-const usuario = () => (sessao ? USUARIOS[sessao.user.id] : null);
+const usuario = () => (sessao ? db.perfis[sessao.user.id] || null : null);
 const ehAprovador = () => usuario()?.papel === 'aprovador';
 const hojeFortaleza = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Fortaleza' }).format(new Date());
 
@@ -113,6 +117,8 @@ function inserir(tabela, d) {
     db.empresas.push(r); return { row: r };
   }
   if (tabela === 'balconistas') {
+    // Migração 12: no máximo 2 por empresa, contando os desativados.
+    if (db.balconistas.filter(b => b.empresa_id == d.empresa_id).length >= 2) return { error: erro('Esta empresa já tem 2 balconistas cadastrados, que é o limite. Edite um deles na ficha da empresa.') };
     if (!cpfValido(d.cpf)) return { error: erro('violates check constraint "balconistas_cpf_valido"', '23514') };
     if (db.balconistas.some(b => b.empresa_id == d.empresa_id && b.cpf === d.cpf)) return { error: erro('duplicate key value violates unique constraint "balconistas_empresa_cpf_unico"', '23505') };
     const r = { ativo: true, ...d, empresa_id: +d.empresa_id, id: ++db.seq.balconistas, criado_em: new Date().toISOString(), criado_por: u.id };
@@ -212,6 +218,26 @@ function enviarCampanha({ p_campanha: c, p_balconista: b = null, p_notas: notas 
   return { data: { id: res.row.id, codigo: res.row.codigo, balconista_id: balId }, error: null };
 }
 
+// definir_perfil(p_id, p_papel, p_ativo, p_nome): só administrador; ninguém se rebaixa nem se desativa.
+function definirPerfil({ p_id: id, p_papel: papel = null, p_ativo: ativo = null, p_nome: nome = null }) {
+  const u = usuario();
+  if (!u) return { data: null, error: erro('JWT expired', 'PGRST301') };
+  if (!(u.papel === 'aprovador' && u.ativo)) return { data: null, error: erro('Só um administrador muda usuários.', '42501') };
+  if (papel != null && !['aprovador', 'coordenador'].includes(papel)) return { data: null, error: erro('Papel inválido.') };
+  const n = nome == null ? null : String(nome).trim().replace(/\s+/g, ' ');
+  if (nome != null && (n.length < 2 || n.length > 80)) return { data: null, error: erro('O nome precisa ter de 2 a 80 caracteres.') };
+  if (id === u.id && ((papel != null && papel !== 'aprovador') || ativo === false)) {
+    return { data: null, error: erro('Você não pode tirar o seu próprio acesso de administrador. Peça a outro administrador.') };
+  }
+  const alvo = db.perfis[id];
+  if (!alvo) return { data: null, error: erro('Usuário não encontrado.') };
+  if (papel != null) alvo.papel = papel;
+  if (ativo != null) alvo.ativo = ativo;
+  if (n) alvo.nome = n;
+  gravarDb();
+  return { data: JSON.parse(JSON.stringify(alvo)), error: null };
+}
+
 // ---------- tempo real ----------
 const canais = new Set();
 function emitir(tabela, eventType, row) {
@@ -245,7 +271,7 @@ class Consulta {
     const view = this.tabela === 'campanhas_app';
     const nome = view ? 'campanhas' : this.tabela;
     if (nome === 'perfis') {
-      const r = Object.values(USUARIOS).filter(p => this.filtros.every(([c, v]) => String(p[c]) === String(v)));
+      const r = Object.values(db.perfis).filter(p => this.filtros.every(([c, v]) => String(p[c]) === String(v)));
       return this.fim(r);
     }
     const tabela = db[nome];
@@ -295,7 +321,7 @@ class Consulta {
 // ---------- autenticação ----------
 const CHAVE_SAIU = 'simulado-saiu';
 const novaSessao = u => ({ user: { id: u.id, email: u.email, last_sign_in_at: new Date().toISOString() }, access_token: 'simulado' });
-let sessao = sessionStorage.getItem(CHAVE_SAIU) ? null : novaSessao(USUARIOS[EU]);
+let sessao = sessionStorage.getItem(CHAVE_SAIU) ? null : novaSessao(db.perfis[EU] || USUARIOS[EU]);
 const ouvintesAuth = new Set();
 const avisarAuth = evt => setTimeout(() => ouvintesAuth.forEach(fn => fn(evt, sessao)), 0);
 
@@ -303,6 +329,7 @@ export const sb = {
   from: tabela => new Consulta(tabela),
   rpc(nome, args = {}) {
     const rodar = () => {
+      if (nome === 'definir_perfil') return definirPerfil(args);
       if (nome !== 'enviar_campanha') return { data: null, error: erro(`Could not find the function public.${nome} in the schema cache`, 'PGRST202') };
       const r = enviarCampanha(args);
       return r.error ? { data: null, error: r.error } : r;
@@ -318,7 +345,7 @@ export const sb = {
     async getSession() { return { data: { session: sessao }, error: null }; },
     async getUser() { return sessao ? { data: { user: sessao.user }, error: null } : { data: { user: null }, error: erro('Auth session missing') }; },
     async signInWithPassword({ email, password = '' }) {
-      const u = Object.values(USUARIOS).find(x => x.email === email);
+      const u = Object.values(db.perfis).find(x => x.email === email);
       if (!u || /^errad/i.test(password)) return { data: {}, error: { message: 'Invalid login credentials', status: 400 } };
       sessao = novaSessao(u);
       sessionStorage.removeItem(CHAVE_SAIU);

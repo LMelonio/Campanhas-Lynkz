@@ -2,16 +2,18 @@
 //  GESTÃO — empresas e balconistas.
 //  #/gestao               lista de empresas
 //  #/gestao/empresas/:id  ficha da empresa
+//  Empresas vêm do Qlik: aqui não se cadastra empresa, só balconistas
+//  (até LIMITES.balconistas_por_empresa por empresa, contando desativados).
 //  Todo usuário ativo cadastra e edita. Nada é apagado, só desativado.
 // ============================================================
 import { html, pintar, $, ao, debounce } from '../lib/dom.js';
-import { calc, brl, dataBR, contem, maskCNPJ, maskCPF, maskTelefone, STATUS } from '../lib/regras.js';
+import { calc, brl, dataBR, contem, maskCNPJ, maskCPF, maskTelefone, STATUS, LIMITES } from '../lib/regras.js';
 import { icone } from '../ui/icones.js';
 import { cartao, vazio, seloNeutro } from '../ui/pecas.js';
 import { confirmar } from '../ui/avisos.js';
 import { estadoLista } from '../ui/estado.js';
 import { campoBusca, ligarBusca } from '../ui/campos.js';
-import { dialogoEmpresa, dialogoBalconista } from '../ui/cadastro-dialogos.js';
+import { dialogoEmpresa, dialogoBalconista, totalBalconistas, empresaCheia } from '../ui/cadastro-dialogos.js';
 import { CHAVE_EMPRESA_SUGERIDA } from './nova.js';
 import { ehDoQlik, textoBuscaEmpresa } from '../dados/cadastros.js';
 
@@ -34,7 +36,7 @@ function desenharLista() {
   pintar($('#gs-resumo', el), `${lista.length.toLocaleString('pt-BR')} ${lista.length === 1 ? 'empresa' : 'empresas'}`);
   pintar($('#gs-itens', el), lista.length
     ? html`<ul class="empresas">${visiveis.map(e => {
-        const nb = ctx.cadastros.balconistasDa(e.id).length;
+        const nb = totalBalconistas(e.id);
         const nc = nCamp.get(String(e.id)) || 0;
         const local = [e.cidade, e.uf].filter(Boolean).join(' / ');
         return html`<li><a class="empresa-item" href="#/gestao/empresas/${e.id}">
@@ -43,7 +45,7 @@ function desenharLista() {
             <strong>${e.nome}${e.ativo ? '' : html` ${seloNeutro('Desativada')}`}</strong>
             ${e.nome_fantasia && e.nome_fantasia !== e.nome ? html`<small>${e.nome_fantasia}</small>` : ''}
             <small>${[e.codigo_cliente ? `Cód. ${e.codigo_cliente}` : '', local, e.cnpj ? maskCNPJ(e.cnpj) : ''].filter(Boolean).join(' · ') || 'Sem cidade e CNPJ'}</small>
-            <small>${nb} ${nb === 1 ? 'balconista' : 'balconistas'} · ${nc} ${nc === 1 ? 'campanha' : 'campanhas'}</small>
+            <small>Balconistas: ${nb} de ${LIMITES.balconistas_por_empresa} · ${nc} ${nc === 1 ? 'campanha' : 'campanhas'}</small>
           </span>
           ${icone('seta')}
         </a></li>`;
@@ -52,7 +54,7 @@ function desenharLista() {
     : vazio({
         icone: 'gestao',
         titulo: filtros.busca ? 'Nenhuma empresa encontrada' : 'Nenhuma empresa cadastrada',
-        texto: filtros.busca ? 'A busca procura nome, nome fantasia, código do cliente, cidade, CNPJ, vendedor e balconistas.' : 'Cadastre a primeira para usá-la nas campanhas.',
+        texto: filtros.busca ? 'A busca procura nome, nome fantasia, código do cliente, cidade, CNPJ, vendedor e balconistas.' : 'As empresas chegam pela sincronização com o Qlik.',
       }));
 }
 
@@ -63,9 +65,9 @@ function montarLista() {
     <div class="secao-cabeca">
       <div>
         <h2 class="secao-titulo">Empresas e balconistas</h2>
-        <p class="secao-nota">Todo usuário ativo cadastra e edita. Nada é apagado: quem sai é desativado.</p>
+        <p class="secao-nota">As empresas vêm do Qlik. Cada uma pode ter até ${LIMITES.balconistas_por_empresa} balconistas para receber premiações.</p>
       </div>
-      <button type="button" class="btn btn-primario" id="gs-nova">${icone('mais')} Cadastrar empresa</button>
+      <button type="button" class="btn btn-primario" id="gs-novo-balc">${icone('mais')} Cadastrar balconista</button>
     </div>
     <div class="ferramentas ferramentas-linha-larga">
       ${campoBusca({ id: 'gs-busca', rotulo: 'Buscar empresas', valor: filtros.busca, placeholder: 'Nome, código, cidade, CNPJ ou balconista' })}
@@ -83,9 +85,15 @@ function montarLista() {
     ao(el, 'input', '#gs-busca', (e, i) => buscar(i.value)),
     ao(el, 'change', '#gs-inativas', (e, cb) => { filtros.inativas = cb.checked; filtros.limite = PASSO; desenharLista(); }),
     ao(el, 'click', '#gs-mais', () => { filtros.limite += PASSO * 5; desenharLista(); }),
-    ao(el, 'click', '#gs-nova', async () => {
-      const e = await dialogoEmpresa();
-      if (e) { ctx.toast(`Empresa ${e.nome} cadastrada.`, { tom: 'sucesso' }); ctx.navegar(`#/gestao/empresas/${e.id}`); }
+    ao(el, 'click', '#gs-novo-balc', async () => {
+      const b = await dialogoBalconista(null);
+      if (b) {
+        const e = ctx.cadastros.empresa(b.empresa_id);
+        ctx.toast(`${b.nome_completo} cadastrado${e ? ` em ${e.nome}` : ''}.`, {
+          tom: 'sucesso', duracao: 7000,
+          acao: { rotulo: 'Ver empresa', aoClicar: () => ctx.navegar(`#/gestao/empresas/${b.empresa_id}`) },
+        });
+      }
     }),
     () => buscar.cancelar(),
     ligarBusca(el),
@@ -110,6 +118,7 @@ function desenharFicha() {
   const investido = aprov.reduce((t, c) => t + calc(c).total, 0);
   const balcs = ctx.cadastros.balconistasDa(e.id, { inativos: filtros.balcInativos });
   const nInativos = ctx.cadastros.balconistasDa(e.id, { inativos: true }).filter(b => !b.ativo).length;
+  const total = totalBalconistas(e.id), cheia = empresaCheia(e.id), max = LIMITES.balconistas_por_empresa;
   const rolagem = window.scrollY;
 
   pintar(el, html`<div class="ficha">
@@ -148,9 +157,13 @@ function desenharFicha() {
       </section>
 
       <section class="painel">
-        <h3 class="painel-titulo">Balconistas
-          <button type="button" class="btn btn-fantasma btn-pequeno" id="fx-novo-balc"${e.ativo ? '' : html` disabled`}>${icone('mais')} Cadastrar</button>
+        <h3 class="painel-titulo"><span>Balconistas <span class="vagas">${total} de ${max}</span></span>
+          <button type="button" class="btn btn-fantasma btn-pequeno" id="fx-novo-balc"${e.ativo && !cheia ? '' : html` disabled`}
+            aria-describedby="fx-vagas">${icone('mais')} Cadastrar</button>
         </h3>
+        <p class="painel-corpo campo-dica" id="fx-vagas">${!e.ativo ? 'Empresa desativada não recebe balconista novo.'
+          : cheia ? `Limite de ${max} balconistas atingido (contando os desativados). Para trocar a pessoa, edite um dos cadastros.`
+          : `Cabe${max - total === 1 ? '' : 'm'} mais ${max - total} ${max - total === 1 ? 'balconista' : 'balconistas'}. Eles aparecem para escolha na Nova campanha.`}</p>
         ${balcs.length ? html`<ul class="balconistas">${balcs.map(b => html`<li class="balconista${b.ativo ? '' : ' inativo'}">
           <div class="balconista-dados">
             <strong>${b.nome_completo}${b.ativo ? '' : html` ${seloNeutro('Desativado')}`}</strong>

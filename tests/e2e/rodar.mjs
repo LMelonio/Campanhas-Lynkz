@@ -385,7 +385,8 @@ teste('nova: Swile + balconista preenche, edição atualiza o cadastro e a campa
   await page.fill('#n-inv-lynkz', '1500'); await page.fill('#n-meta', '20.000'); await page.click('#n-campanha');
   igual(await page.inputValue('#n-inv-lynkz'), '1.500,00', 'máscara de valor');
   await page.locator('#bloco-recebedor:not([hidden])').waitFor();
-  igual(await page.locator('input[name="n-pessoa"]').count(), 3, '2 balconistas + outra pessoa');
+  igual(await page.locator('input[name="n-pessoa"]').count(), 2, 'só os 2 balconistas: empresa no limite não oferece "outra pessoa"');
+  igual(await page.locator('input[name="n-pessoa"][value="outra"]').count(), 0, 'sem "outra pessoa" com 2 cadastros');
   await page.check('input[name="n-pessoa"][value="2"]');
   igual(await page.inputValue('#n-rec-nome_completo'), 'João Pedro Lima', 'nome preenchido');
   igual(await page.inputValue('#n-rec-cpf'), '111.444.777-35', 'CPF preenchido');
@@ -445,25 +446,21 @@ teste('nova: "outra pessoa" vira balconista novo da empresa', async ({ page }) =
 
 teste('nova: CPF de quem já é balconista da empresa é barrado', async ({ page }) => {
   await abrir(page, { rota: '#/nova' });
-  await escolherNoCombo(page, '#n-empresa', 'pet center', 'Pet Center Imperatriz');
+  await escolherNoCombo(page, '#n-empresa', 'agropecu', 'Agropecuária São Luís');   // 1 balconista: ainda cabe outro
   await page.selectOption('#n-pagamento', 'Swile');
   await page.check('input[name="n-pessoa"][value="outra"]');
-  await page.fill('#n-rec-cpf', '11144477735');
+  await page.fill('#n-rec-cpf', '52998224725');
   await page.locator('[data-enviar]:visible').first().click();
-  afirma((await erroDo(page, 'n-rec-cpf').innerText()).includes('João Pedro Lima'), 'avisa de quem é o CPF');
+  afirma((await erroDo(page, 'n-rec-cpf').innerText()).includes('Maria Silva Santos'), 'avisa de quem é o CPF');
 });
 
-teste('nova: cadastrar empresa pelo combo já seleciona a empresa criada', async ({ page }) => {
+teste('nova: empresa não é cadastrada pela Nova (vem do Qlik)', async ({ page }) => {
   await abrir(page, { rota: '#/nova' });
   await page.click('#n-empresa'); await page.keyboard.type('Pet Vida Cohatrac', { delay: 10 });
-  await page.locator('.combo-criar').click();
-  const d = page.locator('dialog.dialogo'); await d.waitFor();
-  igual(await d.locator('#de-nome').inputValue(), 'Pet Vida Cohatrac', 'nome vem do que foi digitado');
-  await d.locator('#de-cidade').fill('São Luís');
-  await d.locator('button[type="submit"]').click();
-  await d.waitFor({ state: 'detached' });
-  igual(await page.inputValue('#n-empresa'), 'Pet Vida Cohatrac', 'empresa selecionada');
-  afirma((await db(page)).empresas.some(e => e.nome === 'Pet Vida Cohatrac'), 'gravada no banco');
+  const lista = page.locator('#n-empresa ~ .combo-lista');
+  await lista.waitFor();
+  igual(await page.locator('.combo-criar').count(), 0, 'sem opção "Cadastrar a empresa"');
+  afirma(/Qlik/.test(await lista.innerText()), 'lista vazia explica que as empresas vêm do Qlik');
 });
 
 teste('nova: rebate e datas validam; resumo mostra o rebate', async ({ page }) => {
@@ -542,48 +539,58 @@ teste('gestão: lista, busca por balconista e desativadas', async ({ page }) => 
   afirma((await page.locator('#gs-itens').innerText()).includes('Pet Center'), 'achou a empresa do João');
 });
 
-teste('gestão: cadastrar empresa valida, recusa CNPJ repetido e abre a ficha', async ({ page }) => {
+teste('gestão: "Cadastrar balconista" escolhe a empresa primeiro e respeita o limite de 2', async ({ page }) => {
   await abrir(page, { rota: '#/gestao' });
-  await page.click('#gs-nova');
+  igual(await page.locator('#gs-nova').count(), 0, 'não existe mais "Cadastrar empresa"');
+  afirma((await page.locator('#gs-itens').innerText()).includes('Balconistas: 2 de 2'), 'lista mostra as vagas por empresa');
+  await page.click('#gs-novo-balc');
   const d = page.locator('dialog.dialogo'); await d.waitFor();
-  await d.locator('#de-nome').fill('X'); await d.locator('#de-cnpj').fill('123');
+  afirma(await d.locator('#db-dados').evaluate(f => f.disabled) && await d.locator('#db-nome_completo').isDisabled(), 'dados travados até escolher a empresa');
   await d.locator('button[type="submit"]').click();
-  afirma(await d.locator('#de-nome-erro').isVisible(), 'nome curto');
-  afirma(await d.locator('#de-cnpj-erro').isVisible(), 'CNPJ incompleto');
-  igual(await d.locator('#de-cnpj').evaluate(i => getComputedStyle(i).borderTopWidth), '2px', 'campo com erro ganha borda de 2 px');
-  await d.locator('#de-cnpj').fill('11111111111111');
-  await d.locator('button[type="submit"]').click();
-  afirma(/inválido/i.test(await d.locator('#de-cnpj-erro').innerText()), 'CNPJ com dígito errado é recusado');
-  await d.locator('#de-nome').fill('Pet Nova Ltda'); await d.locator('#de-cnpj').fill('11222333000181');
-  igual(await d.locator('#de-cnpj').inputValue(), '11.222.333/0001-81', 'máscara de CNPJ');
-  await d.locator('button[type="submit"]').click();
-  await d.locator('.dialogo-erro:not([hidden]), #de-cnpj-erro:not([hidden])').first().waitFor();
-  afirma(/CNPJ/i.test(await d.innerText()), 'CNPJ repetido explicado no diálogo');
-  await d.locator('#de-cnpj').fill('');
-  await d.locator('button[type="submit"]').click();
-  await d.waitFor({ state: 'detached' });
-  await page.waitForFunction(() => /#\/gestao\/empresas\/\d+$/.test(location.hash));
-  igual(await titulo(page), 'Pet Nova Ltda', 'abre a ficha da empresa nova');
+  afirma(/empresa primeiro/i.test(await d.locator('#db-empresa-erro').innerText()), 'pede a empresa antes');
+  // empresa no limite (Pet Center: João e Ana)
+  await d.locator('#db-empresa').fill(''); await d.locator('#db-empresa').type('pet center', { delay: 15 });
+  const opPet = d.locator('#db-empresa ~ .combo-lista [role=option]', { hasText: 'Pet Center Imperatriz' }).first();
+  afirma(/limite atingido/.test(await opPet.innerText()), 'opção avisa que a empresa está no limite');
+  await opPet.click();
+  await d.locator('#db-empresa-erro:not([hidden])', { hasText: 'limite' }).waitFor({ timeout: 3000 });   // empresa cheia é explicada no campo
+  afirma(await d.locator('#db-nome_completo').isDisabled(), 'dados continuam travados com a empresa cheia');
+  // empresa com vaga (Casa do Criador: 0 de 2)
+  await d.locator('#db-empresa').fill(''); await d.locator('#db-empresa').type('casa do', { delay: 15 });
+  await d.locator('#db-empresa ~ .combo-lista [role=option]', { hasText: 'Casa do Criador' }).first().click();
+  await page.waitForFunction(() => !document.querySelector('#db-nome_completo').disabled, null, { timeout: 3000 });   // dados liberados com vaga
+  await d.locator('#db-nome_completo').fill('Rita Souza Lima'); await d.locator('#db-cpf').fill('71460238001');
+  await d.locator('#db-data_nascimento').fill('1994-02-03'); await d.locator('#db-email').fill('rita@exemplo.com'); await d.locator('#db-telefone').fill('99988776655');
+  await d.locator('button[type="submit"]').click(); await d.waitFor({ state: 'detached' });
+  await toastCom(page, 'Rita Souza Lima cadastrado em Casa do Criador');
+  const b = (await db(page)).balconistas.find(x => x.nome_completo === 'Rita Souza Lima');
+  igual(b?.empresa_id, 3, 'gravada na empresa escolhida');
+  await page.locator('.toast-acao', { hasText: 'Ver empresa' }).click();
+  await page.waitForFunction(() => location.hash === '#/gestao/empresas/3');
 });
 
 teste('gestão: ficha edita empresa, cadastra/edita/desativa balconista e desativa empresa', async ({ page }) => {
-  await abrir(page, { rota: '#/gestao/empresas/2' });
+  await abrir(page, { rota: '#/gestao/empresas/1' });
   await page.click('#fx-editar');
   let d = page.locator('dialog.dialogo'); await d.waitFor();
-  await d.locator('#de-cidade').fill('Imperatriz - MA'); await d.locator('button[type="submit"]').click(); await d.waitFor({ state: 'detached' });
+  await d.locator('#de-cidade').fill('São Luís - MA'); await d.locator('button[type="submit"]').click(); await d.waitFor({ state: 'detached' });
   // A ficha redesenha no evento "close" do diálogo, que chega um instante depois: espera o texto.
-  await page.locator('#conteudo', { hasText: 'Imperatriz - MA' }).waitFor({ timeout: 5000 });   // cidade editada
+  await page.locator('#conteudo', { hasText: 'São Luís - MA' }).waitFor({ timeout: 5000 });   // cidade editada
+  afirma((await page.locator('.vagas').innerText()).includes('1 de 2'), 'ficha mostra as vagas');
 
   await page.click('#fx-novo-balc');
   d = page.locator('dialog.dialogo'); await d.waitFor();
-  await d.locator('#db-nome_completo').fill('Clara Mendes'); await d.locator('#db-cpf').fill('11144477735');
+  afirma(/1 de 2/.test(await d.innerText()), 'diálogo mostra a empresa e as vagas');
+  await d.locator('#db-nome_completo').fill('Clara Mendes'); await d.locator('#db-cpf').fill('52998224725');
   await d.locator('#db-data_nascimento').fill('1999-07-01'); await d.locator('#db-email').fill('clara@exemplo.com'); await d.locator('#db-telefone').fill('99988776655');
   await d.locator('button[type="submit"]').click();
   await page.waitForTimeout(600);
-  afirma(/João Pedro Lima|já/i.test(await d.innerText()), 'CPF repetido na empresa é barrado');
+  afirma(/já existe/i.test(await d.innerText()), 'CPF repetido na empresa é barrado');
   await d.locator('#db-cpf').fill('714.602.380-01');
   await d.locator('button[type="submit"]').click(); await d.waitFor({ state: 'detached' });
   await page.locator('#conteudo', { hasText: 'Clara Mendes' }).waitFor({ timeout: 5000 });       // balconista novo na lista
+  afirma(await page.locator('#fx-novo-balc').isDisabled(), 'com 2 cadastros, "Cadastrar" fica travado');
+  afirma(/limite/i.test(await page.locator('#fx-vagas').innerText()), 'e o motivo aparece');
 
   const novo = (await db(page)).balconistas.find(b => b.nome_completo === 'Clara Mendes');
   await page.click(`[data-editar-balc="${novo.id}"]`);
@@ -596,12 +603,49 @@ teste('gestão: ficha edita empresa, cadastra/edita/desativa balconista e desati
   const conf = page.locator('dialog.dialogo'); if (await conf.count()) { await conf.locator('button[type="submit"]').click(); await conf.waitFor({ state: 'detached' }); }
   await page.waitForTimeout(400);
   igual((await db(page)).balconistas.find(b => b.id === novo.id).ativo, false, 'balconista desativado');
+  afirma(await page.locator('#fx-novo-balc').isDisabled(), 'desativado continua contando no limite');
 
   await page.click('#fx-ativo');
   const c2 = page.locator('dialog.dialogo'); await c2.waitFor(); await c2.locator('button[type="submit"]').click(); await c2.waitFor({ state: 'detached' });
   await page.locator('#fx-ativo', { hasText: 'Reativar' }).waitFor();
-  igual((await db(page)).empresas.find(e => e.id === 2).ativo, false, 'empresa desativada');
+  igual((await db(page)).empresas.find(e => e.id === 1).ativo, false, 'empresa desativada');
   afirma(await page.locator('#fx-novo-balc').isDisabled(), 'empresa desativada não recebe balconista');
+});
+
+teste('usuários: administrador libera conta, muda papel com confirmação e não se rebaixa', async ({ page }) => {
+  await abrir(page, { rota: '#/inicio' });
+  await page.locator('#menu a[data-nav="usuarios"]').first().waitFor({ state: 'attached' });
+  await page.goto(page.url().replace(/#.*$/, '#/usuarios'));
+  await page.locator('[data-liberar]').first().waitFor();
+  afirma((await page.locator('#conteudo').innerText()).includes('diego@lynkz.com.br'), 'conta nova aparece em "Sem acesso"');
+  await page.click('[data-liberar="u-novo"]');
+  await toastCom(page, 'já pode entrar');
+  igual((await db(page)).perfis['u-novo'].ativo, true, 'acesso liberado');
+
+  await page.click('[data-editar-usuario="u-novo"]');
+  let d = page.locator('dialog.dialogo').last(); await d.waitFor();
+  await d.locator('#du-nome').fill('Diego Ramos');
+  await d.locator('input[name="du-papel"][value="aprovador"]').check();
+  await d.locator('button[type="submit"]').click();
+  const conf = page.locator('dialog.dialogo', { hasText: 'Tornar Diego Ramos administrador?' });
+  await conf.waitFor();
+  await conf.locator('button[type="submit"]').click();
+  await page.locator('dialog.dialogo').first().waitFor({ state: 'detached' });
+  const p = (await db(page)).perfis['u-novo'];
+  igual(p.papel, 'aprovador', 'virou administrador'); igual(p.nome, 'Diego Ramos', 'nome trocado');
+
+  await page.click('[data-editar-usuario="u-aprov"]');
+  d = page.locator('dialog.dialogo'); await d.waitFor();
+  afirma(await d.locator('input[name="du-papel"]').first().isDisabled(), 'o próprio papel fica travado');
+  igual(await d.locator('#du-ativo').count(), 0, 'sem desligar o próprio acesso');
+  await d.locator('button', { hasText: 'Cancelar' }).click();
+});
+
+teste('usuários: usuário comum não vê o menu nem a tela', async ({ page }) => {
+  await abrir(page, { papel: 'coordenador', rota: '#/usuarios' });
+  igual(await page.locator('[data-nav="usuarios"]').count(), 0, 'sem item Usuários no menu');
+  afirma((await page.locator('#conteudo').innerText()).includes('Só administradores'), 'rota direta explica');
+  afirma((await page.locator('.menu-usuario').innerText()).includes('Usuário'), 'menu mostra o papel como "Usuário"');
 });
 
 teste('gestão: "Nova campanha" na ficha já abre com a empresa escolhida', async ({ page }) => {
@@ -1327,7 +1371,7 @@ for (const largura of [390, 1440]) {
 // ============================================================
 //  10. TODAS AS TELAS × TAMANHOS: sem rolagem lateral, acessibilidade, capturas
 // ============================================================
-const TELAS = ['#/inicio', '#/campanhas', '#/campanhas/2', '#/nova', '#/historico', '#/gestao', '#/gestao/empresas/2', '#/perfil'];
+const TELAS = ['#/inicio', '#/campanhas', '#/campanhas/2', '#/nova', '#/historico', '#/gestao', '#/gestao/empresas/2', '#/perfil', '#/usuarios'];
 for (const [largura, altura] of [[360, 740], [390, 844], [768, 1024], [1024, 768], [1280, 800], [1440, 900]]) {
   teste(`telas ${largura}px: sem rolagem lateral${[390, 1440].includes(largura) ? ', acessibilidade e capturas' : ''}`, async ({ page }) => {
     const problemas = [];

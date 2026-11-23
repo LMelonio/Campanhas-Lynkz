@@ -243,3 +243,26 @@ a.det-empresa:hover { text-decoration-color: currentColor; }
 .lista-cabeca .lista-resumo { margin: 0; }
 .lista-cabeca .btn-texto { min-height: var(--tap); }
 .perfil-acesso { font-size: var(--t-12); color: var(--ink-2); margin: calc(-1 * var(--e-1)) 0 var(--e-2); }
+
+/* ---------- usuários (v2.8) ---------- */
+.usuarios { max-width: 760px; display: grid; gap: var(--e-4); }
+.usuarios-guia { display: grid; gap: var(--e-1); }
+.usuarios-lista { display: grid; }
+.usuario { display: flex; flex-wrap: wrap; align-items: center; gap: var(--e-2) var(--e-3); padding: var(--e-3) var(--e-4); border-top: 1px solid var(--line); }
+.usuario-avatar {
+  width: 40px; height: 40px; flex: 0 0 auto; border-radius: 50%; display: grid; place-items: center;
+  background: var(--card-2); border: 1px solid var(--line); font-weight: 700;
+}
+.usuario-dados { display: grid; gap: 2px; min-width: 0; flex: 1 1 200px; }
+.usuario-dados strong { font-size: var(--t-14); display: flex; align-items: center; gap: var(--e-2); flex-wrap: wrap; }
+.usuario-dados small { font-size: var(--t-12); color: var(--ink-2); overflow-wrap: anywhere; }
+.usuario .acoes { align-items: center; }
+.selo-admin { background: var(--ink); color: var(--card); }
+.selo-admin svg { width: 12px; height: 12px; }
+.contador-texto { font-weight: 600; color: var(--ink-2); margin-left: var(--e-1); }
+
+/* ---------- vagas de balconista (v2.8) ---------- */
+.vagas { font-weight: 600; color: var(--ink-2); text-transform: none; letter-spacing: 0; margin-left: var(--e-1); }
+.cadastro-passo { font-size: var(--t-12); font-weight: 700; color: var(--ink-2); margin: 0 0 var(--e-2); }
+.cadastro-dados[disabled] { opacity: .55; }
+.cadastro-dados { border: 0; padding: 0; margin: 0; min-width: 0; }
