@@ -17,19 +17,19 @@ rodar -d campanhas_teste_novo -f $SQL/migracoes/06-validacao-v2.sql -t -A -F' ' 
 # Cada linha sai como "12 f Nome do teste": o f/t é a 2ª coluna. Um "! grep" não
 # para o script com set -e (o bash ignora comandos com !), por isso o if explícito.
 if grep -q '^[0-9]* f ' /tmp/val1.txt; then echo "FALHOU: validação 06 com linha false"; exit 1; fi
-rodar -d campanhas_teste_novo -f testes.sql 2>&1 | sed -n 's/^psql.*NOTICE:  \(ok.*\)/\1/p; /PASSARAM/p'
+rodar -d campanhas_teste_novo -f testes.sql 2>&1 | sed -n 's/^psql.*NOTICE:  \(ok.*\)/\1/p; /PASSARAM/p; /ERROR/p; /FALHOU/p'
 rodar -d campanhas_teste_novo -f $SQL/migracoes/07-validacao.sql -t -A -F' ' | tee /tmp/val7a.txt
 if grep -q '^[0-9]* f ' /tmp/val7a.txt; then echo "FALHOU: validação 07 com linha false"; exit 1; fi
-rodar -d campanhas_teste_novo -f testes-07.sql 2>&1 | sed -n 's/^psql.*NOTICE:  \(ok.*\)/\1/p; /PASSARAM/p'
+rodar -d campanhas_teste_novo -f testes-07.sql 2>&1 | sed -n 's/^psql.*NOTICE:  \(ok.*\)/\1/p; /PASSARAM/p; /ERROR/p; /FALHOU/p'
 rodar -d campanhas_teste_novo -f $SQL/migracoes/08-validacao.sql -t -A -F' ' | tee /tmp/val8a.txt
 if grep -q '^[0-9]* f ' /tmp/val8a.txt; then echo "FALHOU: validação 08 com linha false"; exit 1; fi
-rodar -d campanhas_teste_novo -f testes-08.sql 2>&1 | sed -n 's/^psql.*NOTICE:  \(ok.*\)/\1/p; /PASSARAM/p'
+rodar -d campanhas_teste_novo -f testes-08.sql 2>&1 | sed -n 's/^psql.*NOTICE:  \(ok.*\)/\1/p; /PASSARAM/p; /ERROR/p; /FALHOU/p'
 rodar -d campanhas_teste_novo -f $SQL/migracoes/10-validacao.sql -t -A -F' ' | tee /tmp/val10a.txt
 if grep -q '^[0-9]* f ' /tmp/val10a.txt; then echo "FALHOU: validação 10 com linha false"; exit 1; fi
-rodar -d campanhas_teste_novo -f testes-10.sql 2>&1 | sed -n 's/^psql.*NOTICE:  \(ok.*\)/\1/p; /PASSARAM/p'
+rodar -d campanhas_teste_novo -f testes-10.sql 2>&1 | sed -n 's/^psql.*NOTICE:  \(ok.*\)/\1/p; /PASSARAM/p; /ERROR/p; /FALHOU/p'
 rodar -d campanhas_teste_novo -f $SQL/migracoes/11-validacao.sql -t -A -F' ' | tee /tmp/val11a.txt
 if grep -q '^[0-9]* f ' /tmp/val11a.txt; then echo "FALHOU: validação 11 com linha false"; exit 1; fi
-rodar -d campanhas_teste_novo -f testes-11.sql 2>&1 | sed -n 's/^psql.*NOTICE:  \(ok.*\)/\1/p; /PASSARAM/p'
+rodar -d campanhas_teste_novo -f testes-11.sql 2>&1 | sed -n 's/^psql.*NOTICE:  \(ok.*\)/\1/p; /PASSARAM/p; /ERROR/p; /FALHOU/p'
 
 echo "== 2. Migração v1.3.1 → v2 (04 e 05 sobre o schema antigo)"
 banco campanhas_teste_mig
@@ -52,19 +52,19 @@ test "$(rodar -d campanhas_teste_mig -t -A -c "select count(*) from campanhas_ap
 echo "ok  campanha da v1 continua igual depois da migração"
 test "$(rodar -d campanhas_teste_mig -t -A -c "select count(*) from campanhas_app where campanha='Antiga' and importada = false")" = 1
 echo "ok  campanha antiga continua como não importada depois da 07"
-rodar -d campanhas_teste_mig -f testes.sql 2>&1 | sed -n 's/^psql.*NOTICE:  \(ok.*\)/\1/p; /PASSARAM/p'
+rodar -d campanhas_teste_mig -f testes.sql 2>&1 | sed -n 's/^psql.*NOTICE:  \(ok.*\)/\1/p; /PASSARAM/p; /ERROR/p; /FALHOU/p'
 rodar -d campanhas_teste_mig -f $SQL/migracoes/07-validacao.sql -t -A -F' ' | tee /tmp/val7b.txt
 if grep -q '^[0-9]* f ' /tmp/val7b.txt; then echo "FALHOU: validação 07 com linha false"; exit 1; fi
-rodar -d campanhas_teste_mig -f testes-07.sql 2>&1 | sed -n 's/^psql.*NOTICE:  \(ok.*\)/\1/p; /PASSARAM/p'
+rodar -d campanhas_teste_mig -f testes-07.sql 2>&1 | sed -n 's/^psql.*NOTICE:  \(ok.*\)/\1/p; /PASSARAM/p; /ERROR/p; /FALHOU/p'
 rodar -d campanhas_teste_mig -f $SQL/migracoes/08-validacao.sql -t -A -F' ' | tee /tmp/val8b.txt
 if grep -q '^[0-9]* f ' /tmp/val8b.txt; then echo "FALHOU: validação 08 com linha false"; exit 1; fi
-rodar -d campanhas_teste_mig -f testes-08.sql 2>&1 | sed -n 's/^psql.*NOTICE:  \(ok.*\)/\1/p; /PASSARAM/p'
+rodar -d campanhas_teste_mig -f testes-08.sql 2>&1 | sed -n 's/^psql.*NOTICE:  \(ok.*\)/\1/p; /PASSARAM/p; /ERROR/p; /FALHOU/p'
 rodar -d campanhas_teste_mig -f $SQL/migracoes/10-validacao.sql -t -A -F' ' | tee /tmp/val10b.txt
 if grep -q '^[0-9]* f ' /tmp/val10b.txt; then echo "FALHOU: validação 10 com linha false"; exit 1; fi
-rodar -d campanhas_teste_mig -f testes-10.sql 2>&1 | sed -n 's/^psql.*NOTICE:  \(ok.*\)/\1/p; /PASSARAM/p'
+rodar -d campanhas_teste_mig -f testes-10.sql 2>&1 | sed -n 's/^psql.*NOTICE:  \(ok.*\)/\1/p; /PASSARAM/p; /ERROR/p; /FALHOU/p'
 rodar -d campanhas_teste_mig -f $SQL/migracoes/11-validacao.sql -t -A -F' ' | tee /tmp/val11b.txt
 if grep -q '^[0-9]* f ' /tmp/val11b.txt; then echo "FALHOU: validação 11 com linha false"; exit 1; fi
-rodar -d campanhas_teste_mig -f testes-11.sql 2>&1 | sed -n 's/^psql.*NOTICE:  \(ok.*\)/\1/p; /PASSARAM/p'
+rodar -d campanhas_teste_mig -f testes-11.sql 2>&1 | sed -n 's/^psql.*NOTICE:  \(ok.*\)/\1/p; /PASSARAM/p; /ERROR/p; /FALHOU/p'
 
 echo "== 2b. Migração a partir do banco de produção: v1 SEM a parte B (02) → só 04 + 05"
 banco campanhas_teste_semb
@@ -82,7 +82,7 @@ test "$(rodar -d campanhas_teste_semb -t -A -c "select count(*) from campanhas_a
 echo "ok  campanha Swile da v1 continua igual depois da 04"
 test "$(rodar -d campanhas_teste_semb -t -A -c "select has_column_privilege('authenticated','public.campanhas','swile_cpf','SELECT')")" = f
 echo "ok  swile_cpf da campanha antiga protegido (sem leitura direta)"
-rodar -d campanhas_teste_semb -f testes.sql 2>&1 | sed -n 's/^psql.*NOTICE:  \(ok.*\)/\1/p; /PASSARAM/p'
+rodar -d campanhas_teste_semb -f testes.sql 2>&1 | sed -n 's/^psql.*NOTICE:  \(ok.*\)/\1/p; /PASSARAM/p; /ERROR/p; /FALHOU/p'
 
 echo "== 3. Rodar as migrações de novo não quebra (idempotência)"
 rodar -d campanhas_teste_mig -f $SQL/migracoes/04-gestao-empresas-balconistas.sql >/dev/null 2>&1

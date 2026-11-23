@@ -429,7 +429,7 @@ teste('nova: "outra pessoa" vira balconista novo da empresa', async ({ page }) =
   await page.locator('[data-enviar]:visible').first().click();
   for (const id of ['n-rec-nome_completo', 'n-rec-cpf', 'n-rec-data_nascimento', 'n-rec-email', 'n-rec-telefone'])
     afirma(await erroDo(page, id).isVisible(), `erro em ${id}`);
-  await page.fill('#n-rec-nome_completo', 'Ana Clara Souza'); await page.fill('#n-rec-cpf', '39053344705');
+  await page.fill('#n-rec-nome_completo', 'Ana Clara dos Santos'); await page.fill('#n-rec-cpf', '39053344705');
   await page.fill('#n-rec-data_nascimento', '1996-03-10'); await page.fill('#n-rec-email', 'ana.clara@exemplo.com');
   await page.fill('#n-rec-telefone', '98912345678');
   afirma(await page.isChecked('#n-rec-salvar'), '"Salvar como balconista" ligado');
@@ -440,6 +440,7 @@ teste('nova: "outra pessoa" vira balconista novo da empresa', async ({ page }) =
   const b = d.balconistas.find(x => x.cpf === '39053344705' && x.empresa_id === 3);
   afirma(!!b, 'balconista criado na empresa 3');
   igual(+d.campanhas.at(-1).balconista_id, b.id, 'campanha ligada ao balconista novo');
+  igual(d.campanhas.at(-1).swile_nome_completo, 'Ana Clara dos Santos', 'nome do recebedor Swile gravado sem alterar');
 });
 
 teste('nova: CPF de quem já é balconista da empresa é barrado', async ({ page }) => {

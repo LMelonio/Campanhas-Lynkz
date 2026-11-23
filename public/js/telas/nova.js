@@ -473,7 +473,7 @@ async function enviar() {
         rebate_base: rb ? v('n-rebate-base') || null : null,
         rebate_gatilho: rb ? v('n-rebate-gatilho') || null : null,
         // swile_* só quando o pagamento é Swile.
-        swile_nome_completo: ehSwile ? dados.nome_completo.replace(/s+/g, ' ') : null,
+        swile_nome_completo: ehSwile ? dados.nome_completo.replace(/\s+/g, ' ') : null,
         swile_cpf: ehSwile ? soDigitos(dados.cpf) : null,
         swile_data_nascimento: ehSwile ? dados.data_nascimento : null,
         swile_email: ehSwile ? dados.email.toLowerCase() : null,

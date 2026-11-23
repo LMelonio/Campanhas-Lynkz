@@ -38,18 +38,18 @@ select public.enviar_campanha(
     'cliente', 'x', 'empresa_id', (select id from empresas where nome = 'Empresa do envio único'),
     'laboratorio', 'Avert', 'campanha', 'Envio único', 'forma_pagamento', 'Swile',
     'investimento_lynkz', 500, 'meta', 10000,
-    'swile_nome_completo', 'Maria Silva Santos', 'swile_cpf', '52998224725', 'swile_data_nascimento', '1992-04-12',
+    'swile_nome_completo', 'Maria Silva Santos', 'swile_cpf', '73195826437', 'swile_data_nascimento', '1992-04-12',
     'swile_email', 'maria@exemplo.com', 'swile_telefone', '98999990001',
     'solicitante_id', '88888888-8888-8888-8888-888888888888', 'status', 'Aprovada'),
   jsonb_build_object(
     'empresa_id', (select id from empresas where nome = 'Empresa do envio único'),
-    'nome_completo', 'Maria Silva Santos', 'cpf', '52998224725', 'data_nascimento', '1992-04-12',
+    'nome_completo', 'Maria Silva Santos', 'cpf', '73195826437', 'data_nascimento', '1992-04-12',
     'email', 'maria@exemplo.com', 'telefone', '98999990001'),
   '[{"numero":"1001","serie":"1","data":"2026-10-02","valor":300},{"numero":"1002","serie":"1","data":"2026-10-05","valor":450.5}]'::jsonb
 ) as r;
-select t11.ok((select count(*) = 1 from balconistas where cpf = '52998224725'), 'envio cadastra o balconista');
+select t11.ok((select count(*) = 1 from balconistas where cpf = '73195826437'), 'envio cadastra o balconista');
 select t11.ok((select count(*) = 1 from campanhas_app where campanha = 'Envio único' and status = 'Pendente'
-                and balconista_id = (select id from balconistas where cpf = '52998224725')), 'campanha nasce Pendente e ligada ao balconista');
+                and balconista_id = (select id from balconistas where cpf = '73195826437')), 'campanha nasce Pendente e ligada ao balconista');
 select t11.ok((select solicitante_id = '11111111-1111-1111-1111-111111111111' from campanhas_app where campanha = 'Envio único'),
   'solicitante é quem chamou, não o que veio no JSON');
 select t11.ok((select count(*) = 2 from campanha_notas where campanha_id = (select (r->>'id')::bigint from resultado11)), 'notas gravadas junto');
@@ -73,10 +73,10 @@ select t11.ok((select count(*) = 0 from campanhas_app where campanha = 'Nota rep
 -- 4. balconista já cadastrado: atualiza e usa o mesmo id
 select public.enviar_campanha(
   (select jsonb_build_object('cliente','x','empresa_id', id,'laboratorio','Avert','campanha','Com cadastro existente') from empresas where nome = 'Empresa do envio único'),
-  (select jsonb_build_object('id', b.id, 'nome_completo','Maria Silva Souza','cpf','52998224725','data_nascimento','1992-04-12','email','maria@exemplo.com','telefone','98999990001')
-     from balconistas b where cpf = '52998224725'));
-select t11.ok((select nome_completo = 'Maria Silva Souza' from balconistas where cpf = '52998224725'), 'atualiza o cadastro do balconista existente');
-select t11.ok((select count(*) = 1 from balconistas where cpf = '52998224725'), 'sem duplicar o balconista');
+  (select jsonb_build_object('id', b.id, 'nome_completo','Maria Silva Souza','cpf','73195826437','data_nascimento','1992-04-12','email','maria@exemplo.com','telefone','98999990001')
+     from balconistas b where cpf = '73195826437'));
+select t11.ok((select nome_completo = 'Maria Silva Souza' from balconistas where cpf = '73195826437'), 'atualiza o cadastro do balconista existente');
+select t11.ok((select count(*) = 1 from balconistas where cpf = '73195826437'), 'sem duplicar o balconista');
 
 -- 5. só logado executa
 reset role;
