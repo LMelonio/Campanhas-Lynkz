@@ -97,6 +97,7 @@ histórico do app quando existe.
   Valor vindo do usuário só entra na expressão por `valorSeguro()` (sem aspas, chaves, `$`, `;`).
 - App: `dados/qlik.js` (`consultarCompras`, `padraoFornecedor`), quadro "Compras e notas fiscais" em `telas/nova.js`,
   `campanhas.salvarNotas/notasDa`. Notas ficam em `campanha_notas` (só o solicitante grava, só Pendente, imutável).
+- Marca opcional (v2.5): `marca` no pedido filtra total/notas; a resposta traz `marcas` (sempre sem o filtro) e a escolha vai em `campanhas.compras_marca` (migração 09).
 - Qlik simulado para `npm run dev` e e2e: `dev/qlik-simulado.mjs`. Passo a passo: `NOTAS-FISCAIS-QLIK.md`.
 
 ## Regras de código

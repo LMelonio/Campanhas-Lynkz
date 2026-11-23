@@ -318,8 +318,13 @@ function desenharResultadoCompras() {
   const c = st.compras;
   const forn = c.fornecedores.length ? c.fornecedores.join(', ') : 'o laboratório escolhido';
   pintarCompras(html`
-    <p class="compras-total" role="status">${icone('info')}<span>No período de ${dataBR(c.inicio)} a ${dataBR(c.fim)}, este cliente comprou <strong class="valor">${moeda(c.total)}</strong> de ${forn}.</span></p>
+    <p class="compras-total" role="status">${icone('info')}<span>No período de ${dataBR(c.inicio)} a ${dataBR(c.fim)}, este cliente comprou <strong class="valor">${moeda(c.total)}</strong> de ${forn}${c.marca ? html`, marca <strong>${c.marca}</strong>` : ''}.</span></p>
     <p class="campo-dica">Vem do Qlik. Confira se o fornecedor acima é mesmo o laboratório da campanha.</p>
+    ${c.marcas.length > 1 || c.marca ? selecao({
+      id: 'n-marca', rotulo: 'Marca do laboratório', opcional: true, vazio: 'Todas as marcas',
+      dica: 'Escolha uma marca para ver só o que o cliente comprou dela (ex.: WellPet dentro da Ouro Fino).',
+      opcoes: c.marcas.map(m => ({ valor: m.nome, rotulo: `${m.nome} · ${moeda(m.valor)}` })), valor: c.marca || '',
+    }) : ''}
     ${c.notas.length ? html`
       <fieldset class="campo notas-fiscais" data-campo="n-notas">
         <legend class="campo-rotulo">Notas fiscais que participam da campanha <span class="campo-opc">(opcional)</span></legend>
@@ -351,16 +356,19 @@ async function atualizarCompras() {
   if (!inicio || !fim) return aviso('Informe o início e o fim da campanha para ver as compras do período.');
   if (fim < inicio) return aviso('O fim está antes do início.');
 
-  const chave = [empresa.codigo_cliente, lab, inicio, fim].join('|');
+  // Trocar empresa, laboratório ou datas zera a marca escolhida (cada laboratório tem as suas).
+  const base = [empresa.codigo_cliente, lab, inicio, fim].join('|');
+  if (st.baseCompras !== base) { st.marca = ''; st.baseCompras = base; }
+  const chave = `${base}|${st.marca || ''}`;
   if (st.compras?.chave === chave) return desenharResultadoCompras();
 
   st.compras = null;
   const controle = st.consulta = new AbortController();
   pintarCompras(html`<p class="campo-dica" role="status">Consultando o Qlik…</p>`);
   try {
-    const r = await consultarCompras({ codigoCliente: empresa.codigo_cliente, laboratorio: lab, inicio, fim, sinal: controle.signal });
+    const r = await consultarCompras({ codigoCliente: empresa.codigo_cliente, laboratorio: lab, marca: st.marca || null, inicio, fim, sinal: controle.signal });
     if (st !== meu || controle.signal.aborted) return;
-    st.compras = { ...r, chave, inicio, fim, marcadas: new Set() };
+    st.compras = { ...r, marcas: r.marcas || [], chave, inicio, fim, marca: st.marca || '', marcadas: new Set() };
     desenharResultadoCompras();
   } catch (e) {
     if (e.name === 'AbortError' || st !== meu) return;
@@ -432,7 +440,7 @@ async function enviar() {
 
     const rb = marcado('n-rebate');
     // Só vale a consulta que bate com o que está na tela agora.
-    const comprasAtuais = st.compras && st.compras.chave === [empresa.codigo_cliente, st.comboLab.valor(), v('n-inicio'), v('n-fim')].join('|') ? st.compras : null;
+    const comprasAtuais = st.compras && st.compras.chave === [empresa.codigo_cliente, st.comboLab.valor(), v('n-inicio'), v('n-fim'), st.marca || ''].join('|') ? st.compras : null;
     const c = await ctx.campanhas.criar({
       cliente: empresa.nome, empresa_id: empresa.id, balconista_id: balconistaId,
       laboratorio: st.comboLab.valor(), campanha: v('n-campanha'),
@@ -454,6 +462,7 @@ async function enviar() {
       observacoes: v('n-observacoes') || null,
       compras_periodo: comprasAtuais ? comprasAtuais.total : null,
       compras_consultado_em: comprasAtuais ? comprasAtuais.consultado_em : null,
+      compras_marca: comprasAtuais?.marca || null,
       status: STATUS.PENDENTE,
       solicitante_id: ctx.perfil.id, solicitante_nome: ctx.perfil.nome,
     });
@@ -665,6 +674,7 @@ export function montar(el, ctx, params) {
       atualizarSomaNotas();
     }),
     ao(form, 'click', '#compras-tentar', () => atualizarCompras()),
+    ao(form, 'change', '#n-marca', (e, sel) => { st.marca = sel.value; atualizarCompras(); }),
     () => st.consulta?.abort(),
     ao(form, 'click', '[data-periodo]', (e, b) => {
       const [a, z] = periodosRapidos()[b.dataset.periodo];

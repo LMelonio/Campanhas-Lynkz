@@ -58,6 +58,7 @@ export async function tratarCompras(request, env, { conectar = conectarQlik } = 
   if (!corpo) return json({ erro: 'Pedido inválido.' }, 400);
   const codigoCliente = valorSeguro(corpo.codigo_cliente, 'Código do cliente');
   const padraoFornecedor = valorSeguro(corpo.fornecedor_padrao, 'Laboratório');
+  const marca = corpo.marca ? valorSeguro(corpo.marca, 'Marca') : null;
   const { inicio, fim } = corpo;
   const dias = serialQlik(fim) - serialQlik(inicio);
   if (dias < 0) throw new ErroQlik('O fim está antes do início.', { status: 400 });
@@ -66,7 +67,7 @@ export async function tratarCompras(request, env, { conectar = conectarQlik } = 
   const ws = await conectar(env);
   const engine = abrirEngine(ws);
   try {
-    const r = await consultarCompras(engine, { appId: env.QLIK_APP_ID, config: configDoEnv(env), codigoCliente, padraoFornecedor, inicio, fim });
+    const r = await consultarCompras(engine, { appId: env.QLIK_APP_ID, config: configDoEnv(env), codigoCliente, padraoFornecedor, marca, inicio, fim });
     return json({ ...r, consultado_em: new Date().toISOString() });
   } finally {
     engine.fechar();

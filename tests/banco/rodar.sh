@@ -35,6 +35,7 @@ rodar -d campanhas_teste_mig -f $SQL/migracoes/04-gestao-empresas-balconistas.sq
 rodar -d campanhas_teste_mig -f $SQL/migracoes/05-data-decisao-fuso.sql >/dev/null 2>&1
 rodar -d campanhas_teste_mig -f $SQL/migracoes/07-clientes-qlik-e-historico.sql >/dev/null
 rodar -d campanhas_teste_mig -f $SQL/migracoes/08-notas-fiscais.sql >/dev/null
+rodar -d campanhas_teste_mig -f $SQL/migracoes/09-marca-da-consulta.sql >/dev/null
 rodar -d campanhas_teste_mig -f $SQL/migracoes/06-validacao-v2.sql -t -A -F' ' | tee /tmp/val2.txt
 # Cada linha sai como "12 f Nome do teste": o f/t é a 2ª coluna. Um "! grep" não
 # para o script com set -e (o bash ignora comandos com !), por isso o if explícito.
@@ -74,9 +75,11 @@ rodar -d campanhas_teste_mig -f $SQL/migracoes/04-gestao-empresas-balconistas.sq
 rodar -d campanhas_teste_mig -f $SQL/migracoes/05-data-decisao-fuso.sql >/dev/null 2>&1
 rodar -d campanhas_teste_mig -f $SQL/migracoes/07-clientes-qlik-e-historico.sql >/dev/null
 rodar -d campanhas_teste_mig -f $SQL/migracoes/08-notas-fiscais.sql >/dev/null
-echo "ok  04, 05, 07 e 08 rodam duas vezes"
+rodar -d campanhas_teste_mig -f $SQL/migracoes/09-marca-da-consulta.sql >/dev/null
+echo "ok  04, 05, 07, 08 e 09 rodam duas vezes"
 
-echo "== 4. Rollback (08, 07, 05 e 04) volta ao formato da v1"
+echo "== 4. Rollback (09, 08, 07, 05 e 04) volta ao formato da v1"
+rodar -d campanhas_teste_mig -f $SQL/migracoes/09-rollback.sql >/dev/null
 rodar -d campanhas_teste_mig -f $SQL/migracoes/08-rollback.sql >/dev/null
 test "$(rodar -d campanhas_teste_mig -t -A -c "select count(*) from information_schema.tables where table_name='campanha_notas'")" = 0
 test "$(rodar -d campanhas_teste_mig -t -A -c "select count(*) > 0 from campanhas")" = t

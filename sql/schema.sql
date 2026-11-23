@@ -1,7 +1,7 @@
 -- ============================================================
 --  APROVAÇÃO DE CAMPANHAS PROMOCIONAIS
 --  Cole este arquivo inteiro no SQL Editor do Supabase e rode.
---  Instalação NOVA (v2.4.0). Para atualizar um banco da v1, use
+--  Instalação NOVA (v2.5.0). Para atualizar um banco da v1, use
 --  migracoes/04, 05 e 06 — ver COMECE-AQUI.md, Parte 0.
 -- ============================================================
 
@@ -923,6 +923,15 @@ grant select on public.campanha_notas to authenticated;
 grant insert (campanha_id, numero, serie, data_emissao, valor) on public.campanha_notas to authenticated;
 
 -- As colunas novas de campanhas entram no select da view e nos grants.
+select public.reaplicar_permissoes_campanhas();
+
+-- ============================================================
+--  v2.5 — MARCA DA CONSULTA NO QLIK
+--  (mesmo conteúdo de migracoes/09-marca-da-consulta.sql)
+-- ============================================================
+alter table public.campanhas add column if not exists compras_marca text;
+
+-- A coluna nova entra no select da view e nos grants do app.
 select public.reaplicar_permissoes_campanhas();
 
 -- ============================================================

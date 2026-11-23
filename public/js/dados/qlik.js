@@ -26,9 +26,10 @@ export function padraoFornecedor(lab) {
   return `*${ate > 0 ? primeira.slice(0, ate) : primeira}*`;
 }
 
-// Devolve { total, notas:[{numero, serie, data, valor}], fornecedores:[], consultado_em }.
+// Devolve { total, notas:[{numero, serie, data, valor}], fornecedores:[], marcas:[{nome, valor}], consultado_em }.
+// "marca" (opcional) restringe total e notas a uma marca do laboratório; "marcas" lista todas as do período.
 // Lança ErroApp com mensagem pronta para mostrar na tela.
-export async function consultarCompras({ codigoCliente, laboratorio, inicio, fim, sinal }) {
+export async function consultarCompras({ codigoCliente, laboratorio, marca = null, inicio, fim, sinal }) {
   const { data } = await sb.auth.getSession();
   const token = data?.session?.access_token;
   if (!token) throw new ErroApp('Entre de novo no app para consultar o Qlik.');
@@ -37,7 +38,7 @@ export async function consultarCompras({ codigoCliente, laboratorio, inicio, fim
     resp = await fetch('/api/qlik/compras', {
       method: 'POST', signal: sinal,
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ codigo_cliente: codigoCliente, fornecedor_padrao: padraoFornecedor(laboratorio), inicio, fim }),
+      body: JSON.stringify({ codigo_cliente: codigoCliente, fornecedor_padrao: padraoFornecedor(laboratorio), marca: marca || undefined, inicio, fim }),
     });
   } catch (e) {
     if (e.name === 'AbortError') throw e;

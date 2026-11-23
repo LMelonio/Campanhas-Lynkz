@@ -1,4 +1,4 @@
-# Compras no Qlik e notas fiscais da campanha (v2.4.0)
+# Compras no Qlik e notas fiscais da campanha (v2.5.0)
 
 Na **Nova campanha**, depois de escolher a empresa, o laboratório e o período, o app mostra quanto
 aquele cliente comprou do laboratório no período e lista as notas fiscais de venda. O solicitante
@@ -13,6 +13,16 @@ Nova campanha ──POST /api/qlik/compras (token do login)──▶ Worker do C
 - A chave do Qlik fica **só no Worker** (segredo). O navegador nunca a vê.
 - O Worker confere o login no Supabase (token válido e perfil ativo) antes de falar com o Qlik.
 - Se o Qlik estiver fora do ar, o usuário vê o aviso, pode "Tentar de novo" e **pode enviar a campanha sem notas**.
+
+## Marca do laboratório (opcional)
+
+Depois que a consulta mostra o total, aparece o campo **Marca do laboratório** com as marcas que o
+cliente comprou daquele laboratório no período e o valor de cada uma (ex.: Ouro Fino → WELLPET,
+PROTEÇÃO, ANTI-INFLAMATÓRIOS…). Escolher uma marca restringe o total e as notas a ela; "Todas as
+marcas" volta ao total do laboratório. Trocar a empresa, o laboratório ou as datas zera a escolha.
+
+A marca é gravada em `campanhas.compras_marca` (migração 09) e aparece no detalhe e no Excel
+("Marca consultada (Qlik)"). Conferido no Qlik real: a soma das marcas é igual ao total do laboratório.
 
 ## O que a consulta pergunta ao Qlik
 
@@ -49,7 +59,9 @@ histórico). Para esses a consulta volta "nenhuma nota" até alguém descobrir c
 ## Colocar no ar (nesta ordem)
 
 1. **Banco:** no SQL Editor do Supabase, rode `sql/migracoes/08-notas-fiscais.sql` e depois
-   `08-validacao.sql` (6 linhas `true`). Só acrescenta; desfazer: `08-rollback.sql`.
+   `08-validacao.sql` (6 linhas `true`), e em seguida `09-marca-da-consulta.sql` e `09-validacao.sql`
+   (2 linhas `true`). Só acrescentam; desfazer: `09-rollback.sql` e `08-rollback.sql`.
+   **Rode a 09 antes de publicar a v2.5.0**: o app passa a gravar `compras_marca` em toda campanha.
 2. **Chave nova do Qlik** (a antiga circulou num zip, segundo a documentação do Painel Vendedor):
    Qlik Cloud → Perfil → Chaves de API → gerar. Use a nova nos dois lugares abaixo e apague a antiga.
 3. **Segredo do Worker:** `npx wrangler secret put QLIK_API_KEY` (cola a chave quando pedir).

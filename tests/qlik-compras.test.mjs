@@ -32,7 +32,8 @@ function qlikFalso({ campoInexistente = null, medidaComErro = false } = {}) {
         const d = defs.get(m.handle);
         const nDims = d.qDimensions.length;
         const info = d.qDimensions.map(x => (x.qDef.qFieldDefs[0] === campoInexistente ? { qError: { qErrorCode: 7 } } : {}));
-        const linhas = nDims === 2 ? NOTAS.length : nDims === 1 ? 1 : 0;
+        const ehMarca = d.qDimensions[0]?.qDef.qFieldDefs[0] === 'Marca do Produto';
+        const linhas = nDims === 2 ? NOTAS.length : ehMarca ? 2 : nDims === 1 ? 1 : 0;
         return responder({ qLayout: { qHyperCube: {
           qSize: { qcx: nDims + 1, qcy: linhas }, qDimensionInfo: info,
           qMeasureInfo: [medidaComErro ? { qError: { qErrorCode: 1 } } : {}],
@@ -40,9 +41,13 @@ function qlikFalso({ campoInexistente = null, medidaComErro = false } = {}) {
         } } });
       }
       if (m.method === 'GetHyperCubeData') {
-        const nDims = defs.get(m.handle).qDimensions.length;
+        const def = defs.get(m.handle);
+        const nDims = def.qDimensions.length;
+        const ehMarca = def.qDimensions[0]?.qDef.qFieldDefs[0] === 'Marca do Produto';
         const p = m.params.qPages[0];
-        const matriz = nDims === 2
+        const matriz = ehMarca
+          ? [[{ qText: 'PROTEÇÃO' }, { qNum: 399.99 }], [{ qText: 'WELLPET' }, { qNum: 1200.5 }]]
+          : nDims === 2
           ? NOTAS.slice(p.qTop, p.qTop + p.qHeight).map(([n, s, d, v]) => [{ qText: n }, { qText: s }, { qNum: v }, { qNum: d }])
           : [[{ qText: 'OURO FINO SAUDE ANIMAL' }, { qNum: 1600.49 }]];
         return responder({ qDataPages: [{ qMatrix: matriz }] });
@@ -74,6 +79,19 @@ test('filtro do Qlik: cliente, laboratório, período e filtros fixos', () => {
   assert.ok(!set.includes('Tipo_Periodo_Mes_vendas'), 'sem filtro de período-tipo (não muda o total)');
 });
 
+test('marca escolhida filtra total e notas; a lista de marcas continua sem o filtro', async () => {
+  const set = montarConjunto({ ...PEDIDO, marca: 'WELLPET' });
+  assert.match(set, /\[Marca do Produto\]=\{"WELLPET"\}/);
+  assert.ok(!montarConjunto(PEDIDO).includes('Marca do Produto'), 'sem marca escolhida, sem filtro de marca');
+  const { soquete, enviados } = qlikFalso();
+  await consultarCompras(abrirEngine(soquete), { ...PEDIDO, marca: 'WELLPET' });
+  const exprs = enviados.filter(e => e.method === 'CreateSessionObject').map(e => e.params.qProp.qHyperCubeDef.qMeasures[0].qDef.qDef);
+  assert.equal(exprs.length, 4, 'total, notas, fornecedores e marcas');
+  assert.ok(exprs.slice(0, 3).every(x => x.includes('[Marca do Produto]={"WELLPET"}')), 'total, notas e fornecedores usam a marca');
+  assert.ok(!exprs[3].includes('Marca do Produto'), 'a lista de marcas ignora a marca escolhida');
+  assert.throws(() => montarConjunto({ ...PEDIDO, marca: 'a"b' }), /Marca inválido/);
+});
+
 test('laboratório que no Qlik é marca usa o campo de marca', () => {
   const set = montarConjunto({ ...PEDIDO, padraoFornecedor: 'marca:CATLIFE' });
   assert.match(set, /\[Marca do Produto\]=\{"CATLIFE"\}/);
@@ -96,6 +114,7 @@ test('consulta: total, notas em ordem de data e fornecedores encontrados', async
   assert.deepEqual(r.notas.map(n => n.numero), ['209001', '210818', '211500'], 'ordenadas por data');
   assert.deepEqual(r.notas[1], { numero: '210818', serie: '1', data: '2026-10-05', valor: 1200.5 });
   assert.deepEqual(r.fornecedores, ['OURO FINO SAUDE ANIMAL']);
+  assert.deepEqual(r.marcas, [{ nome: 'WELLPET', valor: 1200.5 }, { nome: 'PROTEÇÃO', valor: 399.99 }], 'marcas do período, da maior para a menor');
   assert.equal(enviados[0].params.qDocName, 'app-1');
   const expr = enviados.find(e => e.method === 'CreateSessionObject').params.qProp.qHyperCubeDef.qMeasures[0].qDef.qDef;
   assert.match(expr, /4821/);

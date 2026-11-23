@@ -1211,6 +1211,45 @@ teste('lote R: mudar o período consulta de novo e zera a marcação', async ({ 
   igual(await page.locator('input[data-nota]:checked').count(), 0, 'marcação vem zerada na nova consulta');
 });
 
+teste('lote R: marca do laboratório é opcional, filtra total e notas, é gravada e some ao trocar o laboratório', async ({ page }) => {
+  await prepararCompras(page);
+  await page.locator('#n-marca').waitFor();
+  const ops = await page.locator('#n-marca option').allInnerTexts();
+  igual(ops[0], 'Todas as marcas', 'começa em "Todas as marcas"');
+  afirma(/WELLPET · R\$\s*1\.200,50/.test(ops[1]) && /PROTEÇÃO · R\$\s*399,99/.test(ops[2]), 'marcas com o valor comprado, da maior para a menor');
+  igual(await page.locator('input[data-nota]').count(), 3, 'sem marca: três notas');
+
+  await page.selectOption('#n-marca', 'WELLPET');
+  await page.locator('.compras-total', { hasText: 'marca WELLPET' }).waitFor();
+  afirma(/R\$\s*1\.200,50/.test(await page.locator('.compras-total').innerText()), 'total só da marca');
+  igual(await page.locator('input[data-nota]').count(), 1, 'só a nota da marca');
+  igual(await page.locator('#n-marca').inputValue(), 'WELLPET', 'a marca continua escolhida');
+  igual(await page.locator('#n-marca option').count(), 3, 'a lista de marcas continua completa');
+
+  await page.check('input[data-nota="0"]');
+  await page.fill('#n-campanha', 'WellPet outubro'); await page.fill('#n-inv-lynkz', '100'); await page.fill('#n-meta', '5.000');
+  await page.selectOption('#n-pagamento', 'Desconto em nota');
+  await page.locator('[data-enviar]:visible').first().click();
+  await page.waitForFunction(() => /#\/campanhas\/\d+$/.test(location.hash));
+  const d = await db(page);
+  const c = d.campanhas.at(-1);
+  igual(c.compras_marca, 'WELLPET', 'marca gravada'); igual(c.compras_periodo, 1200.5, 'total da marca gravado');
+  igual(d.campanha_notas.filter(n => n.campanha_id === c.id).map(n => n.numero).join(','), '210818', 'só a nota da marca');
+  await page.locator('#det-notas', { hasText: 'marca WELLPET' }).waitFor();
+
+  // trocar o laboratório zera a marca escolhida
+  await abrir(page, { rota: '#/nova' });
+  await escolherNoCombo(page, '#n-empresa', '4821', 'Casa do Criador');
+  await escolherNoCombo(page, '#n-laboratorio', 'ouro', 'Ouro Fino');
+  await page.fill('#n-inicio', '2026-10-01'); await page.fill('#n-fim', '2026-10-31'); await page.dispatchEvent('#n-fim', 'change');
+  await page.locator('#n-marca').waitFor();
+  await page.selectOption('#n-marca', 'PROTEÇÃO');
+  await page.locator('.compras-total', { hasText: 'marca PROTEÇÃO' }).waitFor();
+  await page.fill('#n-fim', '2026-11-15'); await page.dispatchEvent('#n-fim', 'change');
+  await page.locator('.compras-total', { hasText: '15/11/2026' }).waitFor();
+  igual(await page.locator('#n-marca').inputValue(), '', 'mudar o período volta para "Todas as marcas"');
+});
+
 // ============================================================
 //  v2.1 — telas novas no modo escuro: legíveis e sem problema grave de acessibilidade
 // ============================================================

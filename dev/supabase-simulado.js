@@ -58,7 +58,7 @@ function semente() {
     forma_pagamento: 'Desconto em nota', data_inicio: dia(-1), data_fim: dia(-30), tipo_meta: 'Mensal', meta: 0,
     rebate_pct: 0, rebate_teto: 0, rebate_base: null, rebate_gatilho: null, observacoes: null, status: 'Pendente',
     aprovador_nome: null, data_decisao: null, motivo: null, empresa_id: null, balconista_id: null, importada: false,
-    compras_periodo: null, compras_consultado_em: null,
+    compras_periodo: null, compras_consultado_em: null, compras_marca: null,
     swile_nome_completo: null, swile_cpf: null, swile_data_nascimento: null, swile_email: null, swile_telefone: null,
     solicitante_nome: USUARIOS[o.solicitante_id]?.nome ?? null, ...o,
   });
@@ -129,7 +129,7 @@ function inserir(tabela, d) {
     }
     const empresa = db.empresas.find(e => e.id == d.empresa_id);
     const id = ++db.seq.campanhas;
-    const r = { compras_periodo: null, compras_consultado_em: null, ...d, id, importada: false, codigo: 'C2611' + String(1000 + id), criado_em: new Date().toISOString(), cliente: empresa ? empresa.nome : d.cliente,
+    const r = { compras_periodo: null, compras_consultado_em: null, compras_marca: null, ...d, id, importada: false, codigo: 'C2611' + String(1000 + id), criado_em: new Date().toISOString(), cliente: empresa ? empresa.nome : d.cliente,
       empresa_id: d.empresa_id == null ? null : +d.empresa_id, balconista_id: d.balconista_id == null ? null : +d.balconista_id,
       solicitante_nome: u.nome, aprovador_nome: null, data_decisao: null, motivo: null };
     db.campanhas.push(r); return { row: r };

@@ -63,7 +63,7 @@ export function alvoLaboratorio(config, padrao) {
 
 // Modificador de conjunto: <[Cód. Cliente]={'123'}, [Fornecedor]={"OURO*"}, [Data Venda]={"=Num(..)>=A and Num(..)<=B"}, …>
 // A data usa expressão: a busca numérica (">=46000<=46030") não casa neste app do Qlik.
-export function montarConjunto({ config = CONFIG_PADRAO, codigoCliente, padraoFornecedor, inicio, fim }) {
+export function montarConjunto({ config = CONFIG_PADRAO, codigoCliente, padraoFornecedor, marca = null, inicio, fim }) {
   const c = config.campos;
   const alvo = alvoLaboratorio(config, padraoFornecedor);
   const dt = `Num(${nomeCampo(c.data)})`;
@@ -71,6 +71,8 @@ export function montarConjunto({ config = CONFIG_PADRAO, codigoCliente, padraoFo
     `${nomeCampo(c.cliente)}={'${valorSeguro(codigoCliente, 'Código do cliente')}'}`,
     `${nomeCampo(alvo.campo)}={"${alvo.padrao}"}`,
     `${nomeCampo(c.data)}={"=${dt}>=${serialQlik(inicio)} and ${dt}<=${serialQlik(fim)}"}`,
+    // Marca (opcional): uma linha de produtos do laboratório, ex.: WELLPET dentro da Ouro Fino.
+    ...(marca ? [`${nomeCampo(c.marca)}={"${valorSeguro(marca, 'Marca')}"}`] : []),
     ...(config.filtros || []).map(f => `${nomeCampo(f.campo)}={'${valorSeguro(f.valor, 'Filtro')}'}`),
   ];
   return `<${partes.join(', ')}>`;
@@ -138,10 +140,10 @@ const limpa = t => (t == null || t === '-' ? '' : String(t).trim());
 
 /**
  * Quanto o cliente comprou do fornecedor no período e quais notas compõem isso.
- * @returns {{ total:number, notas:{numero,serie,data,valor}[], fornecedores:string[] }}
+ * @returns {{ total:number, notas:{numero,serie,data,valor}[], fornecedores:string[], marcas:{nome,valor}[] }}
  */
-export async function consultarCompras(engine, { appId, config = CONFIG_PADRAO, codigoCliente, padraoFornecedor, inicio, fim }) {
-  const conjunto = montarConjunto({ config, codigoCliente, padraoFornecedor, inicio, fim });
+export async function consultarCompras(engine, { appId, config = CONFIG_PADRAO, codigoCliente, padraoFornecedor, marca = null, inicio, fim }) {
+  const conjunto = montarConjunto({ config, codigoCliente, padraoFornecedor, marca, inicio, fim });
   const expr = expressao(config, conjunto);
   const c = config.campos;
   const medida = { qDef: { qDef: expr } };
@@ -179,5 +181,16 @@ export async function consultarCompras(engine, { appId, config = CONFIG_PADRAO, 
   }, 'fornecedor');
   const fornecedores = (await lerLinhas(engine, f.h, f.cubo.qSize.qcy, 2)).map(l => limpa(l[0].qText)).filter(Boolean).sort();
 
-  return { total, notas, fornecedores };
+  // 4) marcas do laboratório que o cliente comprou no período. Sempre SEM o filtro de marca,
+  // para a lista continuar completa depois que o usuário escolhe uma.
+  const sem = montarConjunto({ config, codigoCliente, padraoFornecedor, inicio, fim });
+  const mc = await criarCubo(engine, hDoc, {
+    qDimensions: [{ qDef: { qFieldDefs: [c.marca], qSortCriterias: [{ qSortByAscii: 1 }] }, qNullSuppression: true }],
+    qMeasures: [{ qDef: { qDef: expressao(config, sem) } }], qSuppressZero: true, qInitialDataFetch: [],
+  }, 'marca');
+  const marcas = (await lerLinhas(engine, mc.h, mc.cubo.qSize.qcy, 2))
+    .map(l => ({ nome: limpa(l[0].qText), valor: arredonda(l[1].qNum) })).filter(m => m.nome)
+    .sort((a, b) => b.valor - a.valor);
+
+  return { total, notas, fornecedores, marcas };
 }

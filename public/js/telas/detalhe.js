@@ -38,7 +38,7 @@ function painelNotas(c) {
   const total = notas ? notas.reduce((t, n) => t + +n.valor, 0) : 0;
   return html`<section class="painel" id="det-notas"><h3 class="painel-titulo">Compras e notas fiscais</h3>
     <dl class="linhas">
-      ${linha('Comprou no período', +c.compras_periodo || +c.compras_periodo === 0 ? `R$ ${brl(c.compras_periodo)}` : '')}
+      ${linha(c.compras_marca ? `Comprou no período (marca ${c.compras_marca})` : 'Comprou no período', +c.compras_periodo || +c.compras_periodo === 0 ? `R$ ${brl(c.compras_periodo)}` : '')}
       ${linha('Consultado no Qlik em', dataBR(c.compras_consultado_em))}
     </dl>
     ${!notas ? html`<p class="painel-corpo campo-dica">Carregando as notas…</p>`
