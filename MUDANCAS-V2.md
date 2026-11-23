@@ -1,3 +1,22 @@
+# Mudanças da v2.8.1 (23/11/2026) — consulta de compras no Qlik
+
+Teste em produção (v2.6.0): a consulta devolvia **R$ 0,00 para qualquer cliente, laboratório e período**
+(12 clientes × Ouro Fino em 12 meses, padrões genéricos como `*ltda*` e `marca:WELLPET`, sem erro).
+**Causa (achada com o diagnóstico no Qlik real):** o app do Qlik abre com as **seleções salvas** de quem usou
+por último (hoje: Ano 2026, jul/2026, Categoria 2 = PLANTAS NATURAIS). A consulta usava `Sum({<…>} …)`, que
+parte dessas seleções, e a busca do período (`[Data Venda]={"=Num(…)…"}`) também era avaliada dentro delas.
+
+- **Correção da consulta:** `Sum({1<…>} …)` e `Only({1} Num([Data Venda]))` no período: ignoram as seleções e aplicam
+  só os filtros do app. Conferido no Qlik real: o total do período bate com o campo `Ano Venda` (2025 e 2026).
+- **Sincronização de clientes:** tinha o mesmo defeito — trazia os clientes da seleção salva (4.908, quase todos de
+  varejo). Agora conta só linhas de atacado (`Unidade de Negócio = ATACADO`, `Intercompany Geral = REGULAR`) ignorando
+  as seleções: 2.474 clientes. Clientes de varejo que já entraram continuam no app (a sincronização não apaga).
+- **Worker:** com total zero, devolve também `cliente_total` (tudo o que o cliente comprou no período, sem o laboratório).
+- **Nova campanha:** a mensagem diz se o cliente comprou de outros laboratórios ou se o Qlik não devolve nada
+  dele (e manda avisar o TI). Saiu o texto técnico "LABORATORIO_QLIK (public/config.js)" e o "de o laboratório".
+- **Período:** o último dia entra inteiro (`< fim + 1`), mesmo se a data do Qlik vier com hora.
+- **Novo script** `npm run qlik:diagnosticar` (só lê): mostra em qual filtro o valor zera. Ver NOTAS-FISCAIS-QLIK.md.
+
 # Mudanças da v2.8.0 (23/11/2026) — usuários no app e balconistas por empresa
 
 **Banco — rodar `sql/migracoes/12-usuarios-e-balconistas.sql` (depois `12-validacao.sql`; desfazer: `12-rollback.sql`)**

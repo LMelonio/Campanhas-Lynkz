@@ -82,23 +82,31 @@ export function alvoLaboratorio(config, padrao) {
   return m ? { campo: config.campos.marca, padrao: m[1].trim() } : { campo: config.campos.fornecedor, padrao: seguro };
 }
 
-// Modificador de conjunto: <[Cód. Cliente]={'123'}, [Fornecedor]={"OURO*"}, [Data Venda]={"=Num(..)>=A and Num(..)<=B"}, …>
+// Modificador de conjunto (vai dentro de {1…}, ver expressao()): <[Cód. Cliente]={'123'}, [Fornecedor]={"OURO*"}, [Data Venda]={"=Num(..)>=A and Num(..)<=B"}, …>
 // A data usa expressão: a busca numérica (">=46000<=46030") não casa neste app do Qlik.
-export function montarConjunto({ config = CONFIG_PADRAO, codigoCliente, padraoFornecedor, marca = null, inicio, fim }) {
+// semLaboratorio: o mesmo filtro sem fornecedor nem marca (tudo o que o cliente comprou no período).
+export function montarConjunto({ config = CONFIG_PADRAO, codigoCliente, padraoFornecedor, marca = null, inicio, fim, semLaboratorio = false }) {
   const c = config.campos;
   const alvo = alvoLaboratorio(config, padraoFornecedor);
-  const dt = `Num(${nomeCampo(c.data)})`;
+  // Only({1} …): a busca por expressão é avaliada nas seleções salvas do app; sem o {1},
+  // só as datas do mês selecionado (ex.: jul/2026) passavam no filtro (conferido no Qlik real, v2.8.1).
+  const dt = `Only({1} Num(${nomeCampo(c.data)}))`;
   const partes = [
     `${nomeCampo(c.cliente)}={'${codigoSeguro(codigoCliente)}'}`,
-    `${nomeCampo(alvo.campo)}={"${alvo.padrao}"}`,
-    `${nomeCampo(c.data)}={"=${dt}>=${serialQlik(inicio)} and ${dt}<=${serialQlik(fim)}"}`,
+    ...(semLaboratorio ? [] : [`${nomeCampo(alvo.campo)}={"${alvo.padrao}"}`]),
+    // "< fim + 1": inclui o último dia inteiro, mesmo se a data vier com hora.
+    `${nomeCampo(c.data)}={"=${dt}>=${serialQlik(inicio)} and ${dt}<${serialQlik(fim) + 1}"}`,
     // Marca (opcional): uma linha de produtos do laboratório, ex.: WELLPET dentro da Ouro Fino.
-    ...(marca ? [`${nomeCampo(c.marca)}={"${padraoSeguro(marca, 'Marca')}"}`] : []),
+    ...(marca && !semLaboratorio ? [`${nomeCampo(c.marca)}={"${padraoSeguro(marca, 'Marca')}"}`] : []),
     ...(config.filtros || []).map(f => `${nomeCampo(f.campo)}={'${valorSeguro(f.valor, 'Filtro')}'}`),
   ];
   return `<${partes.join(', ')}>`;
 }
-export const expressao = (config, conjunto) => config.expressaoValor.replaceAll('{SET}', `{${conjunto}}`);
+// "{1<…>}" e não "{<…>}": o app do Qlik abre com as seleções salvas de quem usou por último
+// (ex.: jul/2026 + PLANTAS NATURAIS), e "{<…>}" partiria delas — tudo dava R$ 0,00 (v2.8.1).
+// O "1" parte do app inteiro e aplica só os nossos filtros.
+export const conjuntoSemSelecoes = conjunto => `{1${conjunto}}`;
+export const expressao = (config, conjunto) => config.expressaoValor.replaceAll('{SET}', conjuntoSemSelecoes(conjunto));
 
 // ---------- Engine API (JSON-RPC) ----------
 export function abrirEngine(soquete, { tempoMs = 25000 } = {}) {
@@ -179,7 +187,7 @@ export async function consultarCompras(engine, { appId, config = CONFIG_PADRAO, 
   // 2) notas. A data NÃO pode ser dimensão: o filtro de data do conjunto faz a medida ignorar a data
   // da linha, e a mesma nota apareceria em vários dias com o valor cheio (erro visto no Qlik real).
   // Por isso a data vem como medida: a menor data da nota dentro do período.
-  const medidaData = { qDef: { qDef: `Min({${conjunto}} ${nomeCampo(c.data)})` } };
+  const medidaData = { qDef: { qDef: `Min(${conjuntoSemSelecoes(conjunto)} ${nomeCampo(c.data)})` } };
   const n = await criarCubo(engine, hDoc, {
     qDimensions: [
       { qDef: { qFieldDefs: [c.nota] }, qNullSuppression: true },
@@ -213,5 +221,15 @@ export async function consultarCompras(engine, { appId, config = CONFIG_PADRAO, 
     .map(l => ({ nome: limpa(l[0].qText), valor: arredonda(l[1].qNum) })).filter(m => m.nome)
     .sort((a, b) => b.valor - a.valor);
 
-  return { total, notas, fornecedores, marcas };
+  // Total zero: quanto o cliente comprou de TODOS os fornecedores no mesmo período e filtros.
+  // Separa "não comprou deste laboratório" (> 0) de "o Qlik não devolve nada deste cliente" (0),
+  // que costuma ser chave de API sem acesso aos dados ou filtro fixo que não existe mais.
+  let clienteTotal = null;
+  if (total === 0) {
+    const tudo = expressao(config, montarConjunto({ config, codigoCliente, padraoFornecedor, inicio, fim, semLaboratorio: true }));
+    const ct = await criarCubo(engine, hDoc, { qDimensions: [], qMeasures: [{ qDef: { qDef: tudo } }], qInitialDataFetch: [] }, 'valor');
+    clienteTotal = arredonda(ct.cubo.qGrandTotalRow?.[0]?.qNum);
+  }
+
+  return { total, notas, fornecedores, marcas, cliente_total: clienteTotal };
 }

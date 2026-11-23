@@ -1257,7 +1257,17 @@ teste('lote R: empresa sem código do Qlik e "Recurso próprio" não consultam n
 teste('lote R: cliente sem compras no período avisa', async ({ page }) => {
   await abrir(page, { rota: '#/nova' });
   await trocarCodigo(page, '4820');
-  await page.locator('#compras-corpo', { hasText: 'Nenhuma nota fiscal encontrada' }).waitFor();
+  await page.locator('#compras-corpo', { hasText: 'de outros laboratórios' }).waitFor();   // comprou R$ 850 de outros
+  const t = await page.locator('#compras-corpo').innerText();
+  afirma(/R\$\s?850,00/.test(t) && /nada de Ouro Fino/.test(t), 'diz quanto comprou de outros e que nada deste laboratório');
+  afirma(!/LABORATORIO_QLIK|config\.js| de o /.test(t), 'sem texto técnico nem "de o laboratório"');
+});
+
+teste('lote R: Qlik sem nenhuma compra do cliente avisa para chamar o TI', async ({ page }) => {
+  await abrir(page, { rota: '#/nova' });
+  await trocarCodigo(page, '4800');
+  await page.locator('#compras-corpo .nota-alerta', { hasText: 'de nenhum laboratório' }).waitFor();
+  afirma(/avise o TI/.test(await page.locator('#compras-corpo').innerText()), 'orienta o que fazer');
 });
 
 teste('lote R: erro do Qlik oferece tentar de novo e não trava o envio da campanha', async ({ page }) => {

@@ -18,7 +18,7 @@ import { join } from 'node:path';
 import XLSX from 'xlsx';
 import { RAIZ, lerEnv, exigirEnv } from './lib/env.mjs';
 import { chamarFuncao } from './lib/supabase-rpc.mjs';
-import { lerClientesQlik, converterClientesQlik, camposDoEnv } from './lib/qlik.mjs';
+import { lerClientesQlik, converterClientesQlik, camposDoEnv, MEDIDA_PADRAO } from './lib/qlik.mjs';
 import { hojeCivil } from '../public/js/lib/regras.js';
 
 const args = process.argv.slice(2);
@@ -46,7 +46,7 @@ if (arquivo) {
   console.log(`Lendo clientes do Qlik (${env.QLIK_TENANT}, app ${env.QLIK_APP_ID})…`);
   brutas = await lerClientesQlik({
     tenant: env.QLIK_TENANT, apiKey: env.QLIK_API_KEY, appId: env.QLIK_APP_ID,
-    campos, medida: env.QLIK_MEDIDA || 'Count(1)',
+    campos, medida: env.QLIK_MEDIDA || MEDIDA_PADRAO,
     aoProgresso: (n, t) => process.stdout.write(`\r  ${n} de ${t} linhas`),
   });
   process.stdout.write('\n');

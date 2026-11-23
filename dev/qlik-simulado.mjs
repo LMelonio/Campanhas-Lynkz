@@ -1,6 +1,7 @@
 // Qlik simulado para o servidor de desenvolvimento e para os testes de navegador.
 // O Worker de verdade (worker/index.js) responde ao mesmo pedido e no mesmo formato.
-//   cliente com código terminado em 0 → nenhuma nota
+//   cliente com código terminado em 0 → nenhuma nota deste laboratório (comprou R$ 850 de outros)
+//   cliente com código terminado em 00 → o Qlik não devolve nada do cliente (cliente_total 0)
 //   código 9999                       → erro do Qlik
 //   os demais                         → 3 notas, de duas marcas (WELLPET e PROTEÇÃO); com "marca" no pedido, só as dela
 export const ROTA_QLIK = '/api/qlik/compras';
@@ -26,6 +27,7 @@ export function qlikSimulado(rq, rs) {
     responder(200, {
       total: soma(notas), notas, marcas,
       fornecedores: vazio ? [] : ['OURO FINO SAUDE ANIMAL'], consultado_em: new Date().toISOString(),
+      cliente_total: vazio ? (String(p.codigo_cliente).endsWith('00') ? 0 : 850) : null,
     });
   }, 150));
 }

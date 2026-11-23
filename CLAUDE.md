@@ -98,7 +98,11 @@ histórico do app quando existe.
 - App: `dados/qlik.js` (`consultarCompras`, `padraoFornecedor`), quadro "Compras e notas fiscais" em `telas/nova.js`,
   `campanhas.salvarNotas/notasDa`. Notas ficam em `campanha_notas` (só o solicitante grava, só Pendente, imutável).
 - Marca opcional (v2.5): `marca` no pedido filtra total/notas; a resposta traz `marcas` (sempre sem o filtro) e a escolha vai em `campanhas.compras_marca` (migração 09).
-- Qlik simulado para `npm run dev` e e2e: `dev/qlik-simulado.mjs`. Passo a passo: `NOTAS-FISCAIS-QLIK.md`.
+- Qlik simulado para `npm run dev` e e2e: `dev/qlik-simulado.mjs` (código terminado em 0 = comprou só de outros; em 00 = Qlik sem nada do cliente). Passo a passo: `NOTAS-FISCAIS-QLIK.md`.
+- **Toda expressão mandada ao Qlik usa `{1<…>}`** (e `Only({1} …)` dentro de busca por expressão, como o período): o app abre
+  com as seleções salvas de quem usou por último e, sem o `1`, tudo saía R$ 0,00 (v2.8.1). Vale para a consulta de compras
+  (`expressao()`/`montarConjunto()` em `worker/qlik-engine.js`) e para a sincronização (`MEDIDA_PADRAO` em `scripts/lib/qlik.mjs`, só atacado).
+- Total zero: o Worker manda `cliente_total` (sem o laboratório) e a Nova explica o caso. R$ 0,00 em tudo? `npm run qlik:diagnosticar` (v2.8.1).
 
 ## Segurança (v2.6) — não enfraquecer
 

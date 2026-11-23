@@ -56,6 +56,31 @@ histórico). Para esses a consulta volta "nenhuma nota" até alguém descobrir c
 (talvez dentro de outro fornecedor). O mapa aceita `"marca:NOME"` se um dia a marca passar a ter venda.
 "Recurso próprio" não consulta nada.
 
+## O app mostra R$ 0,00 para tudo? (diagnóstico)
+
+Causa encontrada na v2.8.1: o app do Qlik abre com as **seleções salvas** de quem usou por último
+(ex.: jul/2026 + PLANTAS NATURAIS), e uma expressão sem `{1}` parte delas. Toda expressão que o app
+manda ao Qlik usa `{1<…>}` (e `Only({1} …)` dentro de buscas por expressão) para ignorar essas seleções.
+O diagnóstico mostra as seleções salvas na linha "Seleções salvas no app".
+
+Desde a v2.8.1, quando o total do laboratório dá zero, o Worker também soma **tudo o que o cliente comprou
+no período** (`cliente_total`, mesmos filtros, sem o laboratório). A tela diz qual é o caso:
+
+- "comprou R$ X de outros laboratórios, mas nada de …" → o padrão do laboratório não bate (ajuste `LABORATORIO_QLIK`);
+- "O Qlik não mostra nenhuma compra deste cliente no período, de nenhum laboratório" → problema de acesso ou de filtro.
+
+Para achar a causa, rode na sua máquina (só lê, usa o `.env`):
+
+```bash
+cd scripts && npm install && cd ..
+npm run qlik:diagnosticar -- --cliente 6940773 --lab "OURO FINO*" --inicio 2025-11-01 --fim 2026-10-31
+```
+
+O script refaz a consulta do Worker por partes (só o cliente → + período → + cada filtro fixo → + laboratório),
+mostra onde o valor zera e lista os valores reais dos filtros e os fornecedores do cliente. No fim explica o
+que ajustar. Se aqui aparecerem valores e no app não, a chave guardada no Worker é outra: rode
+`npx wrangler secret put QLIK_API_KEY` com a chave do `.env` e publique de novo.
+
 ## Colocar no ar (nesta ordem)
 
 1. **Banco:** no SQL Editor do Supabase, rode `sql/migracoes/08-notas-fiscais.sql` e depois

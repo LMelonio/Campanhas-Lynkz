@@ -14,7 +14,7 @@
 //  VERSAO tem de ser igual à do config.js. Módulo novo em public/js/?
 //  Acrescente em ARQUIVOS (o teste de navegador confere).
 // ============================================================
-const VERSAO = '2.8.0';
+const VERSAO = '2.8.1';
 const CACHE = 'campanhas-' + VERSAO;
 const ARQUIVOS = [
   './', 'config.js', 'manifest.json',          // './' e não 'index.html': o Cloudflare redireciona /index.html → /

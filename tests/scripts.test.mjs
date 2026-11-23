@@ -114,7 +114,7 @@ test('Engine API: abre o app, monta o hipercubo e lê em páginas', async () => 
   // Qlik simulado: responde OpenDoc, CreateSessionObject, GetLayout e GetHyperCubeData.
   const LINHAS = Array.from({ length: 2600 }, (_, i) => [String(1000 + i), `CLIENTE ${i}`, 'SAO LUIS']);
   const srv = new WebSocketServer({ port: 0 });
-  let auth = null, dims = null;
+  let auth = null, dims = null, cubo = null;
   srv.on('connection', (ws, req) => {
     auth = req.headers.authorization;
     ws.send(JSON.stringify({ jsonrpc: '2.0', method: 'OnConnected', params: {} }));
@@ -122,7 +122,7 @@ test('Engine API: abre o app, monta o hipercubo e lê em páginas', async () => 
       const m = JSON.parse(d);
       const r = res => ws.send(JSON.stringify({ jsonrpc: '2.0', id: m.id, result: res }));
       if (m.method === 'OpenDoc') r({ qReturn: { qHandle: 1 } });
-      else if (m.method === 'CreateSessionObject') { dims = m.params.qProp.qHyperCubeDef.qDimensions.map(x => x.qDef.qFieldDefs[0]); r({ qReturn: { qHandle: 2 } }); }
+      else if (m.method === 'CreateSessionObject') { cubo = m.params.qProp.qHyperCubeDef; dims = cubo.qDimensions.map(x => x.qDef.qFieldDefs[0]); r({ qReturn: { qHandle: 2 } }); }
       else if (m.method === 'GetLayout') r({ qLayout: { qHyperCube: { qSize: { qcx: 4, qcy: LINHAS.length }, qDimensionInfo: dims.map(() => ({})), qMeasureInfo: [{}] } } });
       else if (m.method === 'GetHyperCubeData') {
         const p = m.params.qPages[0];
@@ -138,6 +138,9 @@ test('Engine API: abre o app, monta o hipercubo e lê em páginas', async () => 
   srv.close();
   assert.equal(auth, 'Bearer chave-teste');
   assert.deepEqual(dims, ['Cód. Cliente', 'Razão Social Cliente', 'Cidade']);
+  // Só atacado e ignorando as seleções salvas no app ({1<…>}); linha zerada não vem (v2.8.1).
+  assert.match(cubo.qMeasures[0].qDef.qDef, /^Count\(\{1<\[Unidade de Negócio\]=\{'ATACADO'\}/);
+  assert.equal(cubo.qSuppressZero, true);
   assert.equal(linhas.length, 2600, 'leu todas as páginas (2.500 por página com 4 colunas)');
   assert.deepEqual(linhas[2599], { codigo: '3599', nome: 'CLIENTE 2599', cidade: 'SAO LUIS', _medida: 1 });
 });

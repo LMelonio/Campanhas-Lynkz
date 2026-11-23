@@ -23,6 +23,12 @@ export const CAMPOS_PADRAO = {
   vendedor:  'Vendedor B2B',
 };
 
+// Linhas de venda do atacado (os mesmos filtros fixos da consulta de compras do Worker).
+// "{1<…>}" ignora as seleções salvas no app do Qlik: sem ele, a sincronização trazia
+// só os clientes do que estivesse selecionado (ex.: jul/2026 + PLANTAS NATURAIS, quase
+// tudo varejo). Linha com medida zero não entra (qSuppressZero). Troque por QLIK_MEDIDA.
+export const MEDIDA_PADRAO = "Count({1<[Unidade de Negócio]={'ATACADO'}, [Intercompany Geral]={'REGULAR'}>} 1)";
+
 export function camposDoEnv(env) {
   const c = {};
   for (const [k, padrao] of Object.entries(CAMPOS_PADRAO)) {
@@ -34,7 +40,7 @@ export function camposDoEnv(env) {
 
 const vazio = t => t == null || t === '' || t === '-';
 
-export async function lerClientesQlik({ tenant, apiKey, appId, campos, medida = 'Count(1)', aoProgresso = () => {} }) {
+export async function lerClientesQlik({ tenant, apiKey, appId, campos, medida = MEDIDA_PADRAO, aoProgresso = () => {} }) {
   const usados = Object.entries(campos).filter(([, f]) => f);
   // "terrazoo.us.qlikcloud.com" → wss://…  (ws:// só nos testes, com o Qlik simulado)
   const base = /^wss?:\/\//.test(tenant) ? tenant : 'wss://' + tenant.replace(/^https?:\/\//, '');
@@ -71,7 +77,7 @@ export async function lerClientesQlik({ tenant, apiKey, appId, campos, medida = 
       qHyperCubeDef: {
         qDimensions: usados.map(([k, f], i) => ({ qDef: { qFieldDefs: [f] }, qNullSuppression: i === 0 || k === 'codigo' })),
         qMeasures: [{ qDef: { qDef: medida } }],
-        qSuppressZero: false, qSuppressMissing: true, qInitialDataFetch: [],
+        qSuppressZero: true, qSuppressMissing: true, qInitialDataFetch: [],
       },
     } });
     const hObj = obj.qReturn.qHandle;

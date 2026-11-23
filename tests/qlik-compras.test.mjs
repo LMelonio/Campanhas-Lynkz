@@ -11,7 +11,7 @@ const NOTAS = [   // número, série, data (serial), valor
   ['209001', '1', serialQlik('2026-10-02'), 300],
   ['211500', '2', serialQlik('2026-10-20'), 99.99],
 ];
-function qlikFalso({ campoInexistente = null, medidaComErro = false } = {}) {
+function qlikFalso({ campoInexistente = null, medidaComErro = false, zero = null } = {}) {
   const defs = new Map();   // handle → definição do hipercubo
   const ouvintes = { message: [], close: [], error: [] };
   const enviados = [];
@@ -37,7 +37,8 @@ function qlikFalso({ campoInexistente = null, medidaComErro = false } = {}) {
         return responder({ qLayout: { qHyperCube: {
           qSize: { qcx: nDims + 1, qcy: linhas }, qDimensionInfo: info,
           qMeasureInfo: [medidaComErro ? { qError: { qErrorCode: 1 } } : {}],
-          qGrandTotalRow: [{ qNum: 1600.49, qText: '1.600,49' }],
+          // zero: 'tudo' = Qlik sem dados do cliente; 'laboratorio' = comprou só de outros (500).
+          qGrandTotalRow: [{ qNum: zero === 'tudo' ? 0 : zero === 'laboratorio' ? (JSON.stringify(d.qMeasures).includes('Nome Fantasia Fornecedor') ? 0 : 500) : 1600.49, qText: '' }],
         } } });
       }
       if (m.method === 'GetHyperCubeData') {
@@ -72,10 +73,11 @@ test('filtro do Qlik: cliente, laboratório, período e filtros fixos', () => {
   assert.match(set, /\[Cód\. Cliente\]=\{'4821'\}/);
   assert.match(set, /\[Nome Fantasia Fornecedor\]=\{"\*Ouro Fino\*"\}/);
   const [a, b] = [serialQlik('2026-10-01'), serialQlik('2026-10-31')];
-  assert.ok(set.includes(`[Data Venda]={"=Num([Data Venda])>=${a} and Num([Data Venda])<=${b}"}`), set);
+  assert.ok(set.includes(`[Data Venda]={"=Only({1} Num([Data Venda]))>=${a} and Only({1} Num([Data Venda]))<${b + 1}"}`), set);
   assert.match(set, /\[Unidade de Negócio\]=\{'ATACADO'\}/);
   assert.match(set, /\[Intercompany Geral\]=\{'REGULAR'\}/);
-  assert.match(expressao(CONFIG_PADRAO, set), /^Sum\(\{<.*>\} \[Valor Faturamento Bruto s\/ Devolução Vendas\]\)$/);
+  // {1<…>}: ignora as seleções salvas no app do Qlik (com elas, tudo dava R$ 0,00 — v2.8.1).
+  assert.match(expressao(CONFIG_PADRAO, set), /^Sum\(\{1<.*>\} \[Valor Faturamento Bruto s\/ Devolução Vendas\]\)$/);
   assert.ok(!set.includes('Tipo_Periodo_Mes_vendas'), 'sem filtro de período-tipo (não muda o total)');
 });
 
@@ -129,7 +131,7 @@ test('notas: a data é medida (Min), nunca dimensão — senão a mesma nota se 
   const notas = cubos.find(c => c.qDimensions.length === 2);
   assert.ok(notas, 'cubo das notas tem só nota e série como dimensões');
   assert.ok(!notas.qDimensions.some(d => d.qDef.qFieldDefs[0] === 'Data Venda'), 'data fora das dimensões');
-  assert.match(notas.qMeasures[1].qDef.qDef, /^Min\(\{<.*>\} \[Data Venda\]\)$/);
+  assert.match(notas.qMeasures[1].qDef.qDef, /^Min\(\{1<.*>\} \[Data Venda\]\)$/);
 });
 
 test('campo que não existe no Qlik dá mensagem que diz o que fazer', async () => {
@@ -242,4 +244,17 @@ test('rota: texto cru de erro do Qlik não vai para a tela', async () => {
   const corpo = await r.json();
   assert.equal(r.status, 502);
   assert.ok(!/segredo-interno/.test(corpo.erro), corpo.erro);
+});
+
+test('total zero: diz se o cliente comprou de outros laboratórios ou se o Qlik não devolve nada', async () => {
+  const semLab = qlikFalso({ zero: 'laboratorio' });
+  const r1 = await consultarCompras(abrirEngine(semLab.soquete), PEDIDO);
+  assert.equal(r1.total, 0);
+  assert.equal(r1.cliente_total, 500, 'comprou de outros fornecedores');
+  const ultimo = semLab.enviados.filter(e => e.method === 'CreateSessionObject').at(-1).params.qProp.qHyperCubeDef.qMeasures[0].qDef.qDef;
+  assert.ok(!ultimo.includes('Nome Fantasia Fornecedor') && ultimo.includes('Cód. Cliente'), 'a conferência tira só o laboratório');
+  const r2 = await consultarCompras(abrirEngine(qlikFalso({ zero: 'tudo' }).soquete), PEDIDO);
+  assert.equal(r2.cliente_total, 0, 'Qlik sem nada do cliente');
+  const r3 = await consultarCompras(abrirEngine(qlikFalso().soquete), PEDIDO);
+  assert.equal(r3.cliente_total, null, 'com compras, não faz a consulta extra');
 });

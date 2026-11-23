@@ -330,10 +330,14 @@ function atualizarSomaNotas() {
 
 function desenharResultadoCompras() {
   const c = st.compras;
-  const forn = c.fornecedores.length ? c.fornecedores.join(', ') : 'o laboratório escolhido';
+  const forn = c.fornecedores.length ? c.fornecedores.join(', ') : c.laboratorio;
+  // Por que não veio nada (cliente_total só vem quando o total é zero; Worker antigo não manda).
+  const semNada = !c.notas.length && c.total === 0 && c.cliente_total === 0;
+  const outros = !c.notas.length && c.total === 0 && c.cliente_total > 0;
+  if (semNada) console.warn('Qlik devolveu zero para o cliente inteiro no período', { inicio: c.inicio, fim: c.fim });
   pintarCompras(html`
     <p class="compras-total" role="status">${icone('info')}<span>No período de ${dataBR(c.inicio)} a ${dataBR(c.fim)}, este cliente comprou <strong class="valor">${moeda(c.total)}</strong> de ${forn}${c.marca ? html`, marca <strong>${c.marca}</strong>` : ''}.</span></p>
-    <p class="campo-dica">Vem do Qlik. Confira se o fornecedor acima é mesmo o laboratório da campanha.</p>
+    ${c.fornecedores.length ? html`<p class="campo-dica">Vem do Qlik. Confira se o fornecedor acima é mesmo o laboratório da campanha.</p>` : ''}
     ${c.marcas.length > 1 || c.marca ? selecao({
       id: 'n-marca', rotulo: 'Marca do laboratório', opcional: true, vazio: 'Todas as marcas',
       dica: 'Escolha uma marca para ver só o que o cliente comprou dela (ex.: WellPet dentro da Ouro Fino).',
@@ -349,7 +353,10 @@ function desenharResultadoCompras() {
           <span class="valor">${moeda(n.valor)}</span>
         </label></li>`)}</ul>
         <p class="campo-dica" id="notas-soma" aria-live="polite"></p>
-      </fieldset>` : html`<p class="nota">${icone('info')}<span>Nenhuma nota fiscal encontrada nesse período. Se você esperava compras, confira se o laboratório está mapeado em LABORATORIO_QLIK (public/config.js).</span></p>`}`);
+      </fieldset>`
+    : semNada ? html`<p class="nota nota-alerta" role="alert">${icone('alerta')}<span>O Qlik não mostra nenhuma compra deste cliente no período, de nenhum laboratório. Se ele comprou, avise o TI: a consulta pode estar sem acesso aos dados. Você pode enviar a campanha sem as notas.</span></p>`
+    : outros ? html`<p class="nota">${icone('info')}<span>No período, o cliente comprou <strong class="valor">${moeda(c.cliente_total)}</strong> de outros laboratórios, mas nada de ${c.laboratorio}. Se ${c.laboratorio} vende com outro nome no Qlik, avise o TI.</span></p>`
+    : html`<p class="nota">${icone('info')}<span>Nenhuma nota fiscal encontrada nesse período.</span></p>`}`);
   atualizarSomaNotas();
 }
 
@@ -382,7 +389,7 @@ async function atualizarCompras() {
   try {
     const r = await consultarCompras({ codigoCliente: empresa.codigo_cliente, laboratorio: lab, marca: st.marca || null, inicio, fim, sinal: controle.signal });
     if (st !== meu || controle.signal.aborted) return;
-    st.compras = { ...r, marcas: r.marcas || [], chave, inicio, fim, marca: st.marca || '', marcadas: new Set() };
+    st.compras = { ...r, marcas: r.marcas || [], chave, inicio, fim, laboratorio: lab, marca: st.marca || '', marcadas: new Set() };
     desenharResultadoCompras();
   } catch (e) {
     if (e.name === 'AbortError' || st !== meu) return;

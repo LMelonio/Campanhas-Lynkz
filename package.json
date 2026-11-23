@@ -1,6 +1,6 @@
 {
   "name": "lynkz-campanhas",
-  "version": "2.8.0",
+  "version": "2.8.1",
   "private": true,
   "description": "LYNKZ Campanhas — solicitação e aprovação de campanhas promocionais (app estático + Supabase). O app não tem build: estas dependências são só ferramentas de publicação.",
   "type": "module",
@@ -10,6 +10,7 @@
     "test": "node --test tests/regras.test.mjs tests/scripts.test.mjs tests/qlik-compras.test.mjs",
     "qlik:simular": "node scripts/sincronizar-clientes-qlik.mjs --simular",
     "qlik:descobrir": "node scripts/descobrir-campos-qlik.mjs",
+    "qlik:diagnosticar": "node scripts/diagnosticar-compras-qlik.mjs",
     "qlik:clientes": "node scripts/sincronizar-clientes-qlik.mjs",
     "importar:planilhas": "node scripts/importar-planilhas.mjs",
     "test:banco": "bash tests/banco/rodar.sh",
