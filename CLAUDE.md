@@ -100,6 +100,17 @@ histórico do app quando existe.
 - Marca opcional (v2.5): `marca` no pedido filtra total/notas; a resposta traz `marcas` (sempre sem o filtro) e a escolha vai em `campanhas.compras_marca` (migração 09).
 - Qlik simulado para `npm run dev` e e2e: `dev/qlik-simulado.mjs`. Passo a passo: `NOTAS-FISCAIS-QLIK.md`.
 
+## Segurança (v2.6) — não enfraquecer
+
+- Sem CDN: supabase-js (UMD, `window.supabase`) e SheetJS ficam em `public/vendor/` com a versão no nome. CSP `script-src 'self'`.
+  `connect-src` só para o projeto do Supabase do `config.js` (trocou de projeto? `_headers`, `deploy/lynkz-seguranca.conf` e `index.html`; o lote S confere).
+- `public/sw.js`: `ARQUIVOS` lista todos os módulos (o lote S confere). Página e `config.js` rede primeiro; o resto cópia guardada + atualização em segundo plano.
+- Migração 10: conta nova entra **desativada**; limites de texto/valor; limite de gravações por hora; `auditoria_perfis`.
+- Worker: `codigoSeguro()`/`padraoSeguro()` para tudo que entra numa expressão do Qlik (nada de `=`, `<`, `>`, aspas, curinga sozinho);
+  origem igual ao site; JSON de até 2 KB; 20 consultas/min por usuário (`LIMITE_QLIK`); erro cru do Qlik (`interno`) só no log.
+- Detalhe: aprovador tem "Conferir no Qlik agora" (o total enviado vem do aparelho de quem pediu).
+- Checklist dos painéis (Supabase, Cloudflare, GitHub): `SEGURANCA.md`.
+
 ## Regras de código
 
 - Português do Brasil em nomes, comentários e textos.

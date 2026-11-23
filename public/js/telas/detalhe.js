@@ -11,6 +11,7 @@ import { botaoCopiar, ligarCopiar } from '../ui/copiar.js';
 import { abrirDialogo, erroNoDialogo } from '../ui/avisos.js';
 import { areaTexto, aplicarErros } from '../ui/campos.js';
 import { estadoLista } from '../ui/estado.js';
+import { consultarCompras } from '../dados/qlik.js';
 
 const C = window.CONFIG;
 const ESPERA_APROVAR = 5000;
@@ -31,8 +32,35 @@ function painel(titulo, conteudo, extra = '') {
 
 // Notas fiscais marcadas na campanha (carregadas sob demanda, uma vez por campanha).
 const notasCache = new Map();
+// Conferência do aprovador: o total gravado veio do aparelho de quem pediu;
+// o aprovador consulta o Qlik de novo, pelo Worker, antes de decidir.
+const conferencias = new Map();   // id → { carregando } | { total } | { erro }
 
-function painelNotas(c) {
+function blocoConferencia(c, ctx) {
+  const emp = c.empresa_id ? ctx.cadastros.empresa(c.empresa_id) : null;
+  if (!ctx.ehAprovador || c.status !== STATUS.PENDENTE || !emp?.codigo_cliente || !c.data_inicio || !c.data_fim) return '';
+  const r = conferencias.get(String(c.id));
+  if (!r) return html`<div class="painel-corpo"><button type="button" class="btn btn-fantasma btn-pequeno" data-conferir-qlik>${icone('busca')} Conferir no Qlik agora</button></div>`;
+  if (r.carregando) return html`<p class="painel-corpo campo-dica" role="status">Consultando o Qlik…</p>`;
+  if (r.erro) return html`<p class="painel-corpo nota nota-alerta" role="status">${icone('alerta')}<span>${r.erro}</span></p>`;
+  const igual = Math.abs(r.total - (+c.compras_periodo || 0)) < 0.01;
+  return html`<p class="painel-corpo nota${igual ? '' : ' nota-alerta'}" role="status">${icone(igual ? 'check' : 'alerta')}<span>Qlik agora: <b class="valor">R$ ${brl(r.total)}</b>. ${igual ? 'Bate com o valor enviado.' : 'Diferente do valor enviado na campanha: confira antes de decidir.'}</span></p>`;
+}
+
+async function conferirQlik(ctx, c) {
+  const emp = ctx.cadastros.empresa(c.empresa_id);
+  conferencias.set(String(c.id), { carregando: true });
+  desenhar();
+  try {
+    const r = await consultarCompras({ codigoCliente: emp.codigo_cliente, laboratorio: c.laboratorio, marca: c.compras_marca || null, inicio: c.data_inicio, fim: c.data_fim });
+    conferencias.set(String(c.id), { total: +r.total || 0 });
+  } catch (e) {
+    conferencias.set(String(c.id), { erro: e.message || 'Não foi possível consultar o Qlik agora.' });
+  }
+  if (atual && String(atual.id) === String(c.id)) desenhar();
+}
+
+function painelNotas(c, ctx) {
   if (!c.compras_consultado_em) return '';
   const notas = notasCache.get(String(c.id));
   const total = notas ? notas.reduce((t, n) => t + +n.valor, 0) : 0;
@@ -41,6 +69,7 @@ function painelNotas(c) {
       ${linha(c.compras_marca ? `Comprou no período (marca ${c.compras_marca})` : 'Comprou no período', +c.compras_periodo || +c.compras_periodo === 0 ? `R$ ${brl(c.compras_periodo)}` : '')}
       ${linha('Consultado no Qlik em', dataBR(c.compras_consultado_em))}
     </dl>
+    ${blocoConferencia(c, ctx)}
     ${!notas ? html`<p class="painel-corpo campo-dica">Carregando as notas…</p>`
       : notas.length ? html`<ul class="notas-lista painel-corpo">${notas.map(n => html`<li class="nota-linha">
           <span><strong>NF ${n.numero}${n.serie ? ` · série ${n.serie}` : ''}</strong> <small>${n.data_emissao ? dataBR(n.data_emissao) : ''}</small></span>
@@ -147,7 +176,7 @@ function corpo(c, ctx) {
 
       ${painelRecebedor(c, ctx)}
 
-      ${painelNotas(c)}
+      ${painelNotas(c, ctx)}
 
       ${painel('Solicitação', html`
         ${linha('Solicitante', c.solicitante_nome)}
@@ -363,6 +392,7 @@ export function montar(el, ctx, { id, lista = null }) {
       if (!emEspera) aprovar(ctx, c);
     }),
     ao(el, 'click', '[data-reprovar]', () => { const c = ctx.campanhas.porId(id); if (c) reprovar(ctx, c); }),
+    ao(el, 'click', '[data-conferir-qlik]', () => { const c = ctx.campanhas.porId(id); if (c) conferirQlik(ctx, c); }),
     ao(el, 'click', '[data-desfazer]', () => desfazer(ctx, emEspera)),
     ctx.campanhas.assinar(ev => { if (ev.tipo === 'carga' || ev.tipo === 'erro' || String(ev.id) === String(id)) desenhar(); }),
     ctx.cadastros.assinar(() => desenhar()),

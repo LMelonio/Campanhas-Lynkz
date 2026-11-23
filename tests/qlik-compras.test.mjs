@@ -3,7 +3,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { abrirEngine, consultarCompras, montarConjunto, serialQlik, dataDoSerial, valorSeguro, expressao, CONFIG_PADRAO } from '../worker/qlik-engine.js';
-import { tratarCompras, configDoEnv } from '../worker/index.js';
+import worker, { tratarCompras, configDoEnv, dentroDoLimite } from '../worker/index.js';
 
 // ---------- Qlik de mentira ----------
 const NOTAS = [   // número, série, data (serial), valor
@@ -150,7 +150,7 @@ test('Qlik que não responde estoura o tempo em vez de travar', async () => {
 
 test('rota: valida o pedido antes de falar com o Qlik e devolve o resultado', async () => {
   const env = { QLIK_APP_ID: 'app-1' };
-  const pedido = corpo => new Request('https://x/api/qlik/compras', { method: 'POST', body: JSON.stringify(corpo) });
+  const pedido = corpo => new Request('https://x/api/qlik/compras', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(corpo) });
   let conexoes = 0;
   const conectar = async () => { conexoes++; return qlikFalso().soquete; };
 
@@ -159,6 +159,11 @@ test('rota: valida o pedido antes de falar com o Qlik e devolve o resultado', as
     { codigo_cliente: '4821', fornecedor_padrao: '*Ouro*', inicio: '2025-01-01', fim: '2026-10-01' },
     { codigo_cliente: "1'} x", fornecedor_padrao: '*Ouro*', inicio: '2026-10-01', fim: '2026-10-31' },
     { codigo_cliente: '4821', fornecedor_padrao: '', inicio: '2026-10-01', fim: '2026-10-31' },
+    { codigo_cliente: '4821', fornecedor_padrao: '*', inicio: '2026-10-01', fim: '2026-10-31' },          // curinga sozinho = todos
+    { codigo_cliente: '4821', fornecedor_padrao: '=1=1', inicio: '2026-10-01', fim: '2026-10-31' },       // busca por expressão
+    { codigo_cliente: '4821', fornecedor_padrao: '>=0', inicio: '2026-10-01', fim: '2026-10-31' },        // busca numérica
+    { codigo_cliente: '4821', fornecedor_padrao: '*Ouro*', marca: '=Sum(1)', inicio: '2026-10-01', fim: '2026-10-31' },
+    { codigo_cliente: '*', fornecedor_padrao: '*Ouro*', inicio: '2026-10-01', fim: '2026-10-31' },
   ]) await assert.rejects(tratarCompras(pedido(ruim), env, { conectar }), e => e.status === 400);
   assert.equal(conexoes, 0, 'pedido inválido nem chega ao Qlik');
 
@@ -177,4 +182,64 @@ test('configuração do Worker: padrão da LYNKZ e troca por variável', () => {
   assert.equal(c.campos.cliente, 'Cód. Cliente');
   assert.equal(c.expressaoValor, 'Sum({SET} Valor)');
   assert.throws(() => configDoEnv({ QLIK_CAMPOS: '{quebrado' }), /JSON inválido/);
+});
+
+// ---------- segurança da rota (v2.6) ----------
+const BASE = 'https://campanhas.exemplo/api/qlik/compras';
+const OK = { codigo_cliente: '4821', fornecedor_padrao: 'OURO FINO*', inicio: '2026-10-01', fim: '2026-10-31' };
+const req = (corpo, cab = {}) => new Request(BASE, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer a.b.c', ...cab }, body: typeof corpo === 'string' ? corpo : JSON.stringify(corpo) });
+const chamar = (r, { conferir = async () => 'u1', env = { QLIK_APP_ID: 'app-1' } } = {}) =>
+  worker.fetch(r, env, {}, { conferir, conectar: async () => qlikFalso().soquete });
+
+test('rota: sem login 401, GET 405, outra origem 403, sem JSON 415, corpo grande 413', async () => {
+  assert.equal((await chamar(req(OK), { conferir: async () => null })).status, 401);
+  assert.equal((await worker.fetch(new Request(BASE), {})).status, 405);
+  assert.equal((await chamar(req(OK, { Origin: 'https://site-malicioso.com' }))).status, 403);
+  assert.equal((await chamar(req(OK, { Origin: 'https://campanhas.exemplo' }))).status, 200, 'mesma origem passa');
+  assert.equal((await chamar(req(OK, { 'Content-Type': 'text/plain' }))).status, 415);
+  assert.equal((await chamar(req({ ...OK, lixo: 'x'.repeat(5000) }))).status, 413);
+  assert.equal((await chamar(req('[1,2]'))).status, 400);
+});
+
+test('rota: respostas com cabeçalhos de segurança e sem cache', async () => {
+  const r = await chamar(req(OK));
+  assert.equal(r.headers.get('X-Content-Type-Options'), 'nosniff');
+  assert.equal(r.headers.get('Cache-Control'), 'no-store');
+  assert.match(r.headers.get('Content-Security-Policy'), /default-src 'none'/);
+});
+
+test('rota: limite de 20 consultas por minuto por usuário', async () => {
+  const env = {};
+  for (let i = 0; i < 20; i++) assert.equal(await dentroDoLimite(env, 'u-limite', 1000 + i), true);
+  assert.equal(await dentroDoLimite(env, 'u-limite', 2000), false, '21ª no mesmo minuto é barrada');
+  assert.equal(await dentroDoLimite(env, 'u-outro', 2000), true, 'outro usuário não é afetado');
+  assert.equal(await dentroDoLimite(env, 'u-limite', 62000), true, 'depois de 1 minuto libera');
+  let chave = null;
+  const comBinding = { LIMITE_QLIK: { limit: async ({ key }) => { chave = key; return { success: false }; } } };
+  assert.equal(await dentroDoLimite(comBinding, 'u9'), false);
+  assert.equal(chave, 'u9', 'usa o Rate Limiting do Cloudflare quando existe');
+  const r = await worker.fetch(req(OK), comBinding, {}, { conferir: async () => 'u9' });
+  assert.equal(r.status, 429);
+  assert.equal(r.headers.get('Retry-After'), '60');
+});
+
+test('rota: texto cru de erro do Qlik não vai para a tela', async () => {
+  const conectar = async () => {
+    const { soquete } = qlikFalso();
+    const enviar = soquete.send;
+    soquete.send = t => {
+      const m = JSON.parse(t);
+      if (m.method === 'OpenDoc') { setTimeout(() => soquete.__msg?.(m.id), 0); return; }
+      return enviar(t);
+    };
+    const ouvintes = [];
+    const add = soquete.addEventListener;
+    soquete.addEventListener = (tipo, fn) => { if (tipo === 'message') ouvintes.push(fn); return add(tipo, fn); };
+    soquete.__msg = id => ouvintes.forEach(fn => fn({ data: JSON.stringify({ jsonrpc: '2.0', id, error: { message: 'App dd64-segredo-interno not found' } }) }));
+    return soquete;
+  };
+  const r = await worker.fetch(req(OK), { QLIK_APP_ID: 'x' }, {}, { conferir: async () => 'u1', conectar });
+  const corpo = await r.json();
+  assert.equal(r.status, 502);
+  assert.ok(!/segredo-interno/.test(corpo.erro), corpo.erro);
 });

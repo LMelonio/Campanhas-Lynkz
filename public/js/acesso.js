@@ -293,7 +293,7 @@ async function verificarAgora() {
     return;
   }
   if (!p) { mostrarAviso('Perfil não encontrado', 'Sua conta entrou, mas o perfil não foi criado. Fale com a gerência.'); return; }
-  if (!p.ativo) { mostrarAviso('Acesso desativado', 'Fale com a gerência para reativar seu acesso.'); return; }
+  if (!p.ativo) { mostrarAviso('Acesso não liberado', 'Seu acesso ainda não foi liberado ou foi desativado. Peça à gerência para liberar.'); return; }
   if (entrou) return;
   entrou = true;
   el().hidden = true;

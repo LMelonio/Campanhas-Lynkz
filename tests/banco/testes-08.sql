@@ -26,6 +26,7 @@ grant execute on all functions in schema t8 to authenticated, anon, service_role
 
 -- um segundo usuário ativo, para provar que ninguém mexe na campanha dos outros
 insert into auth.users values ('88888888-8888-8888-8888-888888888888', 'outro.coordenador@lynkz.com.br') on conflict do nothing;
+update perfis set ativo = true where id = '88888888-8888-8888-8888-888888888888';   -- a 10 cria desativado
 
 set role authenticated;
 select t8.logar('11111111-1111-1111-1111-111111111111');

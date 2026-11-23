@@ -8,6 +8,10 @@ on:
   schedule:
     - cron: '23 10 * * 1-6'
   workflow_dispatch:
+# Menor permissão possível: as Actions só leem o repositório.
+permissions:
+  contents: read
+
 jobs:
   sincronizar:
     runs-on: ubuntu-latest

@@ -5,6 +5,10 @@ on:
   push:
   pull_request:
 
+# Menor permissão possível: as Actions só leem o repositório.
+permissions:
+  contents: read
+
 jobs:
   regras:
     runs-on: ubuntu-latest

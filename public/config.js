@@ -22,7 +22,7 @@ window.CONFIG = {
   // Aparece no login, no menu e no Perfil. Suba a cada deploy JUNTO com a
   // constante VERSAO do sw.js (as duas precisam ser iguais) para confirmar
   // no celular que a atualização chegou.
-  VERSAO: "2.5.0",
+  VERSAO: "2.6.0",
 
   // Faixas do indicador de custo sobre a meta.
   // 0.08 = 8%. Ajuste para a régua da sua operação.

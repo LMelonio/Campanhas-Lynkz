@@ -31,7 +31,8 @@ export const CONFIG_PADRAO = {
 };
 
 export class ErroQlik extends Error {
-  constructor(msg, { status = 502 } = {}) { super(msg); this.status = status; }
+  // interno = mensagem que veio do próprio Qlik: vai para o log, nunca para a tela.
+  constructor(msg, { status = 502, interno = false } = {}) { super(msg); this.status = status; this.interno = interno; }
 }
 
 // ---------- valores seguros para dentro de uma expressão do Qlik ----------
@@ -40,6 +41,26 @@ const PERIGOSO = /["'`{}<>$;\\\n\r]/;
 export function valorSeguro(v, rotulo) {
   const s = String(v ?? '').trim();
   if (!s || s.length > 80 || PERIGOSO.test(s)) throw new ErroQlik(`${rotulo} inválido.`, { status: 400 });
+  return s;
+}
+
+// Código do cliente: só letras, números, ponto e hífen (é comparado entre aspas simples).
+export function codigoSeguro(v) {
+  const s = String(v ?? '').trim();
+  if (!/^[A-Za-z0-9.\-]{1,20}$/.test(s)) throw new ErroQlik('Código do cliente inválido.', { status: 400 });
+  return s;
+}
+
+// Padrão de busca do Qlik (laboratório ou marca), que vai entre aspas duplas.
+// Só letras, números, espaço, . & / - + , ( ) % # e o curinga * — nada de "="
+// (busca por expressão) nem < > (busca numérica). Precisa ter pelo menos
+// 3 letras/números fora do curinga, para "*" sozinho não puxar todos os fornecedores.
+export function padraoSeguro(v, rotulo) {
+  const s = valorSeguro(v, rotulo);
+  const semPrefixo = s.replace(/^marca:\s*/i, '');
+  if (!/^[\p{L}\p{N} .&\/+\-*,()%#ºª°]+$/u.test(semPrefixo) || (semPrefixo.match(/[\p{L}\p{N}]/gu) || []).length < 3) {
+    throw new ErroQlik(`${rotulo} inválido.`, { status: 400 });
+  }
   return s;
 }
 const nomeCampo = n => `[${String(n).replace(/\]/g, '')}]`;
@@ -56,7 +77,7 @@ export const dataDoSerial = n => new Date(Math.round((n - 25569) * 86400000)).to
 
 // O laboratório do app pode ser fornecedor (padrão) ou marca do produto ("marca:CATLIFE").
 export function alvoLaboratorio(config, padrao) {
-  const seguro = valorSeguro(padrao, 'Laboratório');
+  const seguro = padraoSeguro(padrao, 'Laboratório');
   const m = /^marca:\s*(.+)$/i.exec(seguro);
   return m ? { campo: config.campos.marca, padrao: m[1].trim() } : { campo: config.campos.fornecedor, padrao: seguro };
 }
@@ -68,11 +89,11 @@ export function montarConjunto({ config = CONFIG_PADRAO, codigoCliente, padraoFo
   const alvo = alvoLaboratorio(config, padraoFornecedor);
   const dt = `Num(${nomeCampo(c.data)})`;
   const partes = [
-    `${nomeCampo(c.cliente)}={'${valorSeguro(codigoCliente, 'Código do cliente')}'}`,
+    `${nomeCampo(c.cliente)}={'${codigoSeguro(codigoCliente)}'}`,
     `${nomeCampo(alvo.campo)}={"${alvo.padrao}"}`,
     `${nomeCampo(c.data)}={"=${dt}>=${serialQlik(inicio)} and ${dt}<=${serialQlik(fim)}"}`,
     // Marca (opcional): uma linha de produtos do laboratório, ex.: WELLPET dentro da Ouro Fino.
-    ...(marca ? [`${nomeCampo(c.marca)}={"${valorSeguro(marca, 'Marca')}"}`] : []),
+    ...(marca ? [`${nomeCampo(c.marca)}={"${padraoSeguro(marca, 'Marca')}"}`] : []),
     ...(config.filtros || []).map(f => `${nomeCampo(f.campo)}={'${valorSeguro(f.valor, 'Filtro')}'}`),
   ];
   return `<${partes.join(', ')}>`;
@@ -89,7 +110,7 @@ export function abrirEngine(soquete, { tempoMs = 25000 } = {}) {
     const p = m.id != null && pendentes.get(m.id);
     if (!p) return;   // avisos do Qlik sem id (OnConnected etc.)
     pendentes.delete(m.id);
-    if (m.error) p.falha(new ErroQlik(`Qlik: ${m.error.message}${m.error.parameter ? ` (${m.error.parameter})` : ''}`));
+    if (m.error) p.falha(new ErroQlik(`Qlik: ${m.error.message}${m.error.parameter ? ` (${m.error.parameter})` : ''}`, { interno: true }));
     else p.ok(m.result);
   });
   soquete.addEventListener('close', () => falharTodos(new ErroQlik('O Qlik fechou a conexão.')));

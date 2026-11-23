@@ -6,7 +6,8 @@
 import { calc, dias, dataExcel, maskCPF, maskCNPJ, maskTelefone, colunaExcel, hojeCivil } from './lib/regras.js';
 import { ErroApp } from './dados/erros.js';
 
-const SHEETJS = 'https://cdn.sheetjs.com/xlsx-0.20.3/package/xlsx.mjs';
+// SheetJS no próprio site (public/vendor/), carregado só quando alguém baixa o Excel.
+const SHEETJS = new URL('../vendor/xlsx-0.20.3.js', import.meta.url).href;
 const FORMATOS = { data: 'dd/mm/yyyy', moeda: '"R$" #,##0.00', pct: '0.0%' };
 
 // cad = módulo de cadastros (para CNPJ e balconista).

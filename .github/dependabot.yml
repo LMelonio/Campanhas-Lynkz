@@ -1,0 +1,18 @@
+# Avisa (com pull request) quando sai versão nova com correção de segurança
+# das ferramentas de publicação, dos scripts de carga, dos testes e das Actions.
+# O app em public/ não tem dependência de npm: supabase-js e SheetJS ficam em
+# public/vendor/ e são trocados à mão (ver SEGURANCA.md).
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule: { interval: weekly }
+  - package-ecosystem: npm
+    directory: /scripts
+    schedule: { interval: weekly }
+  - package-ecosystem: npm
+    directory: /tests/e2e
+    schedule: { interval: weekly }
+  - package-ecosystem: github-actions
+    directory: /
+    schedule: { interval: monthly }

@@ -13,6 +13,11 @@
     "SUPABASE_URL": "https://clfnsuzglasmguzwodxq.supabase.co",
     "SUPABASE_ANON_KEY": "sb_publishable_BzXFZgmdRRsMWtzUJ4Ng8w_zJs5T_bt"
   },
+  // Limite de consultas ao Qlik por usuário, valendo para todos os servidores do Cloudflare.
+  // (Sem este bloco o Worker usa um limite por instância, mais fraco.)
+  "ratelimits": [
+    { "name": "LIMITE_QLIK", "namespace_id": "1001", "simple": { "limit": 20, "period": 60 } }
+  ],
   "assets": {
     "run_worker_first": ["/api/*"],
     "directory": "./public",

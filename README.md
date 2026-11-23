@@ -1,7 +1,7 @@
 # LYNKZ Campanhas
 
 App web (celular e computador, instalável) para **solicitar e aprovar campanhas promocionais** da
-LYNKZ Distribuidora, com cadastro de empresas e balconistas. Versão **2.3.0**.
+LYNKZ Distribuidora, com cadastro de empresas e balconistas. Versão **2.6.0**.
 
 - Front-end: HTML, CSS e JavaScript puros (módulos ES), **sem build**. A pasta `public/` é o site.
 - Banco e login: **Supabase** (PostgreSQL com RLS; regras de acesso no banco, não na tela).
@@ -17,6 +17,7 @@ LYNKZ Distribuidora, com cadastro de empresas e balconistas. Versão **2.3.0**.
 | Saber o que mudou | `MUDANCAS-V2.md` |
 | Entender quem vê quais dados pessoais | `PRIVACIDADE.md` |
 | Trazer clientes do Qlik e as planilhas antigas | `QLIK-E-HISTORICO.md` |
+| Segurança: o que está no código e o que configurar nos painéis | `SEGURANCA.md` |
 
 ```bash
 npm run dev          # app local com banco simulado: http://localhost:8000/?papel=aprovador

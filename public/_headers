@@ -1,13 +1,20 @@
 # Cabeçalhos de segurança. Lidos pelo Cloudflare (Workers/Pages) e pelo
-# Netlify; no servidor próprio, ver deploy/nginx.conf (mesmos valores).
+# Netlify; no servidor próprio, ver deploy/lynkz-seguranca.conf (mesmos valores).
 # Se algo deixar de carregar depois de publicar, abra o console do
 # navegador: o erro de "Content Security Policy" diz o endereço que falta.
+# v2.6: sem CDN de terceiros (supabase-js e SheetJS ficam em public/vendor/).
+# O connect-src aponta SÓ para o projeto do Supabase do config.js: trocou de
+# projeto? Troque aqui, no deploy/lynkz-seguranca.conf e no index.html (o teste confere).
 /*
   X-Content-Type-Options: nosniff
   Referrer-Policy: strict-origin-when-cross-origin
-  Permissions-Policy: camera=(), microphone=(), geolocation=(), payment=(), usb=()
+  Permissions-Policy: camera=(), microphone=(), geolocation=(), payment=(), usb=(), bluetooth=(), serial=(), hid=(), midi=(), magnetometer=(), gyroscope=(), accelerometer=(), display-capture=(), browsing-topics=()
   X-Frame-Options: DENY
-  Content-Security-Policy: default-src 'self'; script-src 'self' https://esm.sh https://cdn.sheetjs.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self' https://*.supabase.co wss://*.supabase.co https://esm.sh https://cdn.sheetjs.com https://fonts.googleapis.com https://fonts.gstatic.com; manifest-src 'self'; worker-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'
+  Strict-Transport-Security: max-age=31536000; includeSubDomains
+  Cross-Origin-Opener-Policy: same-origin
+  Cross-Origin-Resource-Policy: same-origin
+  X-Permitted-Cross-Domain-Policies: none
+  Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self' https://clfnsuzglasmguzwodxq.supabase.co wss://clfnsuzglasmguzwodxq.supabase.co; manifest-src 'self'; worker-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'; upgrade-insecure-requests
 
 /sw.js
   Cache-Control: no-cache
@@ -17,3 +24,7 @@
 
 /assets/*
   Cache-Control: public, max-age=86400
+
+# Nome com a versão: o conteúdo nunca muda (versão nova = arquivo novo).
+/vendor/*
+  Cache-Control: public, max-age=31536000, immutable

@@ -1035,6 +1035,49 @@ teste('lote F: Perfil mostra o último acesso e a ordem das ações', async ({ p
 // ============================================================
 //  v2.1 — LOTE G: abertura mais rápida
 // ============================================================
+teste('lote S: aprovador confere no Qlik o total enviado e vê a diferença', async ({ page }) => {
+  await abrir(page, { rota: '#/inicio' });
+  // Campanha pendente 1 com consulta ao Qlik gravada pelo solicitante: R$ 1.000 (o Qlik simulado dá 1.600,49).
+  await page.evaluate(() => {
+    const d = JSON.parse(sessionStorage.getItem('simulado-db-v3'));
+    const c = d.campanhas.find(x => x.id === 1);
+    Object.assign(c, { compras_periodo: 1000, compras_consultado_em: new Date().toISOString(), data_inicio: '2026-10-01', data_fim: '2026-10-31' });
+    d.empresas.find(e => e.id === c.empresa_id).codigo_cliente = '4821';
+    sessionStorage.setItem('simulado-db-v3', JSON.stringify(d));
+  });
+  await page.goto(`${BASE}/?papel=aprovador#/campanhas/1`);
+  await page.locator('[data-conferir-qlik]').click();
+  const nota = page.locator('#det-notas .nota', { hasText: 'Qlik agora' });
+  await nota.waitFor();
+  const t = await nota.innerText();
+  afirma(/1\.600,49/.test(t) && /Diferente/.test(t), 'mostra o total atual e avisa a diferença: ' + t);
+  await page.goto(`${BASE}/?papel=coordenador#/campanhas/1`);
+  await page.locator('#det-notas').waitFor();
+  igual(await page.locator('[data-conferir-qlik]').count(), 0, 'coordenador não vê o botão de conferência');
+});
+
+teste('lote S: sem CDN de terceiros, CSP fechada no Supabase do config e service worker com todos os módulos', async ({ page }) => {
+  const raiz = path.join(RAIZ, '..');
+  const cab = fs.readFileSync(path.join(RAIZ, '_headers'), 'utf8');
+  const nginx = fs.readFileSync(path.join(raiz, 'deploy', 'lynkz-seguranca.conf'), 'utf8');
+  const csp = cab.match(/Content-Security-Policy: (.+)/)[1];
+  afirma(nginx.includes(csp), 'CSP do nginx igual à do _headers');
+  afirma(/script-src 'self';/.test(csp), 'scripts só do próprio site');
+  const host = new URL(fs.readFileSync(path.join(RAIZ, 'config.js'), 'utf8').match(/SUPABASE_URL:\s*"([^"]+)"/)[1]).host;
+  afirma(csp.includes(`https://${host}`) && csp.includes(`wss://${host}`) && !csp.includes('*.supabase.co'), 'connect-src só no projeto do config.js');
+  for (const h of ['Strict-Transport-Security', 'Cross-Origin-Opener-Policy', 'X-Frame-Options', 'X-Content-Type-Options']) afirma(cab.includes(h), h);
+  const listar = d => fs.readdirSync(d, { withFileTypes: true }).flatMap(e =>
+    e.isDirectory() ? listar(path.join(d, e.name)) : e.name.endsWith('.js') ? [path.join(d, e.name)] : []);
+  const codigo = listar(path.join(RAIZ, 'js')).map(f => fs.readFileSync(f, 'utf8')).join('\n') + fs.readFileSync(path.join(RAIZ, 'index.html'), 'utf8');
+  afirma(!/https:\/\/(esm\.sh|cdn\.|unpkg|jsdelivr)/.test(codigo), 'nenhum script de CDN no app');
+  const sw = fs.readFileSync(path.join(RAIZ, 'sw.js'), 'utf8');
+  const faltam = listar(path.join(RAIZ, 'js')).map(f => path.relative(RAIZ, f).split(path.sep).join('/')).filter(m => !sw.includes(`'${m}'`));
+  afirma(!faltam.length, 'módulo fora do ARQUIVOS do sw.js: ' + faltam.join(', '));
+  igual(sw.match(/const VERSAO = '([^']+)'/)[1], fs.readFileSync(path.join(RAIZ, 'config.js'), 'utf8').match(/VERSAO: "([^"]+)"/)[1], 'VERSAO igual no sw.js e no config.js');
+  await abrir(page);
+  afirma(await page.evaluate(() => typeof window.supabase?.createClient === 'function'), 'supabase-js local carregado');
+});
+
 teste('lote G: todo módulo de public/js tem modulepreload no index.html', async ({ page }) => {
   const index = fs.readFileSync(path.join(RAIZ, 'index.html'), 'utf8');
   const listar = d => fs.readdirSync(d, { withFileTypes: true }).flatMap(e =>

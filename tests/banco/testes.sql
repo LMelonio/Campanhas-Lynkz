@@ -37,6 +37,8 @@ insert into auth.users values
   ('33333333-3333-3333-3333-333333333333', 'saiu@lynkz.com.br'),
   ('44444444-4444-4444-4444-444444444444', 'coord2@lynkz.com.br');
 select teste.ok((select count(*) = 4 from perfis), 'perfil criado automaticamente para cada usuário');
+-- A partir da 10, conta nova entra desativada: a gerência libera.
+update perfis set ativo = true;
 update perfis set papel = 'aprovador' where email = 'aprov@lynkz.com.br';
 update perfis set ativo = false where email = 'saiu@lynkz.com.br';
 grant usage, select on all sequences in schema public to authenticated;
