@@ -76,7 +76,7 @@ function desenhar(el, ctx) {
     ${recentes.length
       ? html`<div class="grade-cartoes">${recentes.map(c => cartao(c))}</div>`
       : vazio({ titulo: 'Nenhuma campanha ainda', texto: 'Cadastre a primeira e ela aparece aqui.', acao: { href: '#/nova', rotulo: 'Nova campanha' } })}
-    <p class="secao-nota">Total no sistema: ${todas.length} campanhas · R$ ${brl(todas.filter(c => c.status === STATUS.APROVADA).reduce((s, c) => s + calc(c).total, 0))} aprovados.</p>
+    <p class="secao-nota">Total no sistema: ${todas.length} ${todas.length === 1 ? 'campanha' : 'campanhas'} · R$ ${brl(todas.filter(c => c.status === STATUS.APROVADA).reduce((s, c) => s + calc(c).total, 0))} aprovados.</p>
   `);
 }
 

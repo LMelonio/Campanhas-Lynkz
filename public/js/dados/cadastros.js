@@ -4,7 +4,7 @@
 //  gravar ativo = false. CPF, CNPJ e telefone saem só com dígitos.
 // ============================================================
 import { sb } from '../lib/supabase.js';
-import { soDigitos } from '../lib/regras.js';
+import { soDigitos, maskCNPJ } from '../lib/regras.js';
 import { exigir } from './erros.js';
 
 let empresasMap = new Map();
@@ -40,7 +40,7 @@ export const ehDoQlik = e => !!e?.codigo_cliente;
 
 // Texto usado nas buscas de empresa (Gestão e Nova campanha).
 export const textoBuscaEmpresa = (e, balcs = []) =>
-  [e.nome, e.nome_fantasia, e.cidade, e.uf, e.cnpj, e.codigo_cliente, e.vendedor, ...balcs.map(b => b.nome_completo)].filter(Boolean).join(' ');
+  [e.nome, e.nome_fantasia, e.cidade, e.uf, e.cnpj, e.cnpj ? maskCNPJ(e.cnpj) : '', e.codigo_cliente, e.vendedor, ...balcs.map(b => b.nome_completo)].filter(Boolean).join(' ');
 
 const textoOuNulo = v => { const s = String(v ?? '').trim(); return s || null; };
 const digitosOuNulo = v => soDigitos(v) || null;
@@ -57,7 +57,7 @@ function camposEmpresa(d) {
   return r;
 }
 
-function camposBalconista(d, criando) {
+export function camposBalconista(d, criando) {
   const r = {};
   if (criando)                r.empresa_id = d.empresa_id;
   if ('nome_completo' in d)   r.nome_completo = String(d.nome_completo ?? '').trim().replace(/\s+/g, ' ');
@@ -129,6 +129,16 @@ export const cadastros = {
     const linha = exigir(id == null
       ? await sb.from('balconistas').insert(campos).select('*').single()
       : await sb.from('balconistas').update(campos).eq('id', id).select('*').single());
+    balconistasMap.set(String(linha.id), linha);
+    porEmpresa = null;
+    avisar({ tipo: 'balconista', id: linha.id, registro: linha });
+    return linha;
+  },
+
+  // Depois de gravar um balconista por fora (enviar_campanha): traz a linha para a memória.
+  async relerBalconista(id) {
+    const linha = exigir(await sb.from('balconistas').select('*').eq('id', id).maybeSingle());
+    if (!linha) return null;
     balconistasMap.set(String(linha.id), linha);
     porEmpresa = null;
     avisar({ tipo: 'balconista', id: linha.id, registro: linha });

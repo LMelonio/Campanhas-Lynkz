@@ -107,7 +107,8 @@ export function combo(input, { opcoes, valor = null, aoEscolher = () => {}, cria
       fechar();
     }
   };
-  const onFocus = () => { ativo = -1; abrir(); };
+  // Com valor já escolhido a lista abre só no clique, na seta ou ao digitar.
+  const onFocus = () => { ativo = -1; if (!atual) abrir(); };
   const onClick = () => { if (lista.hidden) abrir(); };
   const onBlur = () => {
     setTimeout(() => {

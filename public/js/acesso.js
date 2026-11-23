@@ -308,8 +308,12 @@ export async function sair() {
 
 // Abertura: espera o Supabase ler o link do e-mail (se houver), limpa a URL
 // e decide qual tela mostrar. aoEntrar(perfil) é chamado uma vez.
+// Sessão do projeto Supabase anterior: não serve mais e não deve ficar guardada no aparelho.
+const CHAVES_ANTIGAS = ['sb-kdznytksxtjmuqwrqxka-auth-token'];
+
 export async function iniciarAcesso({ aoEntrar }) {
   aoEntrarCb = aoEntrar;
+  for (const k of CHAVES_ANTIGAS) { try { localStorage.removeItem(k); } catch { /* sem armazenamento */ } }
   sb.auth.onAuthStateChange(evt => {
     if (evt === 'PASSWORD_RECOVERY') {
       if (!modoRecuperacao) { modoRecuperacao = true; marcarRecuperacao(); if (pronto) mostrarNovaSenha(); }

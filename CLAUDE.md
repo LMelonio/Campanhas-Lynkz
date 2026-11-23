@@ -31,7 +31,7 @@ public/                  ← TUDO que vai para o ar (raiz do site)
         ui/     icones.js  avisos.js  campos.js  combo.js  pecas.js  cadastro-dialogos.js
                 estado.js (carregando/erro/vazio)  senha.js (campo de senha)  copiar.js
         telas/  inicio.js  campanhas.js  detalhe.js  nova.js  historico.js  gestao.js  perfil.js
-sql/          schema.sql (instalação nova)  migracoes/ (00–07, com rollback e validação)
+sql/          schema.sql (instalação nova)  migracoes/ (00–11, com rollback e validação)
 scripts/      package.json (ws, xlsx — só dos scripts) · sincronizar-clientes-qlik.mjs · importar-planilhas.mjs · de-para-empresas.json
               lib/ env.mjs (.env) · qlik.mjs (Engine API) · planilhas.mjs (xlsx → linhas) · supabase-rpc.mjs
               Só rodam no computador ou no GitHub Actions, com o .env. NUNCA importados por public/.
@@ -56,7 +56,7 @@ histórico do app quando existe.
 - **ctx:** `perfil`, `ehAprovador`, `campanhas`, `cadastros`, `toast`, `navegar(rota, {substituir})`,
   `cabecalho({titulo, voltar, acoes})`, `barraDeAcao(bool)` (esconde a barra inferior no celular), `remontar()`, `sair()`.
 - **campanhas:** `carregado`, `carregar()`, `todas()`, `porId()`, `pendentes()` (mais antiga primeiro),
-  `assinar(fn) → desligar`, `aoVivo()`, `criar(campos)`, `decidir(id, status, motivo)`, `parar()`.
+  `assinar(fn) → desligar`, `aoVivo()`, `criar(campos)`, `enviar({campanha, balconista, notas})`, `decidir(id, status, motivo)`, `parar()`.
   Lê sempre a view `campanhas_app`. No tempo real relê **só a linha** do evento.
 - **cadastros:** `carregado`, `carregar()`, `empresas({inativas})`, `empresa(id)`, `balconista(id)`,
   `balconistasDa(id, {inativos})`, `salvarEmpresa(dados, id?)`, `salvarBalconista(dados, id?)`, `assinar(fn)`, `aoVivo()`.
@@ -110,6 +110,17 @@ histórico do app quando existe.
   origem igual ao site; JSON de até 2 KB; 20 consultas/min por usuário (`LIMITE_QLIK`); erro cru do Qlik (`interno`) só no log.
 - Detalhe: aprovador tem "Conferir no Qlik agora" (o total enviado vem do aparelho de quem pediu).
 - Checklist dos painéis (Supabase, Cloudflare, GitHub): `SEGURANCA.md`.
+
+## Envio da campanha e limites (v2.7)
+
+- A tela Nova só monta o pedido e chama `campanhas.enviar({ campanha, balconista, notas })`. Quem grava
+  balconista + campanha + notas é a função `enviar_campanha()` (migração 11, security invoker, tudo ou nada).
+  Não volte a gravar em três chamadas na tela. Status e solicitante são impostos pelo banco.
+- Limites de valor e texto: `LIMITES` em `lib/regras.js`, com os mesmos números das constraints
+  `campanhas_valores_faixa` e `campanhas_textos_tamanho` (`tests/regras.test.mjs` compara com `sql/schema.sql`).
+  Mudou uma constraint? Mude `LIMITES` junto.
+- Cartões de campanha e empresa **não** levam `aria-label`: o nome vem do conteúdo e o axe barra rótulo que não repete o texto visível (WCAG 2.5.3).
+- Simulador: tem `sb.rpc('enviar_campanha')` atômico e a faixa de valores da campanha.
 
 ## Regras de código
 

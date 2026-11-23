@@ -102,6 +102,23 @@ export const campanhas = {
     return linha;
   },
 
+  // Envio da Nova campanha: balconista (se veio), campanha e notas fiscais
+  // gravados juntos pela função enviar_campanha (tudo ou nada). Devolve a
+  // campanha como a view a entrega, e o id do balconista, se houve um.
+  //   campanha:  colunas da tabela campanhas (o banco impõe status e solicitante)
+  //   balconista: { empresa_id, nome_completo, … } novo, ou { id, … } para atualizar
+  //   notas:     [{ numero, serie, data, valor }]
+  async enviar({ campanha, balconista = null, notas = [] }) {
+    const r = exigir(await sb.rpc('enviar_campanha', {
+      p_campanha: campanha,
+      p_balconista: balconista,
+      p_notas: notas.map(n => ({ numero: n.numero, serie: n.serie || '', data: n.data || null, valor: n.valor })),
+    }));
+    const { linha } = await relerLinha(r.id);
+    avisar({ tipo: 'linha', id: r.id, campanha: linha, nova: true, origem: 'local' });
+    return { campanha: linha, balconistaId: r.balconista_id ?? null };
+  },
+
   // Notas fiscais marcadas na Nova campanha: [{numero, serie, data, valor}].
   async salvarNotas(campanhaId, notas) {
     if (!notas.length) return;

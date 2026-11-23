@@ -120,6 +120,9 @@ function inserir(tabela, d) {
   }
   if (tabela === 'campanhas') {
     if (d.solicitante_id !== u.id || d.status !== 'Pendente') return { error: erro('new row violates row-level security policy for table "campanhas"', '42501') };
+    if (d.rebate_pct > 100 || d.meta > 1e9 || d.investimento_lynkz > 1e7 || d.investimento_industria > 1e7 || d.rebate_teto > 1e7) {
+      return { error: erro('new row for relation "campanhas" violates check constraint "campanhas_valores_faixa"', '23514') };
+    }
     if (d.balconista_id != null) {
       if (d.empresa_id == null) return { error: erro('Escolha a empresa antes do balconista.') };
       if (!db.balconistas.some(b => b.id == d.balconista_id && b.empresa_id == d.empresa_id)) return { error: erro('O balconista escolhido não pertence a esta empresa.') };
@@ -172,6 +175,41 @@ function atualizar(tabela, linhas, d) {
   }
   linhas.forEach(r => Object.assign(r, d, { atualizado_em: new Date().toISOString(), atualizado_por: u.id }));
   return { rows: linhas };
+}
+
+// enviar_campanha(p_campanha, p_balconista, p_notas): balconista + campanha + notas numa
+// transação só. Qualquer erro desfaz tudo (o banco guarda uma cópia e volta a ela).
+function enviarCampanha({ p_campanha: c, p_balconista: b = null, p_notas: notas = [] }) {
+  const u = usuario();
+  if (!u) return { error: erro('JWT expired', 'PGRST301') };
+  const antes = JSON.stringify(db);
+  const falha = e => { db = JSON.parse(antes); return { error: e }; };
+  const eventos = [];
+  let balId = c.balconista_id ?? null;
+  if (b) {
+    if (b.id != null) {
+      const alvo = db.balconistas.find(x => x.id == b.id);
+      if (!alvo) return falha(erro('O balconista escolhido não foi encontrado.'));
+      const { id, ...resto } = b;
+      const res = atualizar('balconistas', [alvo], resto);
+      if (res.error) return falha(res.error);
+      balId = alvo.id; eventos.push(['balconistas', 'UPDATE', alvo]);
+    } else {
+      const res = inserir('balconistas', { ...b });
+      if (res.error) return falha(res.error);
+      balId = res.row.id; eventos.push(['balconistas', 'INSERT', res.row]);
+    }
+  }
+  const res = inserir('campanhas', { ...c, balconista_id: balId, solicitante_id: u.id, status: 'Pendente' });
+  if (res.error) return falha(res.error);
+  eventos.push(['campanhas', 'INSERT', res.row]);
+  for (const n of notas) {
+    const r = inserir('campanha_notas', { campanha_id: res.row.id, numero: n.numero, serie: n.serie || '', data_emissao: n.data || null, valor: n.valor });
+    if (r.error) return falha(r.error);
+  }
+  gravarDb();
+  eventos.forEach(e => emitir(...e));
+  return { data: { id: res.row.id, codigo: res.row.codigo, balconista_id: balId }, error: null };
 }
 
 // ---------- tempo real ----------
@@ -263,6 +301,14 @@ const avisarAuth = evt => setTimeout(() => ouvintesAuth.forEach(fn => fn(evt, se
 
 export const sb = {
   from: tabela => new Consulta(tabela),
+  rpc(nome, args = {}) {
+    const rodar = () => {
+      if (nome !== 'enviar_campanha') return { data: null, error: erro(`Could not find the function public.${nome} in the schema cache`, 'PGRST202') };
+      const r = enviarCampanha(args);
+      return r.error ? { data: null, error: r.error } : r;
+    };
+    return { then: (ok, falha) => new Promise(r => setTimeout(r, 120 + Math.random() * 180)).then(rodar).then(ok, falha) };
+  },
   channel(nome) {
     const c = { nome, ouvintes: [], on(_tipo, filtro, fn) { this.ouvintes.push({ filtro, fn }); return this; }, subscribe() { canais.add(this); return this; } };
     return c;

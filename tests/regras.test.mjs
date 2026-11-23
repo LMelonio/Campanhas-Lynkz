@@ -139,3 +139,30 @@ test('cnpjValido confere os dígitos verificadores', () => {
   assert.equal(cnpjValido('11.222.333/0001-82'), false);
   assert.equal(cnpjValido('123'), false);
 });
+
+// ---------- LIMITES x banco ----------
+// Os limites da tela (LIMITES) e as constraints do banco precisam ser os mesmos números.
+import { readFileSync } from 'node:fs';
+import { LIMITES } from '../public/js/lib/regras.js';
+
+function constraintDoSchema(nome) {
+  const sql = readFileSync(new URL('../sql/schema.sql', import.meta.url), 'utf8');
+  const i = sql.indexOf(`add constraint ${nome} check (`);
+  assert.ok(i > 0, `constraint ${nome} não encontrada em sql/schema.sql`);
+  return sql.slice(i, sql.indexOf('not valid', i));
+}
+
+test('LIMITES de valor batem com campanhas_valores_faixa do banco', () => {
+  const c = constraintDoSchema('campanhas_valores_faixa');
+  for (const campo of ['investimento_lynkz', 'investimento_industria', 'meta', 'rebate_pct', 'rebate_teto']) {
+    const m = c.match(new RegExp(String.raw`${campo}\s*<=\s*(\d+)`));
+    assert.ok(m, `${campo} sem limite no banco`);
+    assert.equal(Number(m[1]), LIMITES[campo], campo);
+  }
+});
+
+test('LIMITES de texto batem com campanhas_textos_tamanho do banco', () => {
+  const c = constraintDoSchema('campanhas_textos_tamanho');
+  const doBanco = Object.fromEntries([...c.matchAll(/texto_ate\((\w+),\s*(\d+)\)/g)].map(m => [m[1], Number(m[2])]));
+  assert.deepEqual(doBanco, { ...LIMITES.textos });
+});

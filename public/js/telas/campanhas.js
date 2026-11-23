@@ -9,7 +9,7 @@ import { campoBusca, ligarBusca } from '../ui/campos.js';
 import { icone } from '../ui/icones.js';
 import { cartao, vazio } from '../ui/pecas.js';
 import * as detalhe from './detalhe.js';
-import { exportarExcel } from '../exportar.js';
+import { exportarExcel, nomeParaArquivo } from '../exportar.js';
 import { estadoLista } from '../ui/estado.js';
 
 const PASSO = 40;
@@ -154,10 +154,21 @@ function mostrarDetalhe(id) {
   });
 }
 
+// Abriu uma campanha (ex.: a que acabou de ser enviada) que os filtros guardados escondem:
+// tira o laboratório e a busca e, se ainda assim não aparecer, mostra todos os status.
+function garantirNaLista(ctx, id) {
+  if (!ctx.campanhas.porId(id)) return;
+  const aparece = () => aplicarFiltros(ctx).some(c => String(c.id) === String(id));
+  if (aparece()) return;
+  Object.assign(filtros, { lab: '', busca: '' });
+  if (!aparece()) filtros.status = 'Todas';
+}
+
 export function montar(el, ctx, params) {
   if (filtros.status === null) filtros.status = ctx.ehAprovador ? STATUS.PENDENTE : 'Todas';
   if (filtros.minhas === null) filtros.minhas = !ctx.ehAprovador;
   aplicarQuery(params.query);
+  if (params.id) garantirNaLista(ctx, params.id);
   s = { el, ctx, id: null, desligar: [], desmontarDetalhe: null, rolagemLista: 0 };
 
   const labs = [...new Set([...(window.CONFIG.LABORATORIOS || []), ...ctx.campanhas.todas().map(c => c.laboratorio)])]
@@ -216,7 +227,7 @@ export function montar(el, ctx, params) {
     ao(el, 'click', '#cp-excel', async (e, b) => {
       b.disabled = true; b.setAttribute('aria-busy', 'true');
       try {
-        await exportarExcel(ordenar(aplicarFiltros(ctx)), ctx.cadastros, { prefixo: `Campanhas_${ROTULO_STATUS[filtros.status] || 'Todas'}` });
+        await exportarExcel(ordenar(aplicarFiltros(ctx)), ctx.cadastros, { prefixo: `Campanhas_${ROTULO_STATUS[filtros.status] || 'Todas'}${filtros.lab ? '_' + nomeParaArquivo(filtros.lab) : ''}` });
         ctx.toast('Planilha gerada.', { tom: 'sucesso' });
       } catch (err) { ctx.toast(err.message, { tom: 'erro', duracao: 8000 }); }
       finally { b.disabled = false; b.removeAttribute('aria-busy'); }

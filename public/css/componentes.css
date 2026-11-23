@@ -34,7 +34,7 @@
 .acoes-fim { justify-content: flex-end; }
 
 /* ---------- campos ---------- */
-.campo { display: grid; gap: 6px; margin-bottom: var(--e-4); min-width: 0; }
+.campo { display: grid; gap: 6px; align-content: start; margin-bottom: var(--e-4); min-width: 0; }
 .campo > label, .campo-legenda { font-size: var(--t-14); font-weight: 600; color: var(--ink); }
 .campo-obrig { color: var(--red-ink); margin-left: 2px; }
 .campo-opcional { color: var(--ink-2); font-weight: 400; font-size: var(--t-12); margin-left: var(--e-1); }
@@ -57,7 +57,7 @@
 /* Erro nunca só pela cor: borda de 2 px + ícone + texto. */
 /* Mesmo peso do seletor base (.campo input:not():not()) para a borda de erro aparecer de fato. */
 .campo.tem-erro input:not([type="checkbox"]):not([type="radio"]), .campo.tem-erro select, .campo.tem-erro textarea { border: 2px solid var(--erro); background: var(--erro-soft); }
-.grade-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 0 var(--e-3); }
+.grade-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 0 var(--e-3); align-items: start; }
 @media (max-width: 380px) { .grade-2.quebra { grid-template-columns: 1fr; } }
 
 /* busca */

@@ -11,13 +11,14 @@
 import { html, pintar, $, $$, ao, debounce, armazenamento } from '../lib/dom.js';
 import {
   calc, banda, brl, pct, lerValor, valorCampo, soDigitos, normaliza, maskCPF, maskTelefone,
-  errosRecebedor, hojeCivil, horaBR, somaDias, periodoMes, dias, dataBR, STATUS,
+  errosRecebedor, LIMITES, hojeCivil, horaBR, somaDias, periodoMes, dias, dataBR, STATUS,
 } from '../lib/regras.js';
 import { icone } from '../ui/icones.js';
 import { regua, FAIXAS } from '../ui/pecas.js';
 import { campo, selecao, areaTexto, interruptor, ligarMascaras, aplicarErros, limparErro, marcarErro } from '../ui/campos.js';
 import { combo } from '../ui/combo.js';
-import { textoBuscaEmpresa } from '../dados/cadastros.js';
+import { confirmar } from '../ui/avisos.js';
+import { textoBuscaEmpresa, camposBalconista } from '../dados/cadastros.js';
 import { dialogoEmpresa } from '../ui/cadastro-dialogos.js';
 import { consultarCompras, laboratorioConsultavel } from '../dados/qlik.js';
 
@@ -201,6 +202,14 @@ function validar() {
   for (const id of ['n-inv-lynkz', 'n-inv-industria', 'n-meta', 'n-rebate-teto', 'n-rebate-pct']) {
     if (!Number.isFinite(num(id)) || num(id) < 0) e[id] = 'Valor inválido. Use só números, como 1.500,00.';
   }
+  // Mesmos limites do banco (LIMITES em regras.js): erro no campo, sem ir ao banco.
+  if (!e['n-rebate-pct'] && marcado('n-rebate') && num('n-rebate-pct') > LIMITES.rebate_pct) e['n-rebate-pct'] = `O rebate vai de 0 a ${LIMITES.rebate_pct}%.`;
+  for (const [id, chave] of [['n-meta', 'meta'], ['n-inv-lynkz', 'investimento_lynkz'], ['n-inv-industria', 'investimento_industria'], ['n-rebate-teto', 'rebate_teto']]) {
+    if (!e[id] && num(id) > LIMITES[chave]) e[id] = `Passou do limite de R$ ${brl(LIMITES[chave])}.`;
+  }
+  for (const [id, chave] of [['n-campanha', 'campanha'], ['n-mecanica', 'mecanica'], ['n-observacoes', 'observacoes']]) {
+    if (!e[id] && v(id).length > LIMITES.textos[chave]) e[id] = `Texto grande demais: no máximo ${LIMITES.textos[chave]} caracteres.`;
+  }
   const pag = v('n-pagamento');
   if (!e['n-inv-lynkz'] && PAGTO_EXIGE_INVESTIMENTO.includes(pag) && !(num('n-inv-lynkz') > 0)) {
     e['n-inv-lynkz'] = `Obrigatório para ${pag}. Informe um valor maior que zero.`;
@@ -208,6 +217,8 @@ function validar() {
   if (marcado('n-rebate')) {
     if (!e['n-rebate-pct'] && !(num('n-rebate-pct') > 0)) e['n-rebate-pct'] = 'Informe o % de rebate ou desligue a opção.';
     if (!e['n-meta'] && !(num('n-meta') > 0)) e['n-meta'] = 'O rebate precisa da meta do cliente para ser calculado.';
+    if (!v('n-rebate-base')) e['n-rebate-base'] = 'Escolha a base de cálculo do rebate.';
+    if (!v('n-rebate-gatilho')) e['n-rebate-gatilho'] = 'Escolha quando o rebate é devido.';
   }
 
   if (recebedorVisivel() && st.comboEmpresa.valor()) {
@@ -415,6 +426,16 @@ async function enviar() {
     ctx.toast(n === 1 ? 'Confira o campo marcado.' : `Confira os ${n} campos marcados.`, { tom: 'erro' });
     return;
   }
+  // Período e meta são opcionais: avisa, mas deixa enviar.
+  const faltas = [!v('n-inicio') || !v('n-fim') ? 'período' : null, !(num('n-meta') > 0) ? 'meta' : null].filter(Boolean);
+  if (faltas.length) {
+    const seguir = await confirmar({
+      titulo: `Enviar sem ${faltas.join(' e ')}?`,
+      descricao: 'O aprovador vai analisar a campanha sem essa informação. Dá para voltar e preencher.',
+      confirmar: 'Enviar assim', cancelar: 'Voltar',
+    });
+    if (!seguir || !st || st.enviando) return;
+  }
   st.enviando = true;
   const botoes = $$('[data-enviar]', st.el);
   botoes.forEach(b => { b.disabled = true; b.setAttribute('aria-busy', 'true'); });
@@ -422,55 +443,53 @@ async function enviar() {
     const empresa = ctx.cadastros.empresa(st.comboEmpresa.valor());
     const dados = lerRecebedor();
     const ehSwile = recebedorObrigatorio();
-    let balconistaId = null;
 
+    // Balconista: novo, atualizado ou só escolhido. Quem grava é o banco, junto com a campanha.
+    let balconista = null, balconistaId = null;
     if (recebedorVisivel() && st.pessoa && st.pessoa !== 'nenhuma') {
       if (st.pessoa === 'outra') {
-        if (marcado('n-rec-salvar')) {
-          const b = await ctx.cadastros.salvarBalconista({ empresa_id: empresa.id, ...dados });
-          balconistaId = b.id;
-          st.pessoa = String(b.id);   // se a campanha falhar, a nova tentativa já usa o cadastro
-        }
+        if (marcado('n-rec-salvar')) balconista = camposBalconista({ empresa_id: empresa.id, ...dados }, true);
       } else {
         balconistaId = st.pessoa;
         const balc = balconistaEscolhido();
-        if (marcado('n-rec-atualizar') && diferente(balc, dados)) await ctx.cadastros.salvarBalconista(dados, balc.id);
+        if (marcado('n-rec-atualizar') && diferente(balc, dados)) balconista = { id: balc.id, ...camposBalconista(dados, false) };
       }
     }
 
     const rb = marcado('n-rebate');
     // Só vale a consulta que bate com o que está na tela agora.
     const comprasAtuais = st.compras && st.compras.chave === [empresa.codigo_cliente, st.comboLab.valor(), v('n-inicio'), v('n-fim'), st.marca || ''].join('|') ? st.compras : null;
-    const c = await ctx.campanhas.criar({
-      cliente: empresa.nome, empresa_id: empresa.id, balconista_id: balconistaId,
-      laboratorio: st.comboLab.valor(), campanha: v('n-campanha'),
-      tipo: v('n-tipo') || null, mecanica: v('n-mecanica') || null,
-      investimento_lynkz: num('n-inv-lynkz') || 0, investimento_industria: num('n-inv-industria') || 0,
-      forma_pagamento: v('n-pagamento') || null,
-      data_inicio: v('n-inicio') || null, data_fim: v('n-fim') || null,
-      tipo_meta: v('n-tipo-meta') || null, meta: num('n-meta') || 0,
-      rebate_pct: rb ? num('n-rebate-pct') || 0 : 0,
-      rebate_teto: rb ? num('n-rebate-teto') || 0 : 0,
-      rebate_base: rb ? v('n-rebate-base') || null : null,
-      rebate_gatilho: rb ? v('n-rebate-gatilho') || null : null,
-      // swile_* só quando o pagamento é Swile.
-      swile_nome_completo: ehSwile ? dados.nome_completo.replace(/\s+/g, ' ') : null,
-      swile_cpf: ehSwile ? soDigitos(dados.cpf) : null,
-      swile_data_nascimento: ehSwile ? dados.data_nascimento : null,
-      swile_email: ehSwile ? dados.email.toLowerCase() : null,
-      swile_telefone: ehSwile ? soDigitos(dados.telefone) : null,
-      observacoes: v('n-observacoes') || null,
-      compras_periodo: comprasAtuais ? comprasAtuais.total : null,
-      compras_consultado_em: comprasAtuais ? comprasAtuais.consultado_em : null,
-      compras_marca: comprasAtuais?.marca || null,
-      status: STATUS.PENDENTE,
-      solicitante_id: ctx.perfil.id, solicitante_nome: ctx.perfil.nome,
+    const { campanha: c, balconistaId: novoBalcId } = await ctx.campanhas.enviar({
+      campanha: {
+        cliente: empresa.nome, empresa_id: empresa.id, balconista_id: balconistaId,
+        laboratorio: st.comboLab.valor(), campanha: v('n-campanha'),
+        tipo: v('n-tipo') || null, mecanica: v('n-mecanica') || null,
+        investimento_lynkz: num('n-inv-lynkz') || 0, investimento_industria: num('n-inv-industria') || 0,
+        forma_pagamento: v('n-pagamento') || null,
+        data_inicio: v('n-inicio') || null, data_fim: v('n-fim') || null,
+        tipo_meta: v('n-tipo-meta') || null, meta: num('n-meta') || 0,
+        rebate_pct: rb ? num('n-rebate-pct') || 0 : 0,
+        rebate_teto: rb ? num('n-rebate-teto') || 0 : 0,
+        rebate_base: rb ? v('n-rebate-base') || null : null,
+        rebate_gatilho: rb ? v('n-rebate-gatilho') || null : null,
+        // swile_* só quando o pagamento é Swile.
+        swile_nome_completo: ehSwile ? dados.nome_completo.replace(/s+/g, ' ') : null,
+        swile_cpf: ehSwile ? soDigitos(dados.cpf) : null,
+        swile_data_nascimento: ehSwile ? dados.data_nascimento : null,
+        swile_email: ehSwile ? dados.email.toLowerCase() : null,
+        swile_telefone: ehSwile ? soDigitos(dados.telefone) : null,
+        observacoes: v('n-observacoes') || null,
+        compras_periodo: comprasAtuais ? comprasAtuais.total : null,
+        compras_consultado_em: comprasAtuais ? comprasAtuais.consultado_em : null,
+        compras_marca: comprasAtuais?.marca || null,
+      },
+      balconista,
+      notas: marcadasDe(comprasAtuais),
     });
     st.enviado = true;
     limparRascunho();
-    let notasOk = true;
-    try { await ctx.campanhas.salvarNotas(c.id, marcadasDe(comprasAtuais)); } catch (e) { notasOk = false; console.warn('Notas não gravadas', e); }
-    ctx.toast(notasOk ? 'Enviada. Já está na fila de aprovação.' : 'Enviada, mas não consegui gravar as notas fiscais. Avise o aprovador.', { tom: notasOk ? 'sucesso' : 'erro', duracao: notasOk ? undefined : 10000 });
+    if (novoBalcId && balconista) ctx.cadastros.relerBalconista(novoBalcId).catch(e => console.warn('Balconista não relido', e));
+    ctx.toast('Enviada. Já está na fila de aprovação.', { tom: 'sucesso' });
     ctx.navegar(`#/campanhas/${c.id}`, { substituir: true });
   } catch (e) {
     const MAPA = { cpf: PESSOAIS.cpf, nome_completo: PESSOAIS.nome_completo, email: PESSOAIS.email, telefone: PESSOAIS.telefone, data_fim: 'n-fim' };

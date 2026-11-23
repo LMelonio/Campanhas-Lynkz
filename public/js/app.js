@@ -87,7 +87,7 @@ const ctx = {
   // Cabeçalho da tela: título, rota de volta (opcional) e ações à direita.
   cabecalho({ titulo, voltar = null, acoes = '' }) {
     $('#titulo').textContent = titulo;
-    document.title = `${titulo} · ${C.SUBMARCA || 'Campanhas'}`;
+    document.title = `${titulo} · ${C.MARCA || 'LYNKZ'}`;
     const v = $('#voltar');
     v.hidden = !voltar;
     if (voltar) v.setAttribute('href', voltar);

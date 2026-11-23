@@ -181,9 +181,11 @@ function desenharFicha() {
 
 async function alternarEmpresa(ctx, e) {
   if (e.ativo) {
+    const pend = ctx.campanhas.pendentes().filter(c => String(c.empresa_id) === String(e.id)).length;
     const ok = await confirmar({
       titulo: `Desativar ${e.nome}?`,
-      descricao: 'Ela some da lista ao criar campanhas. O histórico continua, e dá para reativar depois.',
+      descricao: 'Ela some da lista ao criar campanhas. O histórico continua, e dá para reativar depois.'
+        + (pend ? ` ${pend} ${pend === 1 ? 'campanha pendente continua' : 'campanhas pendentes continuam'} na fila de aprovação.` : ''),
       confirmar: 'Desativar', perigo: true,
     });
     if (!ok) return;

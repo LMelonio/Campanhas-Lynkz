@@ -395,6 +395,7 @@ teste('nova: Swile + balconista preenche, edição atualiza o cadastro e a campa
   afirma(await page.locator('#rec-atualizar').isVisible(), 'oferta de atualizar o cadastro aparece');
   afirma((await page.locator('#be-pct').innerText()).includes('7,5%'), 'resumo de custo ao vivo (1.500 / 20.000)');
   await page.locator('[data-enviar]:visible').first().click();
+  await page.locator('dialog.dialogo button', { hasText: 'Enviar assim' }).click();   // sem período e sem meta: o app avisa
   await page.waitForFunction(() => /#\/campanhas\/\d+$/.test(location.hash));
   await toastCom(page, 'fila de aprovação');
   const d = await db(page);
@@ -433,6 +434,7 @@ teste('nova: "outra pessoa" vira balconista novo da empresa', async ({ page }) =
   await page.fill('#n-rec-telefone', '98912345678');
   afirma(await page.isChecked('#n-rec-salvar'), '"Salvar como balconista" ligado');
   await page.locator('[data-enviar]:visible').first().click();
+  await page.locator('dialog.dialogo button', { hasText: 'Enviar assim' }).click();   // sem período e sem meta: o app avisa
   await page.waitForFunction(() => /#\/campanhas\/\d+$/.test(location.hash));
   const d = await db(page);
   const b = d.balconistas.find(x => x.cpf === '39053344705' && x.empresa_id === 3);
@@ -1351,6 +1353,120 @@ for (const [largura, altura] of [[360, 740], [390, 844], [768, 1024], [1024, 768
     afirma(!problemas.length, problemas.join('\n      '));
   }, { largura, altura });
 }
+
+// ============================================================
+//  v2.7 — limites, envio tudo-ou-nada, combo, busca por CNPJ, títulos, alinhamento
+// ============================================================
+teste('v2.7: rebate acima de 100% marca o campo sem ir ao banco; base e gatilho são obrigatórios com rebate', async ({ page }) => {
+  await abrir(page, { rota: '#/nova' });
+  const antes = (await db(page)).campanhas.length;
+  await escolherNoCombo(page, '#n-empresa', 'casa do', 'Casa do Criador');
+  await escolherNoCombo(page, '#n-laboratorio', 'avert', 'Avert');
+  await page.fill('#n-campanha', 'Rebate demais');
+  await page.click('label[for="n-rebate"]');
+  await page.fill('#n-meta', '40000'); await page.fill('#n-rebate-pct', '150');
+  await page.locator('[data-enviar]:visible').first().click();
+  afirma((await erroDo(page, 'n-rebate-pct').innerText()).includes('0 a 100%'), 'erro no campo % de rebate');
+  afirma(await erroDo(page, 'n-rebate-base').isVisible(), 'pede a base de cálculo');
+  afirma(await erroDo(page, 'n-rebate-gatilho').isVisible(), 'pede quando o rebate é devido');
+  igual((await db(page)).campanhas.length, antes, 'nada foi gravado');
+  await page.fill('#n-meta', '2000000000');
+  await page.locator('[data-enviar]:visible').first().click();
+  afirma((await erroDo(page, 'n-meta').innerText()).includes('limite'), 'meta acima de R$ 1 bilhão');
+});
+
+teste('v2.7: enviar é tudo ou nada — campanha recusada não deixa balconista novo nem notas', async ({ page }) => {
+  await abrir(page, { rota: '#/nova', papel: 'coordenador' });
+  const r = await page.evaluate(async () => {
+    const { campanhas } = await import('/js/dados/campanhas.js');
+    try {
+      await campanhas.enviar({
+        campanha: { cliente: 'x', empresa_id: 3, laboratorio: 'Avert', campanha: 'Recusada pelo banco', rebate_pct: 150 },
+        balconista: { empresa_id: 3, nome_completo: 'Fulano de Tal', cpf: '12345678909', data_nascimento: '1990-01-01', email: 'f@x.com', telefone: '98912345678' },
+        notas: [{ numero: '1', serie: '1', data: '2026-10-01', valor: 10 }],
+      });
+      return 'enviou';
+    } catch (e) { return e.message; }
+  });
+  afirma(/passou do limite/i.test(r), 'erro de limite em português: ' + r);
+  const d = await db(page);
+  afirma(!d.balconistas.some(b => b.cpf === '12345678909'), 'balconista não ficou cadastrado');
+  afirma(!d.campanhas.some(c => c.campanha === 'Recusada pelo banco'), 'campanha não existe');
+  igual(d.campanha_notas.length, 0, 'nenhuma nota gravada');
+});
+
+teste('v2.7: com empresa escolhida, a lista não abre sozinha ao voltar o foco', async ({ page }) => {
+  await abrir(page, { rota: '#/nova' });
+  await escolherNoCombo(page, '#n-empresa', 'casa do', 'Casa do Criador');
+  await page.focus('#n-campanha');
+  await page.focus('#n-empresa');
+  afirma(await page.locator('#n-empresa ~ .combo-lista').isHidden(), 'lista continua fechada');
+  await page.click('#n-empresa');
+  afirma(await page.locator('#n-empresa ~ .combo-lista').isVisible(), 'abre no clique');
+});
+
+teste('v2.7: busca de empresa acha o CNPJ com e sem pontuação (Gestão e Nova)', async ({ page }) => {
+  await abrir(page, { rota: '#/gestao' });
+  const linhas = () => page.locator('#gs-itens a[href^="#/gestao/empresas/"]').count();
+  for (const termo of ['12.345.678/0001-95', '12345678000195']) {
+    await page.fill('#gs-busca', termo); await page.waitForTimeout(400);
+    igual(await linhas(), 1, `Gestão acha ${termo}`);
+  }
+  await page.goto(`${BASE}/?papel=aprovador#/nova`);
+  await page.waitForSelector('#n-empresa');
+  await page.click('#n-empresa'); await page.keyboard.type('12.345.678/0001-95', { delay: 10 });
+  afirma(await page.locator('#n-empresa ~ .combo-lista [role=option]', { hasText: 'Agropecuária São Luís' }).count() === 1, 'Nova acha pelo CNPJ formatado');
+});
+
+teste('v2.7: título da aba usa a marca e o topo não mostra "Início" ao abrir direto na Nova', async ({ page }) => {
+  await abrir(page, { rota: '#/campanhas' });
+  igual(await page.title(), 'Campanhas · LYNKZ', 'título da aba');
+  await abrir(page, { rota: '#/nova' });
+  igual(await titulo(page), 'Nova campanha', 'topo da Nova');
+});
+
+for (const largura of [390, 1440]) {
+  teste(`v2.7: Início e Fim ficam na mesma linha mesmo com erro só no Fim (${largura}px)`, async ({ page }) => {
+    await abrir(page, { rota: '#/nova' });
+    await page.fill('#n-inicio', '2026-12-10'); await page.fill('#n-fim', '2026-12-01'); await page.locator('#n-fim').dispatchEvent('change');
+    await erroDo(page, 'n-fim').waitFor();
+    const a = await page.locator('#n-inicio').boundingBox(), b = await page.locator('#n-fim').boundingBox();
+    afirma(Math.abs(a.y - b.y) < 1, `campos alinhados: ${a.y} x ${b.y}`);
+  }, { largura, altura: 900 });
+}
+
+teste('v2.7: enviar sem período ou sem meta avisa; Voltar não envia, "Enviar assim" envia', async ({ page }) => {
+  await abrir(page, { rota: '#/nova' });
+  const antes = (await db(page)).campanhas.length;
+  await escolherNoCombo(page, '#n-empresa', 'casa do', 'Casa do Criador');
+  await escolherNoCombo(page, '#n-laboratorio', 'avert', 'Avert');
+  await page.fill('#n-campanha', 'Sem período nem meta');
+  await page.locator('[data-enviar]:visible').first().click();
+  const d = page.locator('dialog.dialogo'); await d.waitFor();
+  afirma((await d.innerText()).includes('período e meta'), 'diálogo cita período e meta');
+  await d.locator('button', { hasText: 'Voltar' }).click();
+  await d.waitFor({ state: 'detached' });
+  igual((await db(page)).campanhas.length, antes, 'Voltar não grava');
+  await page.fill('#n-meta', '5000'); await page.fill('#n-inicio', '2026-12-01'); await page.fill('#n-fim', '2026-12-31');
+  await page.locator('[data-enviar]:visible').first().click();     // completa: envia direto, sem aviso
+  await page.waitForFunction(() => /#\/campanhas\/\d+$/.test(location.hash));
+  igual((await db(page)).campanhas.length, antes + 1, 'com tudo preenchido envia sem perguntar');
+});
+
+teste('v2.7: depois de enviar, a campanha aparece na lista mesmo com filtro de laboratório de outro', async ({ page }) => {
+  await abrir(page, { rota: '#/campanhas?status=Todas', papel: 'coordenador' });
+  await page.selectOption('#cp-lab', 'Premier');
+  await page.evaluate(() => { location.hash = '#/nova'; });     // navegação interna: o filtro de laboratório continua guardado
+  await page.waitForSelector('#n-empresa');
+  await escolherNoCombo(page, '#n-empresa', 'casa do', 'Casa do Criador');
+  await escolherNoCombo(page, '#n-laboratorio', 'avert', 'Avert');
+  await page.fill('#n-campanha', 'Aparece na lista'); await page.fill('#n-meta', '5000');
+  await page.fill('#n-inicio', '2026-12-01'); await page.fill('#n-fim', '2026-12-31');
+  await page.locator('[data-enviar]:visible').first().click();
+  await page.waitForFunction(() => /#\/campanhas\/\d+$/.test(location.hash));
+  await page.locator('#cp-itens .cartao[aria-current="true"]').waitFor({ timeout: 5000 });
+  afirma((await page.locator('#cp-itens .cartao[aria-current="true"]').innerText()).includes('Aparece na lista'), 'a campanha nova está selecionada na lista');
+});
 
 // ============================================================
 //  execução

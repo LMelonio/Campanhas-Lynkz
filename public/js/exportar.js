@@ -61,6 +61,10 @@ function colunas(cad) {
   ];
 }
 
+// "Ouro Fino Saúde Animal" → "Ouro-Fino-Saude-Animal": só letras e números, para o nome do arquivo.
+export const nomeParaArquivo = txt => String(txt ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '')
+  .replace(/[^A-Za-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+
 // prefixo: início do nome do arquivo (o Perfil exporta tudo; as listas, só o que está na tela).
 export async function exportarExcel(lista, cad, { prefixo = 'Extrato_Campanhas' } = {}) {
   if (!lista.length) throw new ErroApp('Não há nada para exportar ainda.');

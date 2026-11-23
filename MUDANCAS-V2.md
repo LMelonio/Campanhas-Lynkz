@@ -1,3 +1,29 @@
+# Mudanças da v2.7.0 (23/11/2026) — origem: MELHORIAS-V2.7.md
+
+**Banco — rodar `sql/migracoes/11-enviar-campanha.sql` (depois `11-validacao.sql`; desfazer: `11-rollback.sql`)**
+- Nova função `enviar_campanha()` (security invoker): balconista, campanha e notas fiscais são gravados
+  **numa transação só**. Campanha recusada não deixa balconista novo para trás.
+
+**Nova campanha**
+- % de rebate limitado a 0–100 na tela; meta, investimentos, teto e tamanhos de texto seguem os mesmos
+  limites do banco (`LIMITES` em `lib/regras.js`; `tests/regras.test.mjs` confere com `sql/schema.sql`).
+- Com rebate ligado, "Base de cálculo" e "Quando o rebate é devido" são obrigatórios.
+- Enviar sem período ou sem meta pergunta ("Enviar sem período e meta?") e deixa seguir.
+- A lista de empresas não abre sozinha quando já há empresa escolhida (só no clique, seta ou ao digitar).
+- Depois de enviar, a lista de Campanhas mostra a nova (tira o filtro de laboratório/busca se escondia).
+- Início e Fim (e CPF/Nascimento) ficam alinhados quando só um mostra erro.
+
+**Erros, buscas e textos**
+- Erros de limite do banco (`campanhas_valores_faixa`, `campanhas_textos_tamanho`) têm mensagem própria.
+- Busca de empresa acha o CNPJ com ou sem pontuação (Gestão e Nova).
+- "1 campanha"/"N campanhas" no rodapé do Início; título da aba "Campanhas · LYNKZ"; topo sem "Início" no primeiro desenho.
+- Desativar empresa avisa quantas campanhas pendentes continuam na fila.
+- Nome do Excel cita o laboratório filtrado (ex.: `Campanhas_Todas_Avert_2026-11-23.xlsx`).
+- Login apaga a chave de sessão do projeto Supabase antigo.
+
+**Fica para depois (ver MELHORIAS-V2.7.md):** 3.3 (manter empresa no modelo), 3.7 (e-mail ao aprovador),
+3.8 (tela de usuários), 3.9 (histórico das planilhas), 4 (leitura de perfis) e a parte de operação (seção 0).
+
 # Mudanças da v2.1.0 (18/11/2026) — UX/UI
 
 **Banco desatualizado e erros**

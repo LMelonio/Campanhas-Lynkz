@@ -19,6 +19,22 @@ export const PAPEL = Object.freeze({
 // Fuso das datas do app (Maranhão, UTC-3). O banco usa o mesmo em registrar_decisao().
 export const FUSO = 'America/Fortaleza';
 
+// Limites de valor e de texto. Os números são os mesmos das constraints
+// campanhas_valores_faixa e campanhas_textos_tamanho (sql/schema.sql);
+// tests/regras.test.mjs confere que os dois lados batem.
+export const LIMITES = Object.freeze({
+  rebate_pct: 100,
+  meta: 1000000000,
+  investimento_lynkz: 10000000,
+  investimento_industria: 10000000,
+  rebate_teto: 10000000,
+  textos: Object.freeze({
+    cliente: 200, laboratorio: 120, campanha: 200, tipo: 120, mecanica: 2000, observacoes: 2000,
+    motivo: 1000, forma_pagamento: 60, tipo_meta: 60, rebate_base: 120, rebate_gatilho: 120,
+    swile_nome_completo: 150, swile_email: 254,
+  }),
+});
+
 // A régua de custo vai de 0% a 25% da meta; acima disso o marcador fica no fim.
 export const ESCALA_REGUA = 0.25;
 
