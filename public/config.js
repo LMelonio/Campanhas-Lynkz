@@ -7,12 +7,12 @@
 window.CONFIG = {
 
   // Cole aqui a "Project URL". Parece com: https://abcdefgh.supabase.co
-  SUPABASE_URL: "https://kdznytksxtjmuqwrqxka.supabase.co",
+  SUPABASE_URL: "https://clfnsuzglasmguzwodxq.supabase.co",
 
   // Cole aqui a chave pública "anon" / "publishable".
   // Pode ficar visível no site: ela sozinha não dá acesso a nada,
   // porque as regras de segurança estão no banco de dados.
-  SUPABASE_ANON_KEY: "sb_publishable_XnuKH9eGnMBvX2EVEGbTPQ_PTzZTIrt",
+  SUPABASE_ANON_KEY: "sb_publishable_BzXFZgmdRRsMWtzUJ4Ng8w_zJs5T_bt",
 
   // ---------- IDENTIDADE ----------
   // Aparece na tela de login e no rodapé.
@@ -22,7 +22,7 @@ window.CONFIG = {
   // Aparece no login, no menu e no Perfil. Suba a cada deploy JUNTO com a
   // constante VERSAO do sw.js (as duas precisam ser iguais) para confirmar
   // no celular que a atualização chegou.
-  VERSAO: "2.1.0",
+  VERSAO: "2.1.1",
 
   // Faixas do indicador de custo sobre a meta.
   // 0.08 = 8%. Ajuste para a régua da sua operação.
