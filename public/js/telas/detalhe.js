@@ -4,7 +4,7 @@
 //  Reprovar abre diálogo com motivos rápidos; motivo é obrigatório.
 // ============================================================
 import { html, pintar, $, ao } from '../lib/dom.js';
-import { calc, banda, pct, brl, dataBR, dias, maskCPF, maskTelefone, soDigitos, STATUS } from '../lib/regras.js';
+import { calc, banda, pct, brl, textoDevolucoes, dataBR, dias, maskCPF, maskTelefone, soDigitos, STATUS } from '../lib/regras.js';
 import { icone } from '../ui/icones.js';
 import { selo, seloNeutro, regua, vazio, carregando, FAIXAS } from '../ui/pecas.js';
 import { botaoCopiar, ligarCopiar } from '../ui/copiar.js';
@@ -32,9 +32,12 @@ function painel(titulo, conteudo, extra = '') {
 
 // Notas fiscais marcadas na campanha (carregadas sob demanda, uma vez por campanha).
 const notasCache = new Map();
+// Com muitas notas, mostra as primeiras e "Ver todas" (v2.9); lembra quais campanhas estão abertas.
+const NOTAS_VISIVEIS = 5;
+const notasAbertas = new Set();
 // Conferência do aprovador: o total gravado veio do aparelho de quem pediu;
 // o aprovador consulta o Qlik de novo, pelo Worker, antes de decidir.
-const conferencias = new Map();   // id → { carregando } | { total } | { erro }
+const conferencias = new Map();   // id → { carregando } | { total, devolucoes } | { erro }
 
 function blocoConferencia(c, ctx) {
   const emp = c.empresa_id ? ctx.cadastros.empresa(c.empresa_id) : null;
@@ -43,8 +46,18 @@ function blocoConferencia(c, ctx) {
   if (!r) return html`<div class="painel-corpo"><button type="button" class="btn btn-fantasma btn-pequeno" data-conferir-qlik>${icone('busca')} Conferir no Qlik agora</button></div>`;
   if (r.carregando) return html`<p class="painel-corpo campo-dica" role="status">Consultando o Qlik…</p>`;
   if (r.erro) return html`<p class="painel-corpo nota nota-alerta" role="status">${icone('alerta')}<span>${r.erro}</span></p>`;
-  const igual = Math.abs(r.total - (+c.compras_periodo || 0)) < 0.01;
-  return html`<p class="painel-corpo nota${igual ? '' : ' nota-alerta'}" role="status">${icone(igual ? 'check' : 'alerta')}<span>Qlik agora: <b class="valor">R$ ${brl(r.total)}</b>. ${igual ? 'Bate com o valor enviado.' : 'Diferente do valor enviado na campanha: confira antes de decidir.'}</span></p>`;
+  const mesmo = (a, b) => Math.abs((+a || 0) - (+b || 0)) < 0.01;
+  const totalIgual = mesmo(r.total, c.compras_periodo);
+  // Devoluções (v2.9): só compara se a campanha gravou (site 2.8.1 não grava) e o Worker devolveu.
+  const comparaDev = c.compras_devolucoes != null && r.devolucoes != null;
+  const devIgual = !comparaDev || mesmo(r.devolucoes, c.compras_devolucoes);
+  const igual = totalIgual && devIgual;
+  const dev = r.devolucoes > 0 ? html`, devoluções <b class="valor">−R$ ${brl(r.devolucoes)}</b>` : '';
+  const aviso = igual ? 'Bate com o que foi enviado.'
+    : [totalIgual ? '' : `Total diferente do enviado (R$ ${brl(c.compras_periodo)}).`,
+       devIgual ? '' : `Devoluções diferentes das enviadas (−R$ ${brl(c.compras_devolucoes)}).`,
+       'Confira antes de decidir.'].filter(Boolean).join(' ');
+  return html`<p class="painel-corpo nota${igual ? '' : ' nota-alerta'}" role="status">${icone(igual ? 'check' : 'alerta')}<span>Qlik agora: <b class="valor">R$ ${brl(r.total)}</b>${dev}. ${aviso}</span></p>`;
 }
 
 async function conferirQlik(ctx, c) {
@@ -53,7 +66,7 @@ async function conferirQlik(ctx, c) {
   desenhar();
   try {
     const r = await consultarCompras({ codigoCliente: emp.codigo_cliente, laboratorio: c.laboratorio, marca: c.compras_marca || null, inicio: c.data_inicio, fim: c.data_fim });
-    conferencias.set(String(c.id), { total: +r.total || 0 });
+    conferencias.set(String(c.id), { total: +r.total || 0, devolucoes: r.devolucoes == null ? null : +r.devolucoes || 0 });
   } catch (e) {
     conferencias.set(String(c.id), { erro: e.message || 'Não foi possível consultar o Qlik agora.' });
   }
@@ -64,17 +77,26 @@ function painelNotas(c, ctx) {
   if (!c.compras_consultado_em) return '';
   const notas = notasCache.get(String(c.id));
   const total = notas ? notas.reduce((t, n) => t + +n.valor, 0) : 0;
+  // Notas de provável devolução (v2.9): riscadas, fora da soma; vêm da própria campanha.
+  const devolvidas = Array.isArray(c.compras_devolvidas) ? c.compras_devolvidas : [];
+  const riscadas = devolvidas.map(n => html`<li class="nota-linha nota-devolvida">
+          <span><strong>NF ${n.numero}${n.serie ? ` · série ${n.serie}` : ''}</strong> <small>${n.data ? dataBR(n.data) : ''}</small> <span class="selo selo-neutro">Provável devolução</span></span>
+          <span class="valor">R$ ${brl(n.valor)}</span></li>`);
   return html`<section class="painel" id="det-notas"><h3 class="painel-titulo">Compras e notas fiscais</h3>
     <dl class="linhas">
       ${linha(c.compras_marca ? `Comprou no período (marca ${c.compras_marca})` : 'Comprou no período', +c.compras_periodo || +c.compras_periodo === 0 ? `R$ ${brl(c.compras_periodo)}` : '')}
+      ${+c.compras_devolucoes > 0 ? linha('Devoluções no período', textoDevolucoes(c.compras_devolucoes, devolvidas.length)) : ''}
       ${linha('Consultado no Qlik em', dataBR(c.compras_consultado_em))}
     </dl>
     ${blocoConferencia(c, ctx)}
     ${!notas ? html`<p class="painel-corpo campo-dica">Carregando as notas…</p>`
-      : notas.length ? html`<ul class="notas-lista painel-corpo">${notas.map(n => html`<li class="nota-linha">
+      : notas.length ? html`<ul class="notas-lista painel-corpo" id="det-notas-lista">${notas.map((n, i) => html`<li class="nota-linha"${i >= NOTAS_VISIVEIS && !notasAbertas.has(String(c.id)) ? html` hidden` : ''}>
           <span><strong>NF ${n.numero}${n.serie ? ` · série ${n.serie}` : ''}</strong> <small>${n.data_emissao ? dataBR(n.data_emissao) : ''}</small></span>
           <span class="valor">R$ ${brl(n.valor)}</span></li>`)}
-          <li class="nota-linha nota-total"><span>${notas.length} ${notas.length === 1 ? 'nota' : 'notas'} na campanha</span><span class="valor">R$ ${brl(total)}</span></li></ul>`
+          ${riscadas}
+          <li class="nota-linha nota-total"><span>${notas.length} ${notas.length === 1 ? 'nota' : 'notas'} na campanha</span><span class="valor">R$ ${brl(total)}</span></li></ul>
+          ${notas.length > NOTAS_VISIVEIS ? html`<p class="painel-corpo"><button type="button" class="btn btn-texto notas-ver" data-ver-notas aria-controls="det-notas-lista" aria-expanded="${notasAbertas.has(String(c.id)) ? 'true' : 'false'}">${notasAbertas.has(String(c.id)) ? 'Mostrar só as primeiras' : `Ver todas as ${notas.length} notas`}</button></p>` : ''}`
+      : riscadas.length ? html`<ul class="notas-lista painel-corpo">${riscadas}</ul><p class="painel-corpo campo-dica">Nenhuma nota foi marcada nesta campanha.</p>`
       : html`<p class="painel-corpo campo-dica">Nenhuma nota foi marcada nesta campanha.</p>`}
   </section>`;
 }
@@ -392,6 +414,7 @@ export function montar(el, ctx, { id, lista = null }) {
       if (!emEspera) aprovar(ctx, c);
     }),
     ao(el, 'click', '[data-reprovar]', () => { const c = ctx.campanhas.porId(id); if (c) reprovar(ctx, c); }),
+    ao(el, 'click', '[data-ver-notas]', () => { const k = String(id); if (notasAbertas.has(k)) notasAbertas.delete(k); else notasAbertas.add(k); desenhar(); }),
     ao(el, 'click', '[data-conferir-qlik]', () => { const c = ctx.campanhas.porId(id); if (c) conferirQlik(ctx, c); }),
     ao(el, 'click', '[data-desfazer]', () => desfazer(ctx, emEspera)),
     ctx.campanhas.assinar(ev => { if (ev.tipo === 'carga' || ev.tipo === 'erro' || String(ev.id) === String(id)) desenhar(); }),

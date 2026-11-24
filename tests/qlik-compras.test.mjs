@@ -2,7 +2,7 @@
 // Usam um Qlik de mentira em memória: não precisam de rede nem de pacote.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { abrirEngine, consultarCompras, montarConjunto, serialQlik, dataDoSerial, valorSeguro, expressao, CONFIG_PADRAO } from '../worker/qlik-engine.js';
+import { abrirEngine, consultarCompras, montarConjunto, serialQlik, dataDoSerial, valorSeguro, expressao, acharDevolvidas, CONFIG_PADRAO } from '../worker/qlik-engine.js';
 import worker, { tratarCompras, configDoEnv, dentroDoLimite } from '../worker/index.js';
 
 // ---------- Qlik de mentira ----------
@@ -11,7 +11,9 @@ const NOTAS = [   // número, série, data (serial), valor
   ['209001', '1', serialQlik('2026-10-02'), 300],
   ['211500', '2', serialQlik('2026-10-20'), 99.99],
 ];
-function qlikFalso({ campoInexistente = null, medidaComErro = false, zero = null } = {}) {
+// devolvida: true → a NF 209001 (R$ 300, série 1) foi devolvida inteira — o total cai para 1300,49.
+//            'sem-par' → devolução de R$ 50 que não bate com nenhuma nota — o total cai para 1550,49.
+function qlikFalso({ campoInexistente = null, medidaComErro = false, zero = null, devolvida = false } = {}) {
   const defs = new Map();   // handle → definição do hipercubo
   const ouvintes = { message: [], close: [], error: [] };
   const enviados = [];
@@ -33,20 +35,23 @@ function qlikFalso({ campoInexistente = null, medidaComErro = false, zero = null
         const nDims = d.qDimensions.length;
         const info = d.qDimensions.map(x => (x.qDef.qFieldDefs[0] === campoInexistente ? { qError: { qErrorCode: 7 } } : {}));
         const ehMarca = d.qDimensions[0]?.qDef.qFieldDefs[0] === 'Marca do Produto';
+        const totalBase = devolvida === 'sem-par' ? 1550.49 : devolvida ? 1300.49 : 1600.49;
         const linhas = nDims === 2 ? NOTAS.length : ehMarca ? 2 : nDims === 1 ? 1 : 0;
         return responder({ qLayout: { qHyperCube: {
           qSize: { qcx: nDims + 1, qcy: linhas }, qDimensionInfo: info,
           qMeasureInfo: [medidaComErro ? { qError: { qErrorCode: 1 } } : {}],
           // zero: 'tudo' = Qlik sem dados do cliente; 'laboratorio' = comprou só de outros (500).
-          qGrandTotalRow: [{ qNum: zero === 'tudo' ? 0 : zero === 'laboratorio' ? (JSON.stringify(d.qMeasures).includes('Nome Fantasia Fornecedor') ? 0 : 500) : 1600.49, qText: '' }],
+          qGrandTotalRow: [{ qNum: zero === 'tudo' ? 0 : zero === 'laboratorio' ? (JSON.stringify(d.qMeasures).includes('Nome Fantasia Fornecedor') ? 0 : 500) : totalBase, qText: '' }],
         } } });
       }
       if (m.method === 'GetHyperCubeData') {
         const def = defs.get(m.handle);
         const nDims = def.qDimensions.length;
         const ehMarca = def.qDimensions[0]?.qDef.qFieldDefs[0] === 'Marca do Produto';
+        const ehDevolucao = def.qDimensions[0]?.qDef.qFieldDefs[0] === 'Série Nota Fiscal Origem';
         const p = m.params.qPages[0];
-        const matriz = ehMarca
+        const matriz = ehDevolucao ? [[{ qText: '1' }, { qNum: devolvida === 'sem-par' ? -50 : -300 }]]
+          : ehMarca
           ? [[{ qText: 'PROTEÇÃO' }, { qNum: 399.99 }], [{ qText: 'WELLPET' }, { qNum: 1200.5 }]]
           : nDims === 2
           ? NOTAS.slice(p.qTop, p.qTop + p.qHeight).map(([n, s, d, v]) => [{ qText: n }, { qText: s }, { qNum: v }, { qNum: d }])
@@ -257,4 +262,45 @@ test('total zero: diz se o cliente comprou de outros laboratórios ou se o Qlik 
   assert.equal(r2.cliente_total, 0, 'Qlik sem nada do cliente');
   const r3 = await consultarCompras(abrirEngine(qlikFalso().soquete), PEDIDO);
   assert.equal(r3.cliente_total, null, 'com compras, não faz a consulta extra');
+});
+
+test('devoluções: acha as notas de valor igual ao devolvido na série (provável devolução)', () => {
+  const n = (numero, serie, data, valor) => ({ numero, serie, data, valor });
+  const notas = [n('1', '1', '2026-03-02', 2372.07), n('2', '1', '2026-03-05', 2291.53), n('3', '1', '2026-03-09', 520.4), n('4', '1', '2026-03-20', 520.4), n('5', '5', '2026-03-03', 456.85)];
+  const nums = idx => [...idx].map(i => notas[i].numero).sort();
+  // uma nota só
+  assert.deepEqual(nums(acharDevolvidas(notas, new Map([['1', 2372.07]]))), ['1']);
+  // duas notas na mesma série; entre as de mesmo valor, fica a mais recente
+  assert.deepEqual(nums(acharDevolvidas(notas, new Map([['1', 2892.47]]))), ['1', '4']);
+  // série diferente não mistura; sem combinação exata, nenhuma
+  assert.deepEqual(nums(acharDevolvidas(notas, new Map([['5', 456.85], ['1', 10]]))), ['5']);
+  assert.equal(acharDevolvidas(notas, new Map()).size, 0);
+});
+
+test('devoluções: nota de provável devolução continua na lista, marcada; soma das notas − devoluções = total', async () => {
+  const q = qlikFalso({ devolvida: true });
+  const r = await consultarCompras(abrirEngine(q.soquete), PEDIDO);
+  assert.equal(r.total, 1300.49);
+  assert.equal(r.notas.length, 3, 'nenhuma nota sai da lista');
+  assert.deepEqual(r.notas.filter(x => x.provavel_devolucao).map(x => x.numero), ['209001'], 'a NF 209001 vem marcada');
+  assert.equal(r.devolucoes, 300);
+  const soma = Math.round(r.notas.reduce((s, x) => s + x.valor, 0) * 100);
+  assert.equal(soma - Math.round(r.devolucoes * 100), Math.round(r.total * 100), 'soma das notas − devoluções = total');
+  const dev = q.enviados.filter(e => e.method === 'CreateSessionObject').map(e => e.params.qProp.qHyperCubeDef).find(d => d.qDimensions[0]?.qDef.qFieldDefs[0] === 'Série Nota Fiscal Origem');
+  const exprDev = dev.qMeasures[0].qDef.qDef;
+  assert.ok(exprDev.startsWith('Sum({1<') && exprDev.includes(`[Tipo de Venda]={'Devolução'}>}`), exprDev);
+});
+
+test('devoluções: sem combinação exata, nenhuma nota marcada, mas o valor devolvido vem mesmo assim', async () => {
+  const r = await consultarCompras(abrirEngine(qlikFalso({ devolvida: 'sem-par' }).soquete), PEDIDO);
+  assert.equal(r.devolucoes, 50);
+  assert.equal(r.notas.filter(x => x.provavel_devolucao).length, 0);
+  assert.equal(Math.round(r.notas.reduce((s, x) => s + x.valor, 0) * 100) - 5000, Math.round(r.total * 100), 'a conta fecha');
+});
+
+test('devoluções: sem diferença, devolucoes = 0 e não faz a consulta extra', async () => {
+  const semDev = qlikFalso();
+  const r = await consultarCompras(abrirEngine(semDev.soquete), PEDIDO);
+  assert.equal(r.devolucoes, 0);
+  assert.ok(!semDev.enviados.some(e => JSON.stringify(e).includes('Série Nota Fiscal Origem')), 'sem diferença, não faz a consulta extra');
 });

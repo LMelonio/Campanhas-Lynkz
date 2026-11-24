@@ -10,7 +10,7 @@
 // ============================================================
 import { html, pintar, $, $$, ao, debounce, armazenamento } from '../lib/dom.js';
 import {
-  calc, banda, brl, pct, lerValor, valorCampo, soDigitos, normaliza, maskCPF, maskTelefone,
+  calc, banda, brl, textoDevolucoes, pct, lerValor, valorCampo, soDigitos, normaliza, maskCPF, maskTelefone,
   errosRecebedor, LIMITES, hojeCivil, horaBR, somaDias, periodoMes, dias, dataBR, STATUS,
 } from '../lib/regras.js';
 import { icone } from '../ui/icones.js';
@@ -192,6 +192,71 @@ function atualizarResumo() {
   const pe = $('#be-pct', st.el);
   pe.className = 'barra-envio-pct nivel-' + b.nivel;
   pintar(pe, k.pctMeta == null ? 'sem meta' : `${pct(k.pctMeta)} da meta`);
+  atualizarResumoPassos();
+}
+
+// ---------- passos no celular (v2.9) ----------
+// Abaixo de 900 px a Nova vira 3 passos. É o MESMO formulário: o CSS mostra só as seções
+// do passo atual (data-passo), então rascunho, envio e tempo real não mudam.
+const PASSOS = ['Cliente', 'Valores', 'Quem recebe e revisão'];
+const telaDePassos = () => matchMedia('(max-width: 899.98px)').matches;
+
+function elDoCampo(id) {
+  return $('#' + CSS.escape(id), st.el) || $(`[data-campo="${CSS.escape(id)}"]`, st.el);
+}
+function passoDoCampo(id) {
+  return +(elDoCampo(id)?.closest('[data-passo]')?.dataset.passo || 0);
+}
+
+function desenharPassos() {
+  const nova = $('.nova', st.el);
+  if (!nova) return;
+  nova.dataset.passoAtual = String(st.passo);
+  const atual = $('#passo-atual', st.el);
+  if (atual) atual.textContent = `${st.passo} de ${PASSOS.length} · ${PASSOS[st.passo - 1]}`;
+  $$('[data-ir-passo]', st.el).forEach(b => {
+    const n = +b.dataset.irPasso;
+    b.disabled = n > st.visitado;
+    if (n === st.passo) b.setAttribute('aria-current', 'step'); else b.removeAttribute('aria-current');
+  });
+}
+
+function irParaPasso(n, { focar = true } = {}) {
+  st.passo = Math.min(PASSOS.length, Math.max(1, n));
+  st.visitado = Math.max(st.visitado, st.passo);
+  st.toastErro?.fechar();   // o aviso de erro do passo anterior não segue para o próximo
+  st.toastErro = null;
+  desenharPassos();
+  atualizarResumoPassos();
+  st.salvar?.();
+  if (focar && telaDePassos()) {
+    window.scrollTo({ top: 0 });
+    $('#passo-atual', st.el)?.focus({ preventScroll: true });
+  }
+}
+
+// "Continuar": valida só os campos do passo; erro leva ao campo, como no envio.
+function continuar() {
+  const erros = Object.fromEntries(Object.entries(validar()).filter(([id]) => passoDoCampo(id) === st.passo));
+  const n = aplicarErros($('#form-nova', st.el), erros);
+  if (n) { st.toastErro = st.ctx.toast(n === 1 ? 'Confira o campo marcado.' : `Confira os ${n} campos marcados.`, { tom: 'erro' }); return; }
+  irParaPasso(st.passo + 1);
+}
+
+// Resumo do passo 3: o que pesa na decisão, antes de enviar.
+function atualizarResumoPassos() {
+  const alvo = st && $('#resumo-passos', st.el);
+  if (!alvo) return;
+  const k = calc(camposCusto());
+  const m = marcadasDe(st.compras);
+  const empresa = st.ctx.cadastros.empresa(st.comboEmpresa?.valor());
+  pintar(alvo, html`<dl class="linhas">
+    <div class="linha"><dt>Empresa</dt><dd>${empresa?.nome || '—'}</dd></div>
+    <div class="linha"><dt>Laboratório</dt><dd>${st.comboLab?.valor() || '—'}</dd></div>
+    <div class="linha"><dt>Custo total</dt><dd class="valor">R$ ${brl(k.total)}</dd></div>
+    <div class="linha"><dt>% da meta</dt><dd>${k.pctMeta == null ? 'sem meta' : pct(k.pctMeta)}</dd></div>
+    <div class="linha"><dt>Notas marcadas</dt><dd>${m.length ? `${m.length} · R$ ${brl(m.reduce((t, x) => t + x.valor, 0))}` : 'nenhuma'}</dd></div>
+  </dl>`);
 }
 
 // ---------- validação ----------
@@ -261,6 +326,8 @@ function salvarRascunho() {
   r.empresaId = st.comboEmpresa.valor();
   r.laboratorio = st.comboLab.valor();
   r.pessoa = st.pessoa;
+  r.passo = st.passo;
+  r.visitado = st.visitado;
   if (r.empresaId || r.laboratorio) algum = true;
   if (algum) {
     r.salvoEm = new Date().toISOString();
@@ -308,15 +375,20 @@ function atualizarPeriodo() {
 // O que o cliente comprou do laboratório no período, vindo do Qlik, e as
 // notas fiscais que o solicitante marca como participantes da campanha.
 const moeda = n => `R$ ${brl(n)}`;
+// Com muitas notas, a lista mostra as primeiras e o botão "Ver todas" (v2.9). "Marcar todas" vale para todas.
+const NOTAS_VISIVEIS = 5;
+const textoVerNotas = (n, abertas) => (abertas ? 'Mostrar só as primeiras' : `Ver todas as ${n} notas`);
 
 function pintarCompras(conteudo) {
   const corpo = $('#compras-corpo', st.el);
   if (corpo) pintar(corpo, conteudo);
 }
 
+// Nota de provável devolução nunca conta, mesmo que algo a marque.
 function marcadasDe(compras) {
-  return compras ? compras.notas.filter((_, i) => compras.marcadas.has(i)) : [];
+  return compras ? compras.notas.filter((n, i) => compras.marcadas.has(i) && !n.provavel_devolucao) : [];
 }
+const devolvidasDe = compras => (compras ? compras.notas.filter(n => n.provavel_devolucao) : []);
 
 function atualizarSomaNotas() {
   const compras = st?.compras;
@@ -326,6 +398,7 @@ function atualizarSomaNotas() {
   el.textContent = m.length
     ? `${m.length} ${m.length === 1 ? 'nota marcada' : 'notas marcadas'} · ${moeda(m.reduce((t, n) => t + n.valor, 0))}`
     : 'Nenhuma nota marcada.';
+  atualizarResumoPassos();
 }
 
 function desenharResultadoCompras() {
@@ -337,7 +410,8 @@ function desenharResultadoCompras() {
   if (semNada) console.warn('Qlik devolveu zero para o cliente inteiro no período', { inicio: c.inicio, fim: c.fim });
   pintarCompras(html`
     <p class="compras-total" role="status">${icone('info')}<span>No período de ${dataBR(c.inicio)} a ${dataBR(c.fim)}, este cliente comprou <strong class="valor">${moeda(c.total)}</strong> de ${forn}${c.marca ? html`, marca <strong>${c.marca}</strong>` : ''}.</span></p>
-    ${c.fornecedores.length ? html`<p class="campo-dica">Vem do Qlik. Confira se o fornecedor acima é mesmo o laboratório da campanha.</p>` : ''}
+    ${c.devolucoes > 0 ? html`<p class="compras-devolucoes" id="compras-devolucoes">Devoluções no período: <strong class="valor">${textoDevolucoes(c.devolucoes, devolvidasDe(c).length)}</strong></p>` : ''}
+    ${c.fornecedores.length ? html`<p class="campo-dica compras-origem">Vem do Qlik. Confira se o fornecedor acima é mesmo o laboratório da campanha.</p>` : ''}
     ${c.marcas.length > 1 || c.marca ? selecao({
       id: 'n-marca', rotulo: 'Marca do laboratório', opcional: true, vazio: 'Todas as marcas',
       dica: 'Escolha uma marca para ver só o que o cliente comprou dela (ex.: WellPet dentro da Ouro Fino).',
@@ -345,13 +419,14 @@ function desenharResultadoCompras() {
     }) : ''}
     ${c.notas.length ? html`
       <fieldset class="campo notas-fiscais" data-campo="n-notas">
-        <legend class="campo-rotulo">Notas fiscais que participam da campanha <span class="campo-opc">(opcional)</span></legend>
+        <legend class="campo-rotulo">Notas da campanha <span class="campo-opc">(opcional)</span></legend>
         <div class="notas-acoes"><button type="button" class="btn btn-texto" id="notas-todas">Marcar todas</button><button type="button" class="btn btn-texto" id="notas-nenhuma">Limpar</button></div>
-        <ul class="notas-lista">${c.notas.map((n, i) => html`<li><label class="pessoa">
-          <input type="checkbox" data-nota="${i}"${c.marcadas.has(i) ? html` checked` : ''}>
-          <span class="pessoa-nome"><strong>NF ${n.numero}${n.serie ? ` · série ${n.serie}` : ''}</strong><small>${n.data ? dataBR(n.data) : 'sem data'}</small></span>
+        <ul class="notas-lista" id="notas-lista">${c.notas.map((n, i) => html`<li${i >= NOTAS_VISIVEIS && !c.verTodas ? html` hidden` : ''}><label class="pessoa${n.provavel_devolucao ? ' nota-devolvida' : ''}">
+          <input type="checkbox" data-nota="${i}"${n.provavel_devolucao ? html` disabled` : c.marcadas.has(i) ? html` checked` : ''}>
+          <span class="pessoa-nome"><strong>NF ${n.numero}${n.serie ? ` · série ${n.serie}` : ''}</strong><small>${n.data ? dataBR(n.data) : 'sem data'}${n.provavel_devolucao ? html` <span class="selo selo-neutro">Provável devolução</span>` : ''}</small></span>
           <span class="valor">${moeda(n.valor)}</span>
         </label></li>`)}</ul>
+        ${c.notas.length > NOTAS_VISIVEIS ? html`<button type="button" class="btn btn-texto notas-ver" id="notas-ver" aria-controls="notas-lista" aria-expanded="${c.verTodas ? 'true' : 'false'}">${textoVerNotas(c.notas.length, c.verTodas)}</button>` : ''}
         <p class="campo-dica" id="notas-soma" aria-live="polite"></p>
       </fieldset>`
     : semNada ? html`<p class="nota nota-alerta" role="alert">${icone('alerta')}<span>O Qlik não mostra nenhuma compra deste cliente no período, de nenhum laboratório. Se ele comprou, avise o TI: a consulta pode estar sem acesso aos dados. Você pode enviar a campanha sem as notas.</span></p>`
@@ -431,6 +506,8 @@ async function enviar() {
   if (st.enviando) return;
   const { ctx } = st;
   const erros = validar();
+  const ids = Object.keys(erros);
+  if (ids.length && telaDePassos()) irParaPasso(Math.min(...ids.map(passoDoCampo).filter(Boolean), st.passo), { focar: false });
   if (aplicarErros($('#form-nova', st.el), erros)) {
     const n = Object.keys(erros).length;
     ctx.toast(n === 1 ? 'Confira o campo marcado.' : `Confira os ${n} campos marcados.`, { tom: 'erro' });
@@ -492,6 +569,9 @@ async function enviar() {
         compras_periodo: comprasAtuais ? comprasAtuais.total : null,
         compras_consultado_em: comprasAtuais ? comprasAtuais.consultado_em : null,
         compras_marca: comprasAtuais?.marca || null,
+        // Devoluções (v2.9): o aprovador vê a mesma conta. Worker antigo não manda: fica vazio.
+        compras_devolucoes: comprasAtuais && comprasAtuais.devolucoes != null ? comprasAtuais.devolucoes : null,
+        compras_devolvidas: comprasAtuais ? devolvidasDe(comprasAtuais).map(({ numero, serie, data, valor }) => ({ numero, serie, data, valor })) : null,
       },
       balconista,
       notas: marcadasDe(comprasAtuais),
@@ -529,29 +609,38 @@ export function montar(el, ctx, params) {
     ini = { ...ini, empresaId: sugerida, pessoa: null };
   }
   st = { el, ctx, pessoa: ini.pessoa ?? null, enviando: false, enviado: false, desligar: [],
-         rascunhoSemPessoais: !!(rascunho && rascunho.pessoa === 'outra') };
+         rascunhoSemPessoais: !!(rascunho && rascunho.pessoa === 'outra'),
+         passo: Math.min(3, Math.max(1, +rascunho?.passo || 1)) };
+  st.visitado = Math.max(st.passo, Math.min(3, +rascunho?.visitado || 1));
 
   ctx.cabecalho({ titulo: reenvio ? 'Reenviar campanha' : 'Nova campanha', voltar: origem ? `#/campanhas/${origem.id}` : '#/inicio' });
   ctx.barraDeAcao(true);
 
   const val = id => ini[id] ?? '';
   const rbOn = ini['n-rebate'] === true;
-  pintar(el, html`<div class="nova">
+  pintar(el, html`<div class="nova" data-passo-atual="${st.passo}">
     <form id="form-nova" class="nova-form" novalidate>
+      <nav class="passos" aria-label="Etapas da campanha">
+        <p class="passos-atual" id="passo-atual" tabindex="-1" aria-live="polite"></p>
+        <ol class="passos-lista">${PASSOS.map((p, i) => html`<li><button type="button" class="passo" data-ir-passo="${i + 1}"><span class="passo-num">${i + 1}</span>${p}</button></li>`)}</ol>
+      </nav>
       ${reenvio ? html`<p class="nota">${icone('repetir')}<span>Copiado de ${origem.codigo}${origem.motivo ? html` — reprovada por: “${origem.motivo}”` : ''}. Ajuste e envie de novo.</span></p>` : ''}
       ${origem && !reenvio ? html`<p class="nota">${icone('repetir')}<span>Copiado de ${origem.codigo} como modelo. Confira o período e envie.</span></p>` : ''}
       ${rascunho ? html`<p class="nota">${icone('rascunho')}<span>Rascunho recuperado.</span><button type="button" class="btn btn-texto" id="descartar">Descartar</button></p>` : ''}
       ${ini.clienteSemCadastro ? html`<p class="nota nota-alerta">${icone('info')}<span>A campanha original era de “${ini.clienteSemCadastro}”, que ainda não está no cadastro. Escolha ou cadastre a empresa.</span></p>` : ''}
 
-      <section class="painel"><h2 class="painel-titulo">Empresa e laboratório</h2><div class="painel-corpo">
+      <section class="painel" data-passo="1"><h2 class="painel-titulo">Empresa e laboratório</h2><div class="painel-corpo">
         ${campo({ id: 'n-empresa', rotulo: 'Empresa', obrigatorio: true, dica: 'Digite nome, nome fantasia, código, cidade ou CNPJ.', atributos: { placeholder: 'Nome, código, cidade ou CNPJ' } })}
         ${campo({ id: 'n-laboratorio', rotulo: 'Laboratório', obrigatorio: true, atributos: { placeholder: 'Selecione ou digite para buscar' } })}
       </div></section>
 
-      <section class="painel"><h2 class="painel-titulo">A campanha</h2><div class="painel-corpo">
+      <section class="painel" data-passo="1"><h2 class="painel-titulo">A campanha</h2><div class="painel-corpo">
         ${campo({ id: 'n-campanha', rotulo: 'Nome da campanha', valor: val('n-campanha'), obrigatorio: true, atributos: { placeholder: 'Ex.: Genéricos Setembro', maxlength: 120 } })}
         ${selecao({ id: 'n-tipo', rotulo: 'Mecânica', opcoes: C.TIPOS, valor: val('n-tipo') })}
-        ${areaTexto({ id: 'n-mecanica', rotulo: 'Como funciona', valor: val('n-mecanica'), opcional: true, atributos: { placeholder: 'Ex.: 5% de desconto acima de 200 un. e 8% acima de 400 un.' } })}
+        <div class="recolhivel${val('n-mecanica') ? '' : ' recolhido'}">
+          <button type="button" class="btn btn-texto acrescentar" data-acrescentar="n-mecanica">${icone('mais')} Acrescentar como funciona</button>
+          ${areaTexto({ id: 'n-mecanica', rotulo: 'Como funciona', valor: val('n-mecanica'), opcional: true, atributos: { placeholder: 'Ex.: 5% de desconto acima de 200 un. e 8% acima de 400 un.' } })}
+        </div>
         <div class="grade-2">
           ${campo({ id: 'n-inicio', rotulo: 'Início', tipo: 'date', valor: val('n-inicio') })}
           ${campo({ id: 'n-fim', rotulo: 'Fim', tipo: 'date', valor: val('n-fim'), atributos: { min: val('n-inicio') || false },
@@ -564,25 +653,25 @@ export function montar(el, ctx, params) {
         </div>
       </div></section>
 
-      <section class="painel" id="bloco-compras"><h2 class="painel-titulo">Compras e notas fiscais</h2>
+      <section class="painel" id="bloco-compras" data-passo="2"><h2 class="painel-titulo">Compras e notas fiscais</h2>
         <div class="painel-corpo" id="compras-corpo"></div>
       </section>
 
-      <section class="painel"><h2 class="painel-titulo">Investimento</h2><div class="painel-corpo">
+      <section class="painel" data-passo="2"><h2 class="painel-titulo">Investimento</h2><div class="painel-corpo">
         <div class="grade-2">
           ${campo({ id: 'n-inv-lynkz', rotulo: 'LYNKZ (R$)', valor: val('n-inv-lynkz'), mascara: 'valor' })}
           ${campo({ id: 'n-inv-industria', rotulo: 'Indústria (R$)', valor: val('n-inv-industria'), mascara: 'valor' })}
         </div>
-        <p class="campo-dica bloco-dica">LYNKZ sai do caixa agora. Indústria é a bonificação prometida, paga no mês seguinte. Deixe em branco se não houver.</p>
+        <p class="campo-dica bloco-dica">LYNKZ sai do caixa agora; Indústria é a bonificação paga no mês seguinte. Em branco se não houver.</p>
         ${selecao({ id: 'n-pagamento', rotulo: 'Forma de pagamento', opcoes: C.PAGTO, valor: val('n-pagamento') })}
       </div></section>
 
-      <section class="painel" id="bloco-recebedor" hidden>
+      <section class="painel" id="bloco-recebedor" data-passo="3" hidden>
         <h2 class="painel-titulo" id="recebedor-titulo">Quem recebe a premiação</h2>
         <div class="painel-corpo" id="recebedor-corpo"></div>
       </section>
 
-      <section class="painel"><h2 class="painel-titulo">Contrapartida do cliente</h2><div class="painel-corpo">
+      <section class="painel" data-passo="2"><h2 class="painel-titulo">Contrapartida do cliente</h2><div class="painel-corpo">
         <div class="grade-2 quebra">
           ${selecao({ id: 'n-tipo-meta', rotulo: 'Tipo de meta', opcoes: C.METAS, valor: val('n-tipo-meta') })}
           ${campo({ id: 'n-meta', rotulo: 'Meta do cliente (R$)', valor: val('n-meta'), mascara: 'valor' })}
@@ -598,10 +687,14 @@ export function montar(el, ctx, params) {
         </div>
       </div></section>
 
-      <section class="painel"><h2 class="painel-titulo">Observações</h2><div class="painel-corpo">
-        ${areaTexto({ id: 'n-observacoes', rotulo: 'Observações para o aprovador', valor: val('n-observacoes'), opcional: true })}
+      <section class="painel" data-passo="3"><h2 class="painel-titulo">Observações</h2><div class="painel-corpo">
+        <div class="recolhivel${val('n-observacoes') ? '' : ' recolhido'}">
+          <button type="button" class="btn btn-texto acrescentar" data-acrescentar="n-observacoes">${icone('mais')} Acrescentar observações</button>
+          ${areaTexto({ id: 'n-observacoes', rotulo: 'Observações para o aprovador', valor: val('n-observacoes'), opcional: true })}
+        </div>
       </div></section>
-      <p class="campo-dica"><span class="campo-obrig" aria-hidden="true">*</span> Campos obrigatórios. O investimento LYNKZ também é obrigatório com Depósito / verba ou Swile.</p>
+      <section class="painel resumo-passos" data-passo="3"><h2 class="painel-titulo">Revisão</h2><div class="painel-corpo" id="resumo-passos"></div></section>
+      <p class="campo-dica nova-obrig"><span class="campo-obrig" aria-hidden="true">*</span> Campos obrigatórios. O investimento LYNKZ também é obrigatório com Depósito / verba ou Swile.</p>
       <p class="rascunho-status rascunho-status-form" id="rs-form" role="status">${rascunho?.salvoEm ? `Rascunho salvo às ${horaBR(rascunho.salvoEm)}` : ''}</p>
     </form>
 
@@ -617,6 +710,8 @@ export function montar(el, ctx, params) {
         <span class="barra-envio-pct" id="be-pct"></span>
         <span class="rascunho-status rascunho-status-barra" id="rs-barra" role="status">${rascunho?.salvoEm ? `Rascunho salvo às ${horaBR(rascunho.salvoEm)}` : ''}</span>
       </div>
+      <button type="button" class="btn btn-fantasma btn-icone-passo" data-passo-voltar aria-label="Voltar ao passo anterior">${icone('voltar')}</button>
+      <button type="button" class="btn btn-primario" data-passo-continuar>Continuar</button>
       <button type="submit" form="form-nova" class="btn btn-primario" data-enviar>Enviar</button>
     </div>
   </div>`);
@@ -648,17 +743,27 @@ export function montar(el, ctx, params) {
   });
 
   const salvar = debounce(salvarRascunho, 400);
+  st.salvar = salvar;
   const atualizarComprasDepois = debounce(atualizarCompras, 500);
 
   // Primeiro desenho do bloco "Quem recebe" com o que veio do rascunho/campanha.
   desenharRecebedor({ dados: ini.dadosPessoais || null });
   atualizarResumo();
+  desenharPassos();
 
   st.desligar.push(
     ligarMascaras(el),
     () => st.comboEmpresa.desligar(),
     () => st.comboLab.desligar(),
-    ao(form, 'submit', 'form', e => { e.preventDefault(); enviar(); }),
+    // Enter no celular, antes do último passo, vale como "Continuar".
+    ao(form, 'submit', 'form', e => { e.preventDefault(); if (telaDePassos() && st.passo < PASSOS.length) continuar(); else enviar(); }),
+    ao(el, 'click', '[data-passo-continuar]', () => continuar()),
+    ao(el, 'click', '[data-passo-voltar]', () => irParaPasso(st.passo - 1)),
+    ao(el, 'click', '[data-ir-passo]', (e, b) => { if (!b.disabled) irParaPasso(+b.dataset.irPasso); }),
+    ao(el, 'click', '[data-acrescentar]', (e, b) => {
+      b.closest('.recolhivel').classList.remove('recolhido');
+      $('#' + b.dataset.acrescentar, el)?.focus();
+    }),
     ao(form, 'input', 'input, textarea, select', (e, c) => {
       if (c.closest('.campo.tem-erro')) limparErro(form, c.closest('.campo').dataset.campo);
       if (IDS_PESSOAIS.includes(c.id)) atualizarOfertaCadastro();
@@ -688,9 +793,16 @@ export function montar(el, ctx, params) {
       if (cb.checked) st.compras?.marcadas.add(i); else st.compras?.marcadas.delete(i);
       atualizarSomaNotas();
     }),
+    ao(form, 'click', '#notas-ver', (e, b) => {
+      if (!st.compras) return;
+      st.compras.verTodas = !st.compras.verTodas;
+      $$('#notas-lista > li', form).forEach((li, i) => { li.hidden = i >= NOTAS_VISIVEIS && !st.compras.verTodas; });
+      b.setAttribute('aria-expanded', String(st.compras.verTodas));
+      b.textContent = textoVerNotas(st.compras.notas.length, st.compras.verTodas);
+    }),
     ao(form, 'click', '#notas-todas, #notas-nenhuma', (e, b) => {
       if (!st.compras) return;
-      st.compras.marcadas = new Set(b.id === 'notas-todas' ? st.compras.notas.map((_, i) => i) : []);
+      st.compras.marcadas = new Set(b.id === 'notas-todas' ? st.compras.notas.flatMap((n, i) => (n.provavel_devolucao ? [] : [i])) : []);
       $$('input[data-nota]', form).forEach(cb => { cb.checked = st.compras.marcadas.has(+cb.dataset.nota); });
       atualizarSomaNotas();
     }),

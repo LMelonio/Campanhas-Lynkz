@@ -11,10 +11,10 @@
 //     abertura já pega o arquivo novo).
 //   - Fontes do Google: guardadas na primeira vez.
 //   - Supabase e /api/: nunca passam pelo cache.
-//  VERSAO tem de ser igual à do config.js. Módulo novo em public/js/?
+//  VERSAO tem de ser igual à do config.js e à VERSAO_APP do js/app.js. Módulo novo em public/js/?
 //  Acrescente em ARQUIVOS (o teste de navegador confere).
 // ============================================================
-const VERSAO = '2.8.1';
+const VERSAO = '2.9.0';
 const CACHE = 'campanhas-' + VERSAO;
 const ARQUIVOS = [
   './', 'config.js', 'manifest.json',          // './' e não 'index.html': o Cloudflare redireciona /index.html → /

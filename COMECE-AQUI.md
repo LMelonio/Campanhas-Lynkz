@@ -1,10 +1,44 @@
 # Comece aqui
 
+> ### ⚠️ Banco primeiro, site depois
+>
+> Cada versão nova só pode ir para o ar **depois** que as migrações dela rodarem no Supabase.
+> Em 24/11/2026 o site foi para a 2.8.1 antes da migração 11 e, por alguns minutos, ninguém conseguia enviar campanha.
+>
+> 1. **SQL Editor do Supabase:** rode as migrações da versão (tabela abaixo), na ordem.
+> 2. Rode a **validação** de cada uma e confira que voltam só linhas `true`.
+> 3. Só então **publique o site**: `npm run deploy` (ou o push, se o Cloudflare estiver ligado ao GitHub).
+>    Depois, confira o rodapé do menu: deve mostrar a versão nova.
+>
+> | Versão | Migração | Validação |
+> |---|---|---|
+> | 2.3 | `07-clientes-qlik-e-historico.sql` | `07-validacao.sql` |
+> | 2.4 | `08-notas-fiscais.sql` | `08-validacao.sql` |
+> | 2.5 | `09-marca-da-consulta.sql` | `09-validacao.sql` |
+> | 2.6 | `10-seguranca.sql` | `10-validacao.sql` |
+> | 2.7 | `11-enviar-campanha.sql` | `11-validacao.sql` |
+> | 2.8 | `12-usuarios-e-balconistas.sql` | `12-validacao.sql` |
+> | 2.8.1 | nenhuma | — |
+> | 2.9 | `13-devolucoes-da-consulta.sql` | `13-validacao.sql` (5 linhas `true`) |
+>
+> Pulou versões? Rode todas as migrações do meio, em ordem. Todas podem rodar duas vezes sem estragar nada.
+
 App de aprovação de campanhas promocionais. Leva uns **40 minutos** para colocar no ar.
 Não precisa saber programar. O código fica no **GitHub** e o site no **Cloudflare**; o passo a passo
 técnico completo (inclusive a mudança do Netlify) está em **`PUBLICAR.md`**.
 
 Custo: **R$ 0**. O volume de 5 coordenadores cabe folgado nos planos gratuitos.
+
+---
+
+## Atualizar da v2.8.1 para a v2.9 (5 min)
+
+1. No **SQL Editor**, rode `sql/migracoes/13-devolucoes-da-consulta.sql`. Deve dar `Success`.
+2. Rode `sql/migracoes/13-validacao.sql`: **5 linhas com `ok = true`**.
+3. Só então publique o app (`npm run deploy`). O rodapé do menu deve mostrar **Versão 2.9.0**.
+
+Com a 13 no banco e o site ainda na 2.8.1, enviar campanha continua funcionando (as devoluções ficam vazias).
+Desfazer: volte o app para a 2.8.1 e rode `sql/migracoes/13-rollback.sql`.
 
 ---
 

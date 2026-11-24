@@ -266,3 +266,50 @@ a.det-empresa:hover { text-decoration-color: currentColor; }
 .cadastro-passo { font-size: var(--t-12); font-weight: 700; color: var(--ink-2); margin: 0 0 var(--e-2); }
 .cadastro-dados[disabled] { opacity: .55; }
 .cadastro-dados { border: 0; padding: 0; margin: 0; min-width: 0; }
+
+/* ---------- nova em 3 passos no celular (v2.9) ---------- */
+.passos, .resumo-passos, .acrescentar, .nova [data-passo-voltar], .nova [data-passo-continuar] { display: none; }
+@media (max-width: 899.98px) {
+  .passos { display: grid; gap: var(--e-2); margin: 0 0 var(--e-3); }
+  .passos-atual { margin: 0; font-size: var(--t-14); font-weight: 700; }
+  .passos-atual:focus { outline: none; }
+  .passos-atual:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+  .passos-lista { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--e-1); }
+  .passo {
+    width: 100%; min-height: var(--tap); display: flex; align-items: center; gap: var(--e-1); padding: var(--e-1) var(--e-2);
+    border: 1px solid var(--line); border-radius: var(--r-ctrl); background: var(--card); color: var(--ink-2);
+    font: inherit; font-size: var(--t-12); font-weight: 600; text-align: left; line-height: 1.2; cursor: pointer;
+  }
+  .passo:disabled { cursor: default; opacity: .6; }
+  .passo[aria-current="step"] { border-color: var(--ink); color: var(--ink); background: var(--card-2); }
+  .passo-num { flex: 0 0 auto; width: 20px; height: 20px; border-radius: 50%; display: grid; place-items: center; background: var(--card-2); border: 1px solid var(--line); font-size: var(--t-12); }
+  .passo[aria-current="step"] .passo-num { background: var(--ink); color: var(--card); border-color: var(--ink); }
+
+  .nova[data-passo-atual="1"] .nova-form > [data-passo]:not([data-passo="1"]),
+  .nova[data-passo-atual="2"] .nova-form > [data-passo]:not([data-passo="2"]),
+  .nova[data-passo-atual="3"] .nova-form > [data-passo]:not([data-passo="3"]) { display: none; }
+  .resumo-passos { display: block; }
+
+  .nova:not([data-passo-atual="1"]) .barra-envio [data-passo-voltar] { display: inline-flex; }
+  .nova:not([data-passo-atual="3"]) .barra-envio [data-passo-continuar] { display: inline-flex; }
+  .nova:not([data-passo-atual="3"]) .barra-envio [data-enviar] { display: none; }
+  .barra-envio { gap: var(--e-2); }
+  .barra-envio .btn { padding: 0 var(--e-4); }
+  .barra-envio .btn-icone-passo { padding: 0; width: 48px; justify-content: center; }
+  /* "Custo total · 2,5% da meta" em cima, o valor embaixo: cabe ao lado dos dois botões em 360 px */
+  .barra-envio-total { grid-template-columns: auto 1fr; }
+  .barra-envio-rotulo { grid-column: 1; grid-row: 1; }
+  .barra-envio-pct { grid-column: 2; grid-row: 1; }
+  .barra-envio-total strong { grid-column: 1 / -1; grid-row: 2; font-size: var(--t-18, var(--t-20)); }
+  .barra-envio-total .rascunho-status { grid-row: 3; }
+
+  /* passo 2 mais curto: notas compactas, sem a dica longa da marca */
+  .notas-fiscais .pessoa { padding: var(--e-2) var(--e-3); }
+  .notas-fiscais .pessoa:has(input:checked) { padding: calc(var(--e-2) - 1px) calc(var(--e-3) - 1px); }
+  .nova #n-marca-dica { display: none; }
+  .nova .compras-origem { display: none; }
+  .nova:not([data-passo-atual="3"]) .nova-obrig { display: none; }
+
+  .recolhivel.recolhido > .acrescentar { display: inline-flex; }
+  .recolhivel.recolhido > .campo { display: none; }
+}

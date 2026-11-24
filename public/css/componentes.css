@@ -414,4 +414,9 @@ kbd {
 .notas-lista .pessoa .pessoa-nome { flex: 1 1 auto; min-width: 0; }
 .nota-linha { display: flex; justify-content: space-between; gap: var(--e-3); font-size: var(--t-14); padding: var(--e-2) 0; border-bottom: 1px solid var(--line); }
 .nota-linha small { color: var(--ink-2); margin-left: var(--e-1); }
+/* nota de provável devolução (v2.9): riscada, fora da soma, sem marcar */
+.nota-devolvida strong, .nota-devolvida .valor { text-decoration: line-through; color: var(--ink-2); }
+.pessoa.nota-devolvida { cursor: default; background: var(--card-2); }
+.nota-devolvida .selo { text-decoration: none; margin-left: var(--e-1); }
+.compras-devolucoes { margin: calc(-1 * var(--e-1)) 0 var(--e-2) calc(18px + var(--e-2)); font-size: var(--t-14); color: var(--ink-2); }
 .nota-total { font-weight: 700; border-bottom: 0; }

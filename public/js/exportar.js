@@ -50,6 +50,7 @@ function colunas(cad) {
     ['Motivo da Reprova', c => c.motivo || ''],
     ['Origem', c => (c.importada ? 'Planilha antiga' : 'App')],
     ['Comprou no período (Qlik)', c => (c.compras_consultado_em ? +c.compras_periodo : ''), 'moeda'],
+    ['Devoluções no período (Qlik)', c => (c.compras_consultado_em && c.compras_devolucoes != null ? +c.compras_devolucoes : ''), 'moeda'],
     ['Marca consultada (Qlik)', c => c.compras_marca || ''],
     ['Observações', c => c.observacoes || ''],
     ['Balconista (cadastro)', c => balc(c)?.nome_completo || ''],

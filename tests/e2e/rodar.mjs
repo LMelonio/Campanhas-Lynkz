@@ -1097,10 +1097,39 @@ teste('lote S: aprovador confere no Qlik o total enviado e vê a diferença', as
   const nota = page.locator('#det-notas .nota', { hasText: 'Qlik agora' });
   await nota.waitFor();
   const t = await nota.innerText();
-  afirma(/1\.600,49/.test(t) && /Diferente/.test(t), 'mostra o total atual e avisa a diferença: ' + t);
+  afirma(/1\.600,49/.test(t) && /Total diferente do enviado/.test(t), 'mostra o total atual e avisa a diferença: ' + t);
   await page.goto(`${BASE}/?papel=coordenador#/campanhas/1`);
   await page.locator('#det-notas').waitFor();
   igual(await page.locator('[data-conferir-qlik]').count(), 0, 'coordenador não vê o botão de conferência');
+});
+
+// v2.9: a conferência do aprovador compara também as devoluções (Qlik simulado: código 4817 → total 1.300,49, devoluções 300).
+teste('lote S: conferência no Qlik compara também as devoluções', async ({ page }) => {
+  await abrir(page, { rota: '#/inicio' });
+  const preparar = (devolucoes) => page.evaluate(dv => {
+    const d = JSON.parse(sessionStorage.getItem('simulado-db-v3'));
+    const c = d.campanhas.find(x => x.id === 1);
+    Object.assign(c, { compras_periodo: 1300.49, compras_devolucoes: dv, compras_consultado_em: new Date().toISOString(), data_inicio: '2026-10-01', data_fim: '2026-10-31' });
+    d.empresas.find(e => e.id === c.empresa_id).codigo_cliente = '4817';
+    sessionStorage.setItem('simulado-db-v3', JSON.stringify(d));
+  }, devolucoes);
+  const conferir = async () => {
+    await page.goto(`${BASE}/?papel=aprovador#/campanhas/1`);
+    await page.reload();   // a conferência anterior fica na memória da página
+    await page.locator('[data-conferir-qlik]').click();
+    const nota = page.locator('#det-notas .nota', { hasText: 'Qlik agora' });
+    await nota.waitFor();
+    return nota.innerText();
+  };
+  await preparar(300);
+  let t = await conferir();
+  afirma(/devoluções −R\$\s?300,00/.test(t) && /Bate com o que foi enviado/.test(t), 'total e devoluções batem: ' + t);
+  await preparar(100);
+  t = await conferir();
+  afirma(/Devoluções diferentes das enviadas \(−R\$\s?100,00\)/.test(t) && !/Total diferente/.test(t), 'avisa só a diferença das devoluções: ' + t);
+  await preparar(null);   // campanha enviada pela 2.8.1: só o total é comparado
+  t = await conferir();
+  afirma(/Bate com o que foi enviado/.test(t), 'sem devoluções gravadas, compara só o total: ' + t);
 });
 
 teste('lote S: sem CDN de terceiros, CSP fechada no Supabase do config e service worker com todos os módulos', async ({ page }) => {
@@ -1121,8 +1150,40 @@ teste('lote S: sem CDN de terceiros, CSP fechada no Supabase do config e service
   const faltam = listar(path.join(RAIZ, 'js')).map(f => path.relative(RAIZ, f).split(path.sep).join('/')).filter(m => !sw.includes(`'${m}'`));
   afirma(!faltam.length, 'módulo fora do ARQUIVOS do sw.js: ' + faltam.join(', '));
   igual(sw.match(/const VERSAO = '([^']+)'/)[1], fs.readFileSync(path.join(RAIZ, 'config.js'), 'utf8').match(/VERSAO: "([^"]+)"/)[1], 'VERSAO igual no sw.js e no config.js');
+  igual(fs.readFileSync(path.join(RAIZ, 'js', 'app.js'), 'utf8').match(/VERSAO_APP = '([^']+)'/)[1], sw.match(/const VERSAO = '([^']+)'/)[1], 'VERSAO_APP do app.js igual à do sw.js e do config.js');
   await abrir(page);
   afirma(await page.evaluate(() => typeof window.supabase?.createClient === 'function'), 'supabase-js local carregado');
+});
+
+// v2.9 (A2): config.js novo com módulos antigos → recarrega uma vez e abre; sem loop.
+async function contarCargas(page) { let n = 0; page.on('load', () => n++); return () => n; }
+teste('lote S: versão misturada recarrega uma vez e abre já na versão certa', async ({ page }) => {
+  let primeira = true;
+  await page.route('**/config.js*', async rota => {
+    const r = await rota.fetch();
+    let corpo = await r.text();
+    if (primeira) { primeira = false; corpo = corpo.replace(/VERSAO: "[^"]+"/, 'VERSAO: "9.9.9"'); }
+    await rota.fulfill({ response: r, body: corpo });
+  });
+  const cargas = await contarCargas(page);
+  await abrir(page);
+  igual(cargas(), 2, 'uma recarga só');
+  igual(await page.evaluate(() => sessionStorage.getItem('lynkz-recarregou-para')), '9.9.9', 'marcou a versão que causou a recarga');
+  afirma((await page.locator('.versao').first().innerText()).includes(await page.evaluate(() => window.CONFIG.VERSAO)), 'abre na versão do config.js');
+});
+
+teste('lote S: versão que continua misturada não entra em loop de recarga', async ({ page }) => {
+  await page.route('**/config.js*', async rota => {
+    const r = await rota.fetch();
+    await rota.fulfill({ response: r, body: (await r.text()).replace(/VERSAO: "[^"]+"/, 'VERSAO: "9.9.9"') });
+  });
+  const avisos = [];
+  page.on('console', m => { if (m.type() === 'warning') avisos.push(m.text()); });
+  const cargas = await contarCargas(page);
+  await abrir(page);
+  await page.waitForTimeout(800);
+  igual(cargas(), 2, 'recarregou uma vez e parou');
+  afirma(avisos.some(a => /Versão misturada/.test(a)), 'registra no console');
 });
 
 teste('lote G: todo módulo de public/js tem modulepreload no index.html', async ({ page }) => {
@@ -1302,6 +1363,80 @@ teste('lote R: enviar grava o total consultado e só as notas marcadas; o detalh
   afirma(/1\.600,49/.test(painel) && /NF 211500 · série 2/.test(painel) && /2 notas na campanha/.test(painel), 'detalhe lista as notas e o total');
 });
 
+teste('lote R: com 12 notas mostra 5, "Ver todas" abre as 12 e "Marcar todas" soma as 12 (Nova e detalhe)', async ({ page }) => {
+  await abrir(page, { rota: '#/nova' });
+  await trocarCodigo(page, '4812');
+  await page.locator('#notas-ver').waitFor();
+  igual(await page.locator('input[data-nota]:visible').count(), 5, '5 notas aparecem');
+  igual((await page.locator('#notas-ver').innerText()).trim(), 'Ver todas as 12 notas', 'botão diz quantas são');
+  await page.click('#notas-todas');
+  afirma(/12 notas marcadas · R\$\s?1\.266,00/.test(await page.locator('#notas-soma').innerText()), 'marcar todas soma as 12, inclusive as recolhidas');
+  igual(await page.locator('input[data-nota]:visible').count(), 5, 'marcar não abre a lista');
+  await page.click('#notas-ver');
+  igual(await page.locator('input[data-nota]:visible').count(), 12, '"Ver todas" mostra as 12');
+  igual(await page.locator('#notas-ver').getAttribute('aria-expanded'), 'true', 'aria-expanded acompanha');
+  await page.fill('#n-campanha', 'Doze notas'); await page.fill('#n-inv-lynkz', '200'); await page.fill('#n-meta', '8.000');
+  await page.selectOption('#n-pagamento', 'Desconto em nota');
+  await page.locator('[data-enviar]:visible').first().click();
+  await page.waitForFunction(() => /#\/campanhas\/\d+$/.test(location.hash));
+  await page.locator('#det-notas [data-ver-notas]').waitFor();
+  igual(await page.locator('#det-notas .nota-linha:not(.nota-total):visible').count(), 5, 'detalhe mostra 5');
+  afirma(/12 notas na campanha/.test(await page.locator('#det-notas').innerText()), 'a linha da soma fica visível');
+  await page.click('#det-notas [data-ver-notas]');
+  igual(await page.locator('#det-notas .nota-linha:not(.nota-total):visible').count(), 12, 'detalhe abre as 12');
+});
+
+// v2.9 (A1): devolução no período. A nota de provável devolução fica riscada, fora da soma e sem marcar;
+// a linha "Devoluções no período" fecha a conta: soma das notas − devoluções = total.
+teste('lote R: devolução que fecha com uma nota — nota riscada, fora da soma; o detalhe mostra igual', async ({ page }) => {
+  await abrir(page, { rota: '#/nova' });
+  await trocarCodigo(page, '4817');
+  await page.locator('#compras-devolucoes').waitFor();
+  const corpo = await page.locator('#compras-corpo').innerText();
+  afirma(/comprou R\$\s?1\.300,49/.test(corpo), 'total já líquido: ' + corpo);
+  afirma(/Devoluções no período: −R\$\s?300,00 \(1 nota\)/.test(corpo), 'linha de devoluções: ' + corpo);
+  const riscada = page.locator('.pessoa.nota-devolvida');
+  igual(await riscada.count(), 1, 'uma nota riscada');
+  afirma(/NF 209001/.test(await riscada.innerText()) && /Provável devolução/.test(await riscada.innerText()), 'é a NF 209001, com o selo');
+  afirma(await riscada.locator('input').isDisabled(), 'sem poder marcar');
+  igual(await page.locator('input[data-nota]').count(), 3, 'nenhuma nota sai da lista');
+  await page.click('#notas-todas');
+  afirma(/2 notas marcadas · R\$\s?1\.300,49/.test(await page.locator('#notas-soma').innerText()), '"Marcar todas" deixa a riscada de fora: soma = total');
+  await page.fill('#n-campanha', 'Com devolução'); await page.fill('#n-inv-lynkz', '200'); await page.fill('#n-meta', '8.000');
+  await page.selectOption('#n-pagamento', 'Desconto em nota');
+  await page.locator('[data-enviar]:visible').first().click();
+  await page.waitForFunction(() => /#\/campanhas\/\d+$/.test(location.hash));
+  const d = await db(page);
+  const c = d.campanhas.at(-1);
+  igual(c.compras_periodo, 1300.49, 'total gravado'); igual(c.compras_devolucoes, 300, 'devoluções gravadas');
+  igual((c.compras_devolvidas || []).map(n => n.numero).join(','), '209001', 'nota de provável devolução gravada');
+  igual(d.campanha_notas.filter(n => n.campanha_id === c.id).map(n => n.numero).sort().join(','), '210818,211500', 'só as marcadas em campanha_notas');
+  await page.locator('#det-notas .nota-devolvida').waitFor();
+  const painel = await page.locator('#det-notas').innerText();
+  afirma(/Devoluções no período\s*−R\$\s?300,00 \(1 nota\)/.test(painel), 'detalhe mostra a linha: ' + painel);
+  afirma(/NF 209001/.test(await page.locator('#det-notas .nota-devolvida').innerText()) && /Provável devolução/.test(painel), 'detalhe mostra a nota riscada');
+  afirma(/2 notas na campanha/.test(painel) && /1\.300,49/.test(painel), 'a riscada não entra na soma do detalhe');
+});
+
+teste('lote R: devolução sem nota que feche — linha aparece, nenhuma riscada; a conta fecha', async ({ page }) => {
+  await abrir(page, { rota: '#/nova' });
+  await trocarCodigo(page, '4818');
+  await page.locator('#compras-devolucoes').waitFor();
+  const corpo = await page.locator('#compras-corpo').innerText();
+  afirma(/comprou R\$\s?1\.550,49/.test(corpo), 'total já líquido');
+  afirma(/Devoluções no período: −R\$\s?50,00 \(nota de origem não identificada no Qlik\)/.test(corpo), 'linha sem nota: ' + corpo);
+  igual(await page.locator('.nota-devolvida').count(), 0, 'nenhuma nota riscada');
+  await page.click('#notas-todas');
+  afirma(/3 notas marcadas · R\$\s?1\.600,49/.test(await page.locator('#notas-soma').innerText()), 'soma das notas (1.600,49) − devoluções (50) = total (1.550,49)');
+  await page.fill('#n-campanha', 'Devolução sem nota'); await page.fill('#n-meta', '8.000');
+  await page.locator('[data-enviar]:visible').first().click();
+  await page.waitForFunction(() => /#\/campanhas\/\d+$/.test(location.hash));
+  const c = (await db(page)).campanhas.at(-1);
+  igual(c.compras_devolucoes, 50, 'devoluções gravadas'); igual((c.compras_devolvidas || []).length, 0, 'sem nota riscada');
+  await page.locator('#det-notas', { hasText: 'Devoluções no período' }).waitFor();
+  afirma(/nota de origem não identificada/.test(await page.locator('#det-notas').innerText()), 'detalhe explica');
+});
+
 teste('lote R: mudar o período consulta de novo e zera a marcação', async ({ page }) => {
   await prepararCompras(page);
   await page.locator('input[data-nota]').first().waitFor();
@@ -1387,7 +1522,16 @@ for (const [largura, altura] of [[360, 740], [390, 844], [768, 1024], [1024, 768
     const problemas = [];
     for (const rota of TELAS) {
       await abrir(page, { rota });
-      if (rota === '#/nova') { await page.selectOption('#n-pagamento', 'Swile'); await escolherNoCombo(page, '#n-empresa', 'pet center', 'Pet Center Imperatriz'); await page.click('#n-campanha'); }
+      if (rota === '#/nova' && largura < 900) {
+        // v2.9: no celular a Nova tem passos; vai até o 3, onde aparece "Quem recebe" (Swile).
+        await escolherNoCombo(page, '#n-empresa', 'pet center', 'Pet Center Imperatriz');
+        await escolherNoCombo(page, '#n-laboratorio', 'ouro', 'Ouro Fino');
+        await page.fill('#n-campanha', 'Captura');
+        await page.click('[data-passo-continuar]');
+        await page.selectOption('#n-pagamento', 'Swile'); await page.fill('#n-inv-lynkz', '100');
+        await page.click('[data-passo-continuar]');
+        await page.locator('#passo-atual', { hasText: '3 de 3' }).waitFor();
+      } else if (rota === '#/nova') { await page.selectOption('#n-pagamento', 'Swile'); await escolherNoCombo(page, '#n-empresa', 'pet center', 'Pet Center Imperatriz'); await page.click('#n-campanha'); }
       await page.waitForTimeout(250);
       const nome = `${rota.replace(/[#/]+/g, '-').replace(/^-/, '')}-${largura}`;
       if (!(await semOverflow(page, nome))) problemas.push('rolagem lateral em ' + nome);
@@ -1489,6 +1633,72 @@ for (const largura of [390, 1440]) {
     afirma(Math.abs(a.y - b.y) < 1, `campos alinhados: ${a.y} x ${b.y}`);
   }, { largura, altura: 900 });
 }
+
+// v2.9 (B1): no celular a Nova tem 3 passos; no computador continua uma página só.
+teste('v2.9: Nova em 3 passos no celular — erro no passo 1, Voltar mantém os dados, envio igual', async ({ page }) => {
+  await abrir(page, { rota: '#/nova' });
+  const altura = async () => page.evaluate(() => document.documentElement.scrollHeight / innerHeight);
+  const alturas = [];
+  igual((await page.locator('#passo-atual').innerText()).trim(), '1 de 3 · Cliente', 'começa no passo 1');
+  afirma(!(await page.locator('#n-inv-lynkz').isVisible()), 'valores ficam no passo 2');
+  igual(await page.locator('[data-enviar]:visible').count(), 0, 'sem "Enviar" antes do passo 3');
+  afirma(await page.locator('[data-acrescentar="n-mecanica"]').isVisible() && !(await page.locator('#n-mecanica').isVisible()), '"Como funciona" recolhido');
+  await page.click('[data-passo-continuar]');
+  await erroDo(page, 'n-empresa').waitFor();
+  igual((await page.locator('#passo-atual').innerText()).trim(), '1 de 3 · Cliente', 'erro segura no passo 1');
+  afirma(!(await erroDo(page, 'n-inv-lynkz').isVisible()), 'só valida os campos do passo');
+  await escolherNoCombo(page, '#n-empresa', 'casa do criador', 'Casa do Criador');
+  await escolherNoCombo(page, '#n-laboratorio', 'ouro', 'Ouro Fino');
+  await page.fill('#n-campanha', 'Passos 390');
+  await page.click('[data-periodo="este"]');
+  alturas.push(await altura());
+  await page.screenshot({ path: path.join(SAIDA, 'nova-passo1-390.png'), fullPage: true });
+  await page.click('[data-passo-continuar]');
+  igual((await page.locator('#passo-atual').innerText()).trim(), '2 de 3 · Valores', 'passo 2');
+  afirma(!(await page.locator('#n-campanha').isVisible()), 'passo 1 escondido');
+  await page.fill('#n-inv-lynkz', '200'); await page.fill('#n-meta', '8.000');
+  await page.selectOption('#n-pagamento', 'Desconto em nota');
+  await page.locator('input[data-nota]').first().waitFor();
+  alturas.push(await altura());
+  await page.screenshot({ path: path.join(SAIDA, 'nova-passo2-390.png'), fullPage: true });
+  await page.click('[data-passo-voltar]');
+  igual(await page.inputValue('#n-campanha'), 'Passos 390', 'Voltar mantém os dados');
+  await page.click('[data-passo-continuar]'); await page.click('[data-passo-continuar]');
+  igual((await page.locator('#passo-atual').innerText()).trim(), '3 de 3 · Quem recebe e revisão', 'passo 3');
+  const resumo = await page.locator('#resumo-passos').innerText();
+  afirma(/Casa do Criador/.test(resumo) && /R\$\s?200,00/.test(resumo) && /2,5%/.test(resumo), 'revisão mostra empresa, custo e % da meta: ' + resumo);
+  alturas.push(await altura());
+  await page.screenshot({ path: path.join(SAIDA, 'nova-passo3-390.png'), fullPage: true });
+  afirma(alturas.every(a => a <= 1.6), 'cada passo cabe em ~1,5 tela: ' + alturas.map(a => a.toFixed(2)).join(' / '));
+  igual(await page.locator('[data-passo="1"]').first().evaluate(e => getComputedStyle(e).display), 'none', 'passo 1 escondido no 3');
+  await page.locator('[data-enviar]:visible').first().click();
+  await page.waitForFunction(() => /#\/campanhas\/\d+$/.test(location.hash));
+  const c = (await db(page)).campanhas.at(-1);
+  igual(c.campanha, 'Passos 390', 'campanha gravada'); igual(c.investimento_lynkz, 200, 'valor do passo 2 gravado');
+}, { largura: 390, altura: 844 });
+
+teste('v2.9: com erro em outro passo, "Enviar" leva até ele; o passo fica no rascunho', async ({ page }) => {
+  await abrir(page, { rota: '#/nova' });
+  await escolherNoCombo(page, '#n-empresa', 'casa do criador', 'Casa do Criador');
+  await escolherNoCombo(page, '#n-laboratorio', 'ouro', 'Ouro Fino');
+  await page.fill('#n-campanha', 'Volta ao erro');
+  await page.click('[data-passo-continuar]');
+  await page.selectOption('#n-pagamento', 'Swile');   // exige investimento LYNKZ (passo 2) e quem recebe (passo 3)
+  await page.click('[data-passo-continuar]');
+  await erroDo(page, 'n-inv-lynkz').waitFor();
+  await page.fill('#n-inv-lynkz', '100');
+  await page.click('[data-passo-continuar]');
+  igual((await page.locator('#passo-atual').innerText()).trim(), '3 de 3 · Quem recebe e revisão', 'chegou ao passo 3');
+  await page.click('[data-ir-passo="2"]');
+  await page.fill('#n-inv-lynkz', '');
+  await page.click('[data-ir-passo="3"]');
+  await page.locator('[data-enviar]:visible').first().click();
+  await erroDo(page, 'n-inv-lynkz').waitFor();
+  igual((await page.locator('#passo-atual').innerText()).trim(), '2 de 3 · Valores', 'Enviar voltou ao passo do primeiro erro');
+  await page.waitForTimeout(600);
+  await page.reload(); await page.waitForSelector('#app:not([hidden])');
+  await page.locator('#passo-atual', { hasText: '2 de 3' }).waitFor();
+}, { largura: 390, altura: 844 });
 
 teste('v2.7: enviar sem período ou sem meta avisa; Voltar não envia, "Enviar assim" envia', async ({ page }) => {
   await abrir(page, { rota: '#/nova' });

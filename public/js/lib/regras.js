@@ -27,6 +27,8 @@ export const FUSO = 'America/Fortaleza';
 // tests/regras.test.mjs confere que os dois lados batem.
 export const LIMITES = Object.freeze({
   balconistas_por_empresa: 2,   // contando os desativados (migração 12)
+  compras_devolucoes: 10000000, // devoluções da consulta do Qlik (migração 13, campanhas_devolucoes_faixa)
+  compras_devolvidas: 50,       // notas de provável devolução gravadas na campanha (idem)
   rebate_pct: 100,
   meta: 1000000000,
   investimento_lynkz: 10000000,
@@ -70,6 +72,13 @@ const fmt0 = new Intl.NumberFormat('pt-BR', { maximumFractionDigits: 0 });
 
 export const brl  = n => fmt2.format(Number(n) || 0);
 export const brl0 = n => fmt0.format(Number(n) || 0);
+
+// "−R$ 300,00 (1 nota)" — devoluções no período da consulta do Qlik (v2.9). O total já desconta;
+// nNotas = notas de provável devolução (valor que fecha com o devolvido). Zero: o Qlik não diz qual foi.
+export function textoDevolucoes(valor, nNotas) {
+  const quais = nNotas > 0 ? `${nNotas} ${nNotas === 1 ? 'nota' : 'notas'}` : 'nota de origem não identificada no Qlik';
+  return `−R$ ${brl(valor)} (${quais})`;
+}
 
 // Fração → percentual pt-BR: 0.079 → "7,9%".
 export function pct(p, casas = 1) {

@@ -19,7 +19,12 @@ export const CONFIG_PADRAO = {
     data:       'Data Venda',         // conferido no app: tem vendas até o dia; 'Data Emissão' não serve
     nota:       'Núm. Nota Fiscal Vendas',
     serie:      'Série Nota Fiscal Vendas',
+    // Devoluções (v2.9): linhas com Tipo de Venda = "Devolução", sem número de nota.
+    // No atacado "Nota Fiscal Origem" vem vazio; só a série da nota de origem vem preenchida.
+    tipoVenda:   'Tipo de Venda',
+    serieOrigem: 'Série Nota Fiscal Origem',
   },
+  devolucao: 'Devolução',   // valor de tipoVenda nas linhas de devolução
   // Filtros fixos das vendas da LYNKZ (os mesmos do Painel Vendedor).
   filtros: [
     { campo: 'Unidade de Negócio', valor: 'ATACADO' },
@@ -165,11 +170,46 @@ async function lerLinhas(engine, h, total, largura) {
 }
 
 const arredonda = n => Math.round((Number.isFinite(n) ? n : 0) * 100) / 100;
+const centavos = n => Math.round(n * 100);
+
+/**
+ * Quais notas provavelmente foram devolvidas. O Qlik não diz (no atacado "Nota Fiscal Origem" vem
+ * vazio), só quanto foi devolvido em cada série. Para cada série, procura 1, 2 ou 3 notas cuja soma seja
+ * EXATAMENTE o valor devolvido (das mais recentes para as mais antigas). Sem combinação exata, nenhuma.
+ * As notas continuam na lista: a tela as mostra riscadas, fora da soma (v2.9).
+ * @param {{numero,serie,data,valor}[]} notas
+ * @param {Map<string, number>} devolvidoPorSerie  série → valor devolvido (positivo)
+ * @returns {Set<number>} índices das notas na lista recebida
+ */
+export function acharDevolvidas(notas, devolvidoPorSerie) {
+  const fora = new Set();
+  for (const [serie, devolvido] of devolvidoPorSerie) {
+    const alvo = centavos(devolvido);
+    if (alvo <= 0) continue;
+    const da = notas.map((n, i) => ({ i, c: centavos(n.valor), data: String(n.data) }))
+      .filter(x => notas[x.i].serie === serie && !fora.has(x.i) && x.c > 0 && x.c <= alvo)
+      .sort((a, b) => b.data.localeCompare(a.data));
+    const achar = () => {
+      for (const a of da) if (a.c === alvo) return [a];
+      for (let x = 0; x < da.length; x++) for (let y = x + 1; y < da.length; y++) {
+        if (da[x].c + da[y].c === alvo) return [da[x], da[y]];
+      }
+      for (let x = 0; x < da.length; x++) for (let y = x + 1; y < da.length; y++) {
+        const r = alvo - da[x].c - da[y].c;
+        if (r <= 0) continue;
+        for (let z = y + 1; z < da.length; z++) if (da[z].c === r) return [da[x], da[y], da[z]];
+      }
+      return null;
+    };
+    (achar() || []).forEach(a => fora.add(a.i));
+  }
+  return fora;
+}
 const limpa = t => (t == null || t === '-' ? '' : String(t).trim());
 
 /**
  * Quanto o cliente comprou do fornecedor no período e quais notas compõem isso.
- * @returns {{ total:number, notas:{numero,serie,data,valor}[], fornecedores:string[], marcas:{nome,valor}[] }}
+ * @returns {{ total:number, notas:{numero,serie,data,valor,provavel_devolucao?}[], devolucoes:number, fornecedores:string[], marcas:{nome,valor}[] }}
  */
 export async function consultarCompras(engine, { appId, config = CONFIG_PADRAO, codigoCliente, padraoFornecedor, marca = null, inicio, fim }) {
   const conjunto = montarConjunto({ config, codigoCliente, padraoFornecedor, marca, inicio, fim });
@@ -196,12 +236,34 @@ export async function consultarCompras(engine, { appId, config = CONFIG_PADRAO, 
     qMeasures: [medida, medidaData], qSuppressZero: true, qInitialDataFetch: [],
   }, 'nota fiscal');
   const linhas = await lerLinhas(engine, n.h, n.cubo.qSize.qcy, 4);
-  const notas = linhas.map(l => ({
+  let notas = linhas.map(l => ({
     numero: limpa(l[0].qText), serie: limpa(l[1].qText),
     valor: arredonda(l[2].qNum),
     data: Number.isFinite(l[3].qNum) ? dataDoSerial(l[3].qNum) : null,
   })).filter(x => x.numero)
      .sort((a, b) => String(a.data).localeCompare(String(b.data)) || a.numero.localeCompare(b.numero, 'pt-BR', { numeric: true }));
+
+  // 2b) devoluções (v2.9): o total já desconta, mas a nota devolvida vem com o valor cheio.
+  // devolucoes = soma das notas − total, para a conta fechar sempre: soma das notas − devoluções = total.
+  // Só quando há diferença: quanto foi devolvido em cada série → marca as notas de provável devolução.
+  let devolucoes = 0;
+  const diferenca = centavos(notas.reduce((s, x) => s + x.valor, 0)) - centavos(total);
+  if (diferenca > 0) devolucoes = diferenca / 100;
+  if (diferenca > 0 && c.tipoVenda && c.serieOrigem) {
+    try {
+      const soDevolucoes = `${conjunto.slice(0, -1)}, ${nomeCampo(c.tipoVenda)}={'${valorSeguro(config.devolucao ?? CONFIG_PADRAO.devolucao, 'Devolução')}'}>`;
+      const d = await criarCubo(engine, hDoc, {
+        qDimensions: [{ qDef: { qFieldDefs: [c.serieOrigem] }, qNullSuppression: false }],
+        qMeasures: [{ qDef: { qDef: expressao(config, soDevolucoes) } }], qSuppressZero: true, qInitialDataFetch: [],
+      }, 'devolução');
+      const porSerie = new Map((await lerLinhas(engine, d.h, d.cubo.qSize.qcy, 2))
+        .map(l => [limpa(l[0].qText), -arredonda(l[1].qNum)]));
+      const devolvidas = acharDevolvidas(notas, porSerie);
+      notas = notas.map((x, i) => (devolvidas.has(i) ? { ...x, provavel_devolucao: true } : x));
+    } catch (e) {
+      if (!(e instanceof ErroQlik)) throw e;   // campo de devolução sumiu do app: segue com as notas cheias
+    }
+  }
 
   // 3) quais fornecedores o padrão do laboratório pegou (o usuário confere)
   const f = await criarCubo(engine, hDoc, {
@@ -231,5 +293,5 @@ export async function consultarCompras(engine, { appId, config = CONFIG_PADRAO, 
     clienteTotal = arredonda(ct.cubo.qGrandTotalRow?.[0]?.qNum);
   }
 
-  return { total, notas, fornecedores, marcas, cliente_total: clienteTotal };
+  return { total, notas, devolucoes, fornecedores, marcas, cliente_total: clienteTotal };
 }

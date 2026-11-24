@@ -1,7 +1,7 @@
 -- ============================================================
 --  APROVAÇÃO DE CAMPANHAS PROMOCIONAIS
 --  Cole este arquivo inteiro no SQL Editor do Supabase e rode.
---  Instalação NOVA (v2.8.0). Para atualizar um banco da v1, use
+--  Instalação NOVA (v2.9.0). Para atualizar um banco da v1, use
 --  migracoes/04, 05 e 06 — ver COMECE-AQUI.md, Parte 0.
 -- ============================================================
 
@@ -935,6 +935,25 @@ alter table public.campanhas add column if not exists compras_marca text;
 select public.reaplicar_permissoes_campanhas();
 
 -- ============================================================
+--  v2.9 — DEVOLUÇÕES NA CONSULTA DO QLIK
+--  (mesmo conteúdo de migracoes/13-devolucoes-da-consulta.sql; enviar_campanha mais abaixo já grava)
+-- ============================================================
+alter table public.campanhas add column if not exists compras_devolucoes numeric(14,2);
+alter table public.campanhas add column if not exists compras_devolvidas jsonb;
+-- Os dois campos vêm do aparelho de quem pede (como compras_periodo): limites no banco.
+-- Nulos = consulta não feita ou site anterior à v2.9 (que não manda as chaves novas).
+alter table public.campanhas drop constraint if exists campanhas_devolucoes_faixa;
+alter table public.campanhas add constraint campanhas_devolucoes_faixa check (
+  (compras_devolucoes is null or (compras_devolucoes >= 0 and compras_devolucoes <= 10000000))
+  and (case when compras_devolvidas is null then true
+            when jsonb_typeof(compras_devolvidas) <> 'array' then false
+            else jsonb_array_length(compras_devolvidas) <= 50 end)
+) not valid;
+
+-- As colunas novas entram no select da view e nos grants do app.
+select public.reaplicar_permissoes_campanhas();
+
+-- ============================================================
 --  v2.6 — SEGURANÇA
 --  (mesmo conteúdo de migracoes/10-seguranca.sql)
 -- ============================================================
@@ -1123,14 +1142,14 @@ begin
     investimento_lynkz, investimento_industria, forma_pagamento, data_inicio, data_fim,
     tipo_meta, meta, rebate_pct, rebate_teto, rebate_base, rebate_gatilho,
     swile_nome_completo, swile_cpf, swile_data_nascimento, swile_email, swile_telefone,
-    observacoes, compras_periodo, compras_consultado_em, compras_marca,
+    observacoes, compras_periodo, compras_consultado_em, compras_marca, compras_devolucoes, compras_devolvidas,
     status, solicitante_id
   ) values (
     c.cliente, c.empresa_id, v_bal, c.laboratorio, c.campanha, c.tipo, c.mecanica,
     coalesce(c.investimento_lynkz, 0), coalesce(c.investimento_industria, 0), c.forma_pagamento, c.data_inicio, c.data_fim,
     c.tipo_meta, coalesce(c.meta, 0), coalesce(c.rebate_pct, 0), coalesce(c.rebate_teto, 0), c.rebate_base, c.rebate_gatilho,
     c.swile_nome_completo, c.swile_cpf, c.swile_data_nascimento, c.swile_email, c.swile_telefone,
-    c.observacoes, c.compras_periodo, c.compras_consultado_em, c.compras_marca,
+    c.observacoes, c.compras_periodo, c.compras_consultado_em, c.compras_marca, c.compras_devolucoes, c.compras_devolvidas,
     'Pendente', auth.uid()
   ) returning id, codigo into v_id, v_codigo;
 

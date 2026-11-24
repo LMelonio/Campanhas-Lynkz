@@ -23,6 +23,7 @@ const CONSTRAINTS = {
   balconistas_telefone_valido:   ['Informe o telefone com DDD (10 ou 11 números).', 'telefone'],
   campanhas_swile_valido:        ['Confira os dados de quem recebe a premiação: com Swile, os 5 são obrigatórios e válidos.', null],
   campanhas_valores_faixa:       ['Algum valor passou do limite: rebate até 100%, meta até R$ 1 bilhão, investimentos e teto até R$ 10 milhões.', null],
+  campanhas_devolucoes_faixa:    ['As devoluções da consulta do Qlik vieram fora do limite (até R$ 10 milhões e 50 notas). Consulte as compras de novo.', null],
   campanhas_textos_tamanho:      ['Algum texto ficou grande demais. Encurte o nome, a mecânica ou as observações.', null],
   periodo_valido:                ['A data de fim está antes da data de início.', 'data_fim'],
 };

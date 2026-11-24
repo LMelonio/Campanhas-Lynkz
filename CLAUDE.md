@@ -102,6 +102,15 @@ histórico do app quando existe.
 - **Toda expressão mandada ao Qlik usa `{1<…>}`** (e `Only({1} …)` dentro de busca por expressão, como o período): o app abre
   com as seleções salvas de quem usou por último e, sem o `1`, tudo saía R$ 0,00 (v2.8.1). Vale para a consulta de compras
   (`expressao()`/`montarConjunto()` em `worker/qlik-engine.js`) e para a sincronização (`MEDIDA_PADRAO` em `scripts/lib/qlik.mjs`, só atacado).
+- **Devoluções (v2.9, migração 13):** o total do Qlik já desconta; a nota devolvida vem com o valor cheio e, no atacado,
+  `Nota Fiscal Origem` vem vazio (o Qlik não diz qual foi). O Worker manda `devolucoes` (= soma das notas − total) e marca
+  `provavel_devolucao` nas notas cuja soma (1 a 3, mesma série) fecha exatamente com o devolvido (`acharDevolvidas`).
+  Nada sai da lista: a nota fica riscada, com o selo "Provável devolução", fora da soma e sem marcar. A linha
+  "Devoluções no período: −R$ X (Y notas)" aparece sempre que `devolucoes > 0` (`textoDevolucoes()` em `lib/regras.js`).
+  A campanha grava `compras_devolucoes` e `compras_devolvidas` (jsonb) pelo `enviar_campanha`; o detalhe mostra igual.
+  Limites no banco (`campanhas_devolucoes_faixa`): devoluções de 0 a R$ 10 milhões; lista de até 50 notas
+  (`LIMITES.compras_devolucoes`/`compras_devolvidas`, conferidos por `tests/regras.test.mjs`). Nulas = site 2.8.1 ou sem consulta.
+  A conferência do aprovador no Qlik compara total **e** devoluções.
 - Total zero: o Worker manda `cliente_total` (sem o laboratório) e a Nova explica o caso. R$ 0,00 em tudo? `npm run qlik:diagnosticar` (v2.8.1).
 
 ## Segurança (v2.6) — não enfraquecer

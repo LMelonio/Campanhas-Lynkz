@@ -20,9 +20,9 @@ window.CONFIG = {
   SUBMARCA: "Campanhas",
   DOMINIO: "lynkz.com.br",
   // Aparece no login, no menu e no Perfil. Suba a cada deploy JUNTO com a
-  // constante VERSAO do sw.js (as duas precisam ser iguais) para confirmar
+  // constante VERSAO do sw.js e VERSAO_APP do js/app.js (as três precisam ser iguais) para confirmar
   // no celular que a atualização chegou.
-  VERSAO: "2.8.1",
+  VERSAO: "2.9.0",
 
   // Faixas do indicador de custo sobre a meta.
   // 0.08 = 8%. Ajuste para a régua da sua operação.

@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import {
   calc, banda, posRegua, lerValor, valorCampo, pct, brl, contem, cpfValido, cnpjValido, maskCPF, maskCNPJ,
   maskTelefone, telefoneValido, dataCivil, dataBR, dias, dataExcel, colunaExcel, errosRecebedor,
-  nomeCompleto, emailValido,
+  nomeCompleto, emailValido, textoDevolucoes,
 } from '../public/js/lib/regras.js';
 
 const FAIXAS = { verde: 0.08, amarela: 0.15 };
@@ -174,4 +174,16 @@ test('limite de balconistas por empresa bate com o gatilho do banco (migração 
   const m = sql.slice(i, i + 1200).match(/count\(\*\) from public\.balconistas where empresa_id = new\.empresa_id\) >= (\d+)/);
   assert.ok(m, 'contagem do limite não encontrada');
   assert.equal(Number(m[1]), LIMITES.balconistas_por_empresa);
+});
+
+test('textoDevolucoes: valor negativo e quantas notas (ou que o Qlik não diz qual)', () => {
+  assert.equal(textoDevolucoes(300, 1), '−R$ 300,00 (1 nota)');
+  assert.equal(textoDevolucoes(2892.47, 2), '−R$ 2.892,47 (2 notas)');
+  assert.equal(textoDevolucoes(50, 0), '−R$ 50,00 (nota de origem não identificada no Qlik)');
+});
+
+test('LIMITES das devoluções batem com campanhas_devolucoes_faixa do banco (migração 13)', () => {
+  const c = constraintDoSchema('campanhas_devolucoes_faixa');
+  assert.equal(Number(c.match(/compras_devolucoes <= (\d+)/)[1]), LIMITES.compras_devolucoes);
+  assert.equal(Number(c.match(/jsonb_array_length\(compras_devolvidas\) <= (\d+)/)[1]), LIMITES.compras_devolvidas);
 });

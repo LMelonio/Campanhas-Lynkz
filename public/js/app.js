@@ -27,6 +27,12 @@ import * as telaUsuarios from './telas/usuarios.js';
 
 const C = window.CONFIG;
 
+// Versão destes módulos. Igual à VERSAO de config.js e sw.js (o teste do lote S confere).
+// Logo depois de publicar, o config.js já chega novo pela rede, mas os módulos podem vir
+// da cópia guardada da versão anterior: a tela ficava misturada até a segunda recarga (v2.9).
+export const VERSAO_APP = '2.9.0';
+const CHAVE_RECARGA = 'lynkz-recarregou-para';
+
 const TELAS = {
   inicio: telaInicio, campanhas: telaCampanhas, nova: telaNova,
   historico: telaHistorico, gestao: telaGestao, perfil: telaPerfil, usuarios: telaUsuarios,
@@ -385,11 +391,32 @@ async function entrar(perfil) {
   await iniciarDados();
 }
 
-if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.register('sw.js').catch(() => {});
+// Versão misturada: apaga as cópias guardadas e recarrega UMA vez por aba (sem loop).
+// Se a diferença continuar depois disso, só registra no console e segue.
+function versaoMisturada() {
+  if (!C.VERSAO || C.VERSAO === VERSAO_APP) return false;
+  let jaRecarregou = null;
+  try { jaRecarregou = sessionStorage.getItem(CHAVE_RECARGA); } catch { /* sem sessionStorage: recarrega uma vez mesmo */ }
+  if (jaRecarregou === C.VERSAO) {
+    console.warn(`Versão misturada: config.js ${C.VERSAO}, módulos ${VERSAO_APP}. Já recarregou nesta aba; seguindo assim.`);
+    return false;
+  }
+  try { sessionStorage.setItem(CHAVE_RECARGA, C.VERSAO); } catch { /* idem */ }
+  const aviso = $('#splash span:last-child');
+  if (aviso) aviso.textContent = `Atualizando para a versão ${C.VERSAO}…`;
+  const apagar = 'caches' in window ? caches.keys().then(ns => Promise.all(ns.map(n => caches.delete(n)))) : Promise.resolve();
+  apagar.catch(() => {}).finally(() => location.reload());
+  return true;
 }
 
-iniciarAcesso({ aoEntrar: entrar }).catch(e => {
+if (!versaoMisturada()) {
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('sw.js').catch(() => {});
+  }
+  iniciarAcesso({ aoEntrar: entrar }).catch(falhaAoAbrir);
+}
+
+function falhaAoAbrir(e) {
   console.error(e);
   $('#splash').hidden = true;
   const a = $('#acesso');
@@ -397,4 +424,4 @@ iniciarAcesso({ aoEntrar: entrar }).catch(e => {
   pintar(a, html`<main class="acesso-caixa"><h1>Não foi possível abrir o app</h1><p class="acesso-sub">${e.message}</p>
     <button class="btn btn-primario btn-largo" type="button" id="recarregar">Tentar de novo</button></main>`);
   $('#recarregar').addEventListener('click', () => location.reload());
-});
+}
