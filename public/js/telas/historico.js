@@ -8,6 +8,7 @@ import { calc, brl, dataBR, contem, STATUS } from '../lib/regras.js';
 import { icone } from '../ui/icones.js';
 import { selo, vazio, cartao } from '../ui/pecas.js';
 import { estadoLista } from '../ui/estado.js';
+import { dialogoGerarAdp } from '../ui/adp-dialogo.js';
 import { exportarExcel } from '../exportar.js';
 import { campoBusca, ligarBusca } from '../ui/campos.js';
 
@@ -73,7 +74,10 @@ export function montar(el, ctx) {
     </div>
     <div class="lista-cabeca">
       <p class="lista-resumo" id="hs-resumo" role="status"></p>
-      <button type="button" class="btn btn-texto btn-pequeno" id="hs-excel" hidden>${icone('baixar')} Baixar Excel desta lista</button>
+      <div class="lista-acoes">
+          <button type="button" class="btn btn-texto btn-pequeno" id="hs-excel" hidden>${icone('baixar')} Baixar Excel desta lista</button>
+          <button type="button" class="btn btn-texto btn-pequeno" id="hs-adp">${icone('baixar')} Gerar ADP</button>
+        </div>
     </div>
     <div id="hs-itens"></div>`);
 
@@ -87,6 +91,7 @@ export function montar(el, ctx) {
     ctx.campanhas.assinar(() => desenhar(el, ctx)),
     () => buscar.cancelar(),
     ligarBusca(el),
+    ao(el, 'click', '#hs-adp', () => dialogoGerarAdp(ctx)),
     ao(el, 'click', '#hs-excel', async (e, b) => {
       b.disabled = true; b.setAttribute('aria-busy', 'true');
       const nome = { Todas: 'Decididas', Aprovada: 'Aprovadas', Reprovada: 'Reprovadas' }[filtros.status];

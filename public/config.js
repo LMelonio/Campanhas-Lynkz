@@ -22,7 +22,7 @@ window.CONFIG = {
   // Aparece no login, no menu e no Perfil. Suba a cada deploy JUNTO com a
   // constante VERSAO do sw.js e VERSAO_APP do js/app.js (as três precisam ser iguais) para confirmar
   // no celular que a atualização chegou.
-  VERSAO: "2.9.1",
+  VERSAO: "2.11.1",
 
   // Faixas do indicador de custo sobre a meta.
   // 0.08 = 8%. Ajuste para a régua da sua operação.
@@ -53,6 +53,16 @@ window.CONFIG = {
   PAGTO: ["Desconto em nota","Bonificação em produto","Depósito / verba","Swile"],
   BASES: ["Bonificação","Sell-in (compras do cliente)","Sell-out (vendas do cliente)","Faturamento no período"],
   GATILHOS: ["Ao atingir 100% da meta","A partir de 80% da meta","Escalonado por faixa","Sobre todo o volume comprado"],
+
+  // Textos fixos da ADP (autorização de pagamento em PDF das campanhas Swile, botão "Gerar ADP").
+  // Saem iguais em todas as linhas da planilha; o resto vem de cada campanha.
+  ADP: {
+    EMPRESA_PAGADORA: "LYNKZ DIST S.A - MATRIZ",
+    LOJA: "LYNKZ - MATRIZ",
+    DEPARTAMENTO: "COMERCIAL",
+    FORMA: "SWILE",
+    TIPO_SEM_TIPO: "PREMIAÇÃO CAMPANHA",   // quando a campanha não tem tipo
+  },
 
   // Botões de motivo rápido no diálogo de reprova (o texto continua editável).
   MOTIVOS_RAPIDOS: ["Custo acima do padrão para a meta","Falta a meta do cliente","Período da campanha inválido","Laboratório não confirmou a verba","Dados de quem recebe incompletos"]

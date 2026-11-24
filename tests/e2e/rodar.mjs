@@ -8,6 +8,7 @@
 //  Saída:              tests/e2e/saida/ (capturas de tela e relatório.json)
 // ============================================================
 import http from 'node:http';
+import zlib from 'node:zlib';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -1890,6 +1891,159 @@ teste('v2.7: depois de enviar, a campanha aparece na lista mesmo com filtro de l
   await page.locator('#cp-itens .cartao[aria-current="true"]').waitFor({ timeout: 5000 });
   afirma((await page.locator('#cp-itens .cartao[aria-current="true"]').innerText()).includes('Aparece na lista'), 'a campanha nova está selecionada na lista');
 });
+
+// ============================================================
+//  v2.10 — ADP (autorização de pagamento das campanhas Swile)
+// ============================================================
+// Duas aprovadas com Swile em outubro: a 2 (balconista cadastrado, pedida pela Bia) e uma avulsa da Bia sem cadastro.
+async function prepararAdp(page) {
+  await page.evaluate(() => {
+    const d = JSON.parse(sessionStorage.getItem('simulado-db-v3'));
+    const c2 = d.campanhas.find(x => x.id === 2);
+    Object.assign(c2, { status: 'Aprovada', aprovador_nome: 'Ana Aprovadora', data_decisao: '2026-11-03', data_inicio: '2026-10-01', data_fim: '2026-10-31', mecanica: 'R$ 3,00 por dose vendida' });
+    const n = d.seq.campanhas + 1; d.seq.campanhas = n;
+    d.campanhas.push({ ...c2, id: n, codigo: 'C2610' + n, cliente: 'Casa do Criador', empresa_id: 3, balconista_id: null, campanha: 'Prescrição Avert',
+      tipo: null, mecanica: null, investimento_lynkz: 100, swile_nome_completo: 'Beatriz de Sousa Barros', swile_cpf: '52998224725', swile_email: 'bia.vet@exemplo.com', swile_data_nascimento: '1999-03-21' });
+    sessionStorage.setItem('simulado-db-v3', JSON.stringify(d));
+  });
+}
+
+// CSP de produção (sem upgrade-insecure-requests, que no http do teste trocaria tudo por https).
+async function comCspDeProducao(contexto) {
+  const csp = fs.readFileSync(path.join(RAIZ, '_headers'), 'utf8').match(/Content-Security-Policy: (.+)/)[1].replace(/;?\s*upgrade-insecure-requests/, '');
+  await contexto.route(u => u.origin === BASE && (u.pathname === '/' || u.pathname === '/index.html'), async r => {
+    const resp = await r.fetch();
+    await r.fulfill({ response: resp, headers: { ...resp.headers(), 'content-security-policy': csp } });
+  });
+}
+
+// PDF gerado pelo pdf-lib: abre os streams (Flate). texto = os <hex> Tj (WinAnsi ≈ latin1);
+// bruto = arquivo + streams abertos (os objetos ficam em object streams comprimidos).
+function abrirPdf(bytes) {
+  const bin = bytes.toString('latin1');
+  const partes = [], abertos = [];
+  const re = /stream\r?\n/g;
+  let m;
+  while ((m = re.exec(bin))) {
+    const ini = m.index + m[0].length, fim = bin.indexOf('endstream', ini);
+    let s;
+    try { s = zlib.inflateSync(Buffer.from(bin.slice(ini, fim), 'latin1')).toString('latin1'); } catch { continue; }
+    abertos.push(s);
+    for (const t of s.matchAll(/<([0-9A-Fa-f]*)> Tj/g)) partes.push(Buffer.from(t[1], 'hex').toString('latin1'));
+  }
+  return { texto: partes.join('\n'), bruto: bin + abertos.join('\n') };
+}
+const paginasPdf = b => (b.match(/\/Type\s*\/Page(?![s\w])/g) || []).length;
+
+teste('v2.10: ADP — aprovador edita e gera o PDF no modelo, com CSP de produção', async ({ page, contexto }) => {
+  await comCspDeProducao(contexto);
+  const csp = [];
+  page.on('console', m => { if (/Content Security Policy/i.test(m.text())) csp.push(m.text()); });
+  await abrir(page, { rota: '#/inicio' });
+  await prepararAdp(page);
+  await page.goto(`${BASE}/?papel=aprovador#/campanhas`);
+  await page.reload();
+  await page.locator('#cp-adp').click();
+  const d = page.locator('dialog.dialogo'); await d.waitFor();
+  igual(await page.locator('#adp-mes').inputValue(), '2026-10', 'sugere o mês das campanhas');
+  igual(await d.locator('.adp-item').count(), 2, 'as duas aprovadas com Swile de outubro');
+  igual(await d.locator('.adp-bloqueado').count(), 0, 'aprovador vê os dados de quem recebe');
+  afirma(/Gerar PDF \(2 · R\$\s?700,00\)/.test(await d.locator('[type=submit]').innerText()), 'botão com quantidade e total');
+  const v = d.locator('#adp-v-0');
+  await v.fill('150'); await v.blur();
+  afirma(/Gerar PDF \(2 · R\$\s?750,00\)/.test(await d.locator('[type=submit]').innerText()), 'total acompanha o valor digitado');
+  // Edição da linha 1: observação e nome; o resumo acompanha.
+  await d.locator('[data-adp-editar="0"] summary').click();
+  igual(await page.inputValue('#adp-nasc-0'), '1999-03-21', 'nascimento vem dos dados Swile da campanha');
+  await page.fill('#adp-nasc-0', '');
+  await page.fill('#adp-obs-0', 'R$ 10,00 por prescrição Avert, totalizando 15 prescrições');
+  await page.fill('#adp-fav-0', 'Beatriz Sousa Barros');
+  afirma((await d.locator('[data-adp-resumo="0"]').innerText()).includes('Beatriz Sousa Barros'), 'resumo segue o nome editado');
+  await page.fill('#adp-venc', '2026-11-06');
+  await d.locator('[type=submit]').click();
+  afirma((await erroDo(page, 'adp-nasc-0').innerText()).includes('nascimento'), 'nascimento é obrigatório');
+  await page.fill('#adp-nasc-0', '1999-03-21');
+  const [dl] = await Promise.all([page.waitForEvent('download'), d.locator('[type=submit]').click()]);
+  igual(dl.suggestedFilename(), 'ADP - CAMPANHAS - OUTUBRO 2026.pdf', 'nome do arquivo');
+  await toastCom(page, 'ADP de outubro 2026 gerada');
+  const arq = path.join(SAIDA, 'adp.pdf'); await dl.saveAs(arq);
+  const bytes = fs.readFileSync(arq);
+  afirma(bytes.slice(0, 5).toString() === '%PDF-', 'é PDF');
+  const { texto: t, bruto } = abrirPdf(bytes);
+  igual(paginasPdf(bruto), 1, 'uma página');
+  igual((bruto.match(/\/Subtype\s*\/Image/g) || []).length, 2, 'as duas logos');
+  for (const esperado of ['AUTORIZAÇÃO DE PAGAMENTO', 'OUTUBRO 2026', 'LYNKZ DIST S.A - MATRIZ', '06/11/2026', 'R$ 750,00', 'CASA DO CRIADOR',
+    'PREMIAÇÃO CAMPANHA', 'R$ 10,00 por prescrição Avert, totalizando 15 prescrições', 'R$ 150,00', 'PET CENTER IMPERATRIZ', 'R$ 600,00',
+    'Beatriz Sousa Barros', '529.982.247-25', '21/03/1999', 'bia.vet@exemplo.com', 'João Pedro Lima', '30/09/1988', 'NASCIMENTO',
+    'ASSINATURA DO AUTORIZANTE DO PAGAMENTO', `Emitido em ${new Date().toLocaleDateString('pt-BR', { timeZone: 'America/Fortaleza' })}`]) {
+    afirma(t.includes(esperado), 'PDF tem: ' + esperado);
+  }
+  afirma(!t.includes('VENC.'), 'sem a coluna de vencimento (já está na faixa de cima)');
+  afirma(!/Elaborado por|Ana Aprovadora|Data:/.test(t), 'sem nomes nem campo de data: a identificação vem da assinatura');
+  igual(await page.locator('#adp-autorizante').count(), 0, 'diálogo sem o campo de quem assina');
+  const camp = await db(page);
+  afirma(!camp.campanhas.some(c => c.swile_nome_completo === 'Beatriz Sousa Barros'), 'edição não grava na campanha');
+  afirma(!csp.length, 'nada bloqueado pela CSP: ' + csp.join(' | '));
+});
+
+teste('v2.10: ADP — muitas campanhas viram mais páginas, com o cabeçalho da tabela repetido', async ({ page }) => {
+  await abrir(page, { rota: '#/inicio' });
+  await prepararAdp(page);
+  await page.evaluate(() => {
+    const d = JSON.parse(sessionStorage.getItem('simulado-db-v3'));
+    const base = d.campanhas.find(x => x.id === 2);
+    for (let k = 0; k < 28; k++) {
+      const n = ++d.seq.campanhas;
+      d.campanhas.push({ ...base, id: n, codigo: 'C2610X' + n, cliente: 'Cliente extra ' + String(k).padStart(2, '0'), investimento_lynkz: 10 });
+    }
+    sessionStorage.setItem('simulado-db-v3', JSON.stringify(d));
+  });
+  await page.goto(`${BASE}/?papel=aprovador#/campanhas`);
+  await page.reload();
+  await page.locator('#cp-adp').click();
+  const d = page.locator('dialog.dialogo'); await d.waitFor();
+  const [dl] = await Promise.all([page.waitForEvent('download'), d.locator('[type=submit]').click()]);
+  const bytes = fs.readFileSync(await dl.path());
+  const { texto: t, bruto } = abrirPdf(bytes);
+  const pags = paginasPdf(bruto);
+  afirma(pags >= 2, 'mais de uma página: ' + pags);
+  igual((t.match(/^CAMPANHAS$/gm) || []).length >= 1 && (t.match(/^OBSERVAÇÃO AO FISCAL/gm) || []).length >= 2, true, 'cabeçalho da tabela repetido na página seguinte');
+  afirma(t.includes(`Página ${pags} de ${pags}`), 'numeração das páginas');
+  afirma(t.includes('R$ 980,00'), 'total com as 30 campanhas');
+});
+
+teste('v2.10: ADP — usuário regular gera; quem recebe de campanha de outro sem cadastro fica de fora', async ({ page }) => {
+  await abrir(page, { rota: '#/inicio' });
+  await prepararAdp(page);
+  await page.goto(`${BASE}/?papel=coordenador#/historico`);
+  await page.reload();
+  await page.locator('#hs-adp').click();
+  const d = page.locator('dialog.dialogo'); await d.waitFor();
+  igual(await d.locator('.adp-item').count(), 2, 'as duas aparecem');
+  igual(await d.locator('.adp-bloqueado').count(), 1, 'a avulsa de outra pessoa fica bloqueada');
+  afirma((await d.locator('.adp-item').nth(0).innerText()).includes('João Pedro Lima'), 'a do balconista usa o cadastro e vem antes da bloqueada');
+  afirma(await d.locator('.adp-item').nth(1).evaluate(e => e.classList.contains('adp-bloqueado')), 'a bloqueada fica no fim');
+  afirma(/Gerar PDF \(1 · R\$\s?600,00\)/.test(await d.locator('[type=submit]').innerText()), 'só a que tem dados');
+  await d.locator('[data-adp-editar="0"] summary').click();
+  igual(await page.inputValue('#adp-nasc-0'), '1988-09-30', 'nascimento vem do cadastro');
+  const vio = (await axe(page, 'ADP diálogo 360 px')).filter(x => ['critical', 'serious'].includes(x.impacto));
+  afirma(!vio.length, 'acessibilidade do diálogo: ' + JSON.stringify(vio));
+  afirma(await semOverflow(page, 'ADP diálogo 360 px'), 'sem rolagem lateral em 360 px');
+  await d.locator('[data-adp-marca]:not([disabled])').uncheck();
+  await d.locator('[type=submit]').click();
+  await d.locator('.dialogo-erro', { hasText: 'Marque pelo menos uma campanha' }).waitFor();
+  await d.locator('[data-adp-marca]:not([disabled])').check();
+  await d.locator('#adp-v-0').fill('0');
+  await page.fill('#adp-cpf-0', '111.111.111-11');
+  await d.locator('[data-adp-editar="0"] summary').click();   // fecha: o erro tem de reabrir
+  await d.locator('[type=submit]').click();
+  afirma((await erroDo(page, 'adp-v-0').innerText()).includes('valor a pagar'), 'valor zerado é recusado');
+  afirma(await d.locator('[data-adp-editar="0"]').evaluate(e => e.open), 'linha com erro reabre a edição');
+  afirma((await erroDo(page, 'adp-cpf-0').innerText()).includes('CPF inválido'), 'CPF inválido é recusado');
+  await d.locator('[data-fechar]').click();
+  await d.waitFor({ state: 'detached' });
+  afirma(await page.evaluate(() => document.activeElement?.id) === 'hs-adp', 'foco volta ao botão');
+}, { largura: 360, altura: 740, toque: true });
 
 // ============================================================
 //  execução

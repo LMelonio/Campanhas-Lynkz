@@ -9,7 +9,7 @@ O código cobre o que dá para cobrir no código (banco, Worker, cabeçalhos, se
 | Banco (RLS) | Só usuário **ativo** lê ou grava. Só o aprovador decide. Nada é apagado. Dados Swile só para aprovador e solicitante. Permissão por coluna (o app não grava carimbos, `importada`, código do Qlik) |
 | Banco (10) | **Conta nova entra desativada** (a gerência libera). Limites de tamanho de texto e de faixa de valor. Limite de gravações por pessoa por hora. Auditoria de mudança de papel e ativo |
 | Worker `/api/qlik/compras` | Exige login do Supabase + perfil ativo. Só aceita POST com JSON de até 2 KB, vindo do próprio site. **20 consultas por minuto por usuário.** Bloqueia busca por expressão (`=`), busca numérica (`<`, `>`) e curinga sozinho (`*`). A mensagem crua do Qlik não vai para a tela. Cabeçalhos de segurança na resposta |
-| Navegador | CSP fechada: scripts só do próprio site (supabase-js e SheetJS em `public/vendor/`, sem CDN). Conexão só com o projeto do Supabase do `config.js`. HSTS, COOP, CORP, `X-Frame-Options: DENY`, `nosniff`, Permissions-Policy restrita |
+| Navegador | CSP fechada: scripts só do próprio site (supabase-js, SheetJS e pdf-lib em `public/vendor/`, sem CDN). Conexão só com o projeto do Supabase do `config.js`. HSTS, COOP, CORP, `X-Frame-Options: DENY`, `nosniff`, Permissions-Policy restrita |
 | Código | Todo HTML passa por `html\`\`` (escapa tudo). Nenhum `eval`. Tokens de e-mail saem da barra de endereço |
 | Segredos | Chave do Qlik só no Worker (`wrangler secret`). service_role só no `.env` local e nos secrets do GitHub. `.env` e `dados-privados/` fora do Git |
 | GitHub | Actions só com leitura do repositório. Dependabot avisa sobre versões com correção de segurança |
@@ -53,10 +53,12 @@ O `.zip` do projeto que foi enviado em 23/11/2026 tinha o `.env` com a **service
 
 Ao compartilhar o projeto, use um zip **sem** `.env`, `dados-privados/` e `node_modules/` (o `git archive` já faz isso: `git archive -o projeto.zip HEAD`).
 
-## 3. Trocar a versão do supabase-js ou do SheetJS
+## 3. Trocar a versão do supabase-js, do SheetJS ou do pdf-lib
 
-Os dois ficam em `public/vendor/` com a versão no nome (ex.: `supabase-2.119.0.js`):
+Os três ficam em `public/vendor/` com a versão no nome (ex.: `supabase-2.119.0.js`):
 
 1. `npm pack @supabase/supabase-js@<versão>` e copie `package/dist/umd/supabase.js` para `public/vendor/supabase-<versão>.js`.
+   pdf-lib (ADP): `npm pack pdf-lib@<versão>`, copie `package/dist/pdf-lib.esm.min.js` para `public/vendor/pdf-lib-<versão>.min.js`
+   (apague a última linha, `//# sourceMappingURL=...`) e troque o nome em `public/js/adp.js`.
 2. Troque o nome no `public/index.html` e no `ARQUIVOS` do `public/sw.js`, e suba a `VERSAO`.
 3. `npm test` e `npm run test:e2e` (o lote S confere que nenhum script vem de CDN).

@@ -431,3 +431,36 @@ kbd {
 .nota-devolvida .selo { text-decoration: none; margin-left: var(--e-1); }
 .compras-devolucoes { margin: calc(-1 * var(--e-1)) 0 var(--e-2) calc(18px + var(--e-2)); font-size: var(--t-14); color: var(--ink-2); }
 .nota-total { font-weight: 700; border-bottom: 0; }
+
+/* ---------- ADP (v2.10): diálogo mais largo no desktop, valor e edição por campanha ---------- */
+.lista-acoes { display: flex; flex-wrap: wrap; gap: var(--e-1) var(--e-2); }
+@media (min-width: 600px) { dialog.dialogo.dialogo-largo { width: min(720px, calc(100vw - 48px)); } }
+.adp-resumo { font-size: var(--t-14); color: var(--ink-2); margin: var(--e-3) 0 var(--e-2); }
+.adp-lista { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--e-2); }
+.adp-item {
+  display: grid; grid-template-columns: 1fr; gap: var(--e-1) var(--e-3);
+  padding: var(--e-3); border: 1px solid var(--line); border-radius: var(--r-ctrl); background: var(--card-2);
+}
+.adp-marca { display: flex; align-items: center; gap: var(--e-2); min-height: var(--tap); font-weight: 600; cursor: pointer; }
+.adp-marca input { width: 22px; height: 22px; flex: none; accent-color: var(--red); }
+.adp-info { display: grid; gap: 2px; font-size: var(--t-13); color: var(--ink-2); margin: 0; overflow-wrap: anywhere; }
+.adp-motivo { display: flex; gap: var(--e-1); align-items: flex-start; color: var(--amber); }
+.adp-motivo .ico { flex: none; width: 16px; height: 16px; margin-top: 1px; }
+.adp-valor { margin: 0; }
+.adp-bloqueado .adp-marca { cursor: default; color: var(--ink-3); }
+.adp-editar { grid-column: 1 / -1; }
+.adp-editar summary {
+  display: inline-flex; align-items: center; gap: var(--e-1); min-height: var(--tap); cursor: pointer;
+  font-size: var(--t-14); font-weight: 600; color: var(--ink-2); list-style: none;
+}
+.adp-editar summary::-webkit-details-marker { display: none; }
+.adp-editar summary .ico { width: 16px; height: 16px; }
+.adp-editar[open] summary { color: var(--ink); }
+.adp-campos { display: grid; gap: var(--e-2); padding-top: var(--e-2); border-top: 1px solid var(--line); }
+.adp-nota { margin-top: var(--e-3); }
+@media (min-width: 600px) {
+  .adp-item { grid-template-columns: 1fr 180px; }
+  .adp-item .adp-marca, .adp-item .adp-info { grid-column: 1; }
+  .adp-item .adp-valor { grid-column: 2; grid-row: 1 / span 2; align-self: center; }
+  .adp-item .adp-editar { grid-row: 3; }
+}

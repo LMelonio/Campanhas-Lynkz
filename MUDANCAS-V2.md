@@ -1,3 +1,30 @@
+# Mudanças da v2.11.1 (27/11/2026) — ADP sem nomes
+
+Sem mudança de banco.
+- O PDF da ADP não leva mais "Elaborado por", o nome de quem assina nem o campo "Data: __/__/__": a identificação e a data
+  vêm da assinatura no SignZoo. Fica só "Emitido em <data de hoje>" e o quadro "Assinatura do autorizante do pagamento".
+- Saiu do diálogo o campo "Quem assina a autorização" (e `ADP.AUTORIZANTE` do `config.js`).
+
+# Mudanças da v2.11.0 (27/11/2026) — ADP em PDF, com edição antes de gerar
+
+Sem mudança de banco. Substitui a ADP em Excel da v2.10.0.
+- **Gerar ADP** (Campanhas e Histórico, todos os usuários) agora baixa **`ADP - CAMPANHAS - <MÊS> <ANO>.pdf`**, uma página A4
+  deitada pronta para o SignZoo: logos, faixa com empresa pagadora, loja, departamento, forma, **vencimento** e **total**;
+  tabela **Campanhas** (cliente | tipo | observação ao fiscal | valor) com o total geral; tabela **Dados dos recebedores**
+  (empresa pagadora | favorecido | forma | CPF | **nascimento** | e-mail Swile | R$) — sem a coluna de vencimento, que já está
+  na faixa de cima; e o quadro da assinatura com o nome de quem assina. Lista grande vira mais páginas, com o cabeçalho
+  da tabela repetido e "Página X de Y".
+- **Editar antes de gerar:** em cada campanha, "Editar dados desta linha" abre cliente, tipo, observação ao fiscal,
+  favorecido, CPF, e-mail e nascimento (já preenchidos). Valor a pagar, vencimento e "Quem assina a autorização" também
+  mudam no diálogo. Tudo é conferido (CPF, e-mail, nascimento no passado) e a linha com erro abre sozinha.
+  **As edições valem só para o PDF:** a campanha não muda.
+- Quem recebe: dados Swile da campanha; se o usuário não pode vê-los, o cadastro do balconista; campanha de outra pessoa
+  sem balconista cadastrado fica no fim, bloqueada, com o motivo.
+- Textos fixos em `config.js` → `ADP` (agora com `AUTORIZANTE`).
+- **pdf-lib 1.17.1** (MIT, módulo ES) em `public/vendor/`, carregado só ao gerar a ADP; o ExcelJS saiu. Testado com a CSP de produção.
+
+# Mudanças da v2.10.0 (26/11/2026) — Gerar ADP (Excel; substituída pela v2.11.0)
+
 # Mudanças da v2.9.1 (25/11/2026) — barra de baixo no celular
 
 Sem mudança de banco.

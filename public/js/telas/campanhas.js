@@ -9,6 +9,7 @@ import { campoBusca, ligarBusca } from '../ui/campos.js';
 import { icone } from '../ui/icones.js';
 import { cartao, vazio } from '../ui/pecas.js';
 import * as detalhe from './detalhe.js';
+import { dialogoGerarAdp } from '../ui/adp-dialogo.js';
 import { exportarExcel, nomeParaArquivo } from '../exportar.js';
 import { estadoLista } from '../ui/estado.js';
 import { aprovarComDesfazer, reprovarComMotivo, desfazerAprovacao, assinarDecisao, botoesDecisao } from '../ui/decisao.js';
@@ -205,7 +206,10 @@ export function montar(el, ctx, params) {
       <div class="chips chips-filtro" id="cp-chips" role="group" aria-label="Filtros aplicados" hidden></div>
       <div class="lista-cabeca">
         <p class="lista-resumo" id="cp-resumo" role="status"></p>
-        <button type="button" class="btn btn-texto btn-pequeno" id="cp-excel" hidden>${icone('baixar')} Baixar Excel desta lista</button>
+        <div class="lista-acoes">
+          <button type="button" class="btn btn-texto btn-pequeno" id="cp-excel" hidden>${icone('baixar')} Baixar Excel desta lista</button>
+          <button type="button" class="btn btn-texto btn-pequeno" id="cp-adp">${icone('baixar')} Gerar ADP</button>
+        </div>
       </div>
       <div id="cp-itens"></div>
     </section>
@@ -232,6 +236,7 @@ export function montar(el, ctx, params) {
       ($('[data-tirar]', el) || $('#cp-busca', el)).focus();
     }),
     ligarBusca(el),
+    ao(el, 'click', '#cp-adp', () => dialogoGerarAdp(ctx)),
     ao(el, 'click', '#cp-excel', async (e, b) => {
       b.disabled = true; b.setAttribute('aria-busy', 'true');
       try {

@@ -25,7 +25,7 @@ public/                  ← TUDO que vai para o ar (raiz do site)
   manifest.json  sw.js  _headers (CSP e cache; lido pelo Cloudflare)
   assets/                logo.png, logo-branca.png, icon-*.png
   css/  tokens.css (ÚNICO lugar com cor)  base.css (casca)  componentes.css  telas.css
-  js/   app.js (rotas e ctx)  acesso.js (login e senha)  exportar.js (Excel)
+  js/   app.js (rotas e ctx)  acesso.js (login e senha)  exportar.js (Excel)  adp.js (ADP: regras puras + PDF com pdf-lib)
         lib/    regras.js (funções puras)  dom.js (html``)  supabase.js  url-auth.js
         dados/  campanhas.js  cadastros.js  erros.js  saude.js (confere se o banco tem as tabelas)
         ui/     icones.js  avisos.js  campos.js  combo.js  pecas.js  cadastro-dialogos.js
@@ -115,7 +115,8 @@ histórico do app quando existe.
 
 ## Segurança (v2.6) — não enfraquecer
 
-- Sem CDN: supabase-js (UMD, `window.supabase`) e SheetJS ficam em `public/vendor/` com a versão no nome. CSP `script-src 'self'`.
+- Sem CDN: supabase-js (UMD, `window.supabase`), SheetJS (Excel da lista) e pdf-lib (ADP, módulo ES, `import()` só ao gerar) ficam em `public/vendor/` com a versão no nome. CSP `script-src 'self'`.
+- ADP (v2.11): `ui/adp-dialogo.js` (diálogo: mês, vencimento, valor e "Editar dados desta linha"; o PDF não leva nomes de quem elabora ou assina — a identificação vem da assinatura no SignZoo) + `adp.js` (quem entra: aprovada + Swile + mês do fim; recebedor = swile_* visível, senão cadastro do balconista; PDF A4 deitado desenhado com pdf-lib e fonte Helvetica — texto passa por `textoPdf`, que troca o que não existe em WinAnsi). Não grava nada no banco: as edições valem só para o PDF. Textos fixos em `config.js` → `ADP`. Testes: `tests/adp.test.mjs` e e2e "v2.10: ADP".
   `connect-src` só para o projeto do Supabase do `config.js` (trocou de projeto? `_headers`, `deploy/lynkz-seguranca.conf` e `index.html`; o lote S confere).
 - `public/sw.js`: `ARQUIVOS` lista todos os módulos (o lote S confere). Página e `config.js` rede primeiro; o resto cópia guardada + atualização em segundo plano.
 - Migração 10: conta nova entra **desativada**; limites de texto/valor; limite de gravações por hora; `auditoria_perfis`.

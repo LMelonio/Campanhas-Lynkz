@@ -31,7 +31,7 @@ const C = window.CONFIG;
 // Versão destes módulos. Igual à VERSAO de config.js e sw.js (o teste do lote S confere).
 // Logo depois de publicar, o config.js já chega novo pela rede, mas os módulos podem vir
 // da cópia guardada da versão anterior: a tela ficava misturada até a segunda recarga (v2.9).
-export const VERSAO_APP = '2.9.1';
+export const VERSAO_APP = '2.11.1';
 const CHAVE_RECARGA = 'lynkz-recarregou-para';
 
 const TELAS = {
