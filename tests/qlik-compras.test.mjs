@@ -106,6 +106,30 @@ test('laboratório que no Qlik é marca usa o campo de marca', () => {
   assert.match(montarConjunto({ ...PEDIDO, padraoFornecedor: 'OURO FINO*' }), /\[Nome Fantasia Fornecedor\]=\{"OURO FINO\*"\}/);
 });
 
+test('vários laboratórios (v2.12): os do mesmo campo vão juntos; fornecedor + marca viram união', async () => {
+  const dois = montarConjunto({ ...PEDIDO, padraoFornecedor: ['OURO FINO*', '*Avert*'] });
+  assert.match(dois, /\[Nome Fantasia Fornecedor\]=\{"OURO FINO\*","\*Avert\*"\}/);
+  assert.ok(!dois.includes('+1'), 'mesmo campo: um conjunto só');
+  assert.equal(montarConjunto({ ...PEDIDO, padraoFornecedor: ['OURO FINO*', 'OURO FINO*'] }),
+    montarConjunto({ ...PEDIDO, padraoFornecedor: 'OURO FINO*' }), 'repetido conta uma vez');
+  const misto = montarConjunto({ ...PEDIDO, padraoFornecedor: ['OURO FINO*', 'marca:CATLIFE'] });
+  const [a, b] = misto.split('+1');
+  assert.match(a, /\[Nome Fantasia Fornecedor\]=\{"OURO FINO\*"\}/);
+  assert.match(b, /\[Marca do Produto\]=\{"CATLIFE"\}/);
+  assert.ok([a, b].every(p => p.includes(`[Cód. Cliente]={'4821'}`) && p.includes('[Unidade de Negócio]')), 'cliente e filtros nos dois');
+  assert.match(expressao(CONFIG_PADRAO, misto), /^Sum\(\{1<.*>\+1<.*>\} /, 'união ignorando as seleções salvas');
+  // Marca escolhida com laboratório-marca: interseção no mesmo campo.
+  assert.match(montarConjunto({ ...PEDIDO, padraoFornecedor: ['OURO FINO*', 'marca:CATLIFE'], marca: 'WELLPET' }).split('+1')[1],
+    /\[Marca do Produto\]=\{"CATLIFE"\}\*\{"WELLPET"\}/);
+  assert.throws(() => montarConjunto({ ...PEDIDO, padraoFornecedor: [] }), /Laboratório inválido/);
+  assert.throws(() => montarConjunto({ ...PEDIDO, padraoFornecedor: ['AAA*', 'BBB*', 'CCC*', 'DDD*', 'EEE*', 'FFF*'] }), /Laboratório inválido/);
+  // A consulta inteira usa os dois laboratórios em todos os cubos (devolução inclusive).
+  const { soquete, enviados } = qlikFalso();
+  await consultarCompras(abrirEngine(soquete), { ...PEDIDO, padraoFornecedor: ['OURO FINO*', '*Avert*'] });
+  const exprs = enviados.filter(e => e.method === 'CreateSessionObject').map(e => e.params.qProp.qHyperCubeDef.qMeasures[0].qDef.qDef);
+  assert.ok(exprs.every(x => x.includes('{"OURO FINO*","*Avert*"}')), exprs.join('\n'));
+});
+
 test('texto vindo do usuário não vira expressão do Qlik', () => {
   for (const ruim of [`x'}) + Sum(Total [Valor]`, 'a"b', '$(vazio)', 'a;b', '{', '', '   ', 'x'.repeat(81)]) {
     assert.throws(() => valorSeguro(ruim, 'Campo'), /inválido/, JSON.stringify(ruim));
@@ -171,6 +195,12 @@ test('rota: valida o pedido antes de falar com o Qlik e devolve o resultado', as
     { codigo_cliente: '4821', fornecedor_padrao: '>=0', inicio: '2026-10-01', fim: '2026-10-31' },        // busca numérica
     { codigo_cliente: '4821', fornecedor_padrao: '*Ouro*', marca: '=Sum(1)', inicio: '2026-10-01', fim: '2026-10-31' },
     { codigo_cliente: '*', fornecedor_padrao: '*Ouro*', inicio: '2026-10-01', fim: '2026-10-31' },
+    // Vários laboratórios (v2.12): lista vazia, longa demais ou com um item ruim
+    { codigo_cliente: '4821', fornecedor_padrao: [], inicio: '2026-10-01', fim: '2026-10-31' },
+    { codigo_cliente: '4821', fornecedor_padrao: ['AAA*', 'BBB*', 'CCC*', 'DDD*', 'EEE*', 'FFF*'], inicio: '2026-10-01', fim: '2026-10-31' },
+    { codigo_cliente: '4821', fornecedor_padrao: ['*Ouro*', '*'], inicio: '2026-10-01', fim: '2026-10-31' },
+    { codigo_cliente: '4821', fornecedor_padrao: ['*Ouro*', '=1=1'], inicio: '2026-10-01', fim: '2026-10-31' },
+    { codigo_cliente: '4821', fornecedor_padrao: ['*Ouro*', 42], inicio: '2026-10-01', fim: '2026-10-31' },
   ]) await assert.rejects(tratarCompras(pedido(ruim), env, { conectar }), e => e.status === 400);
   assert.equal(conexoes, 0, 'pedido inválido nem chega ao Qlik');
 
@@ -180,6 +210,8 @@ test('rota: valida o pedido antes de falar com o Qlik e devolve o resultado', as
   assert.equal(corpo.total, 1600.49);
   assert.equal(corpo.notas.length, 3);
   assert.ok(corpo.consultado_em);
+  const varios = await tratarCompras(pedido({ codigo_cliente: '4821', fornecedor_padrao: ['OURO FINO*', '*Avert*'], inicio: '2026-10-01', fim: '2026-10-31' }), env, { conectar });
+  assert.equal(varios.status, 200, 'lista de laboratórios é aceita');
 });
 
 test('configuração do Worker: padrão da LYNKZ e troca por variável', () => {

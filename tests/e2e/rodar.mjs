@@ -88,6 +88,8 @@ async function escolherNoCombo(page, seletor, termo, opcao) {
   await page.type(seletor, termo, { delay: 15 });
   await page.locator(`${seletor} ~ .combo-lista [role=option]`, { hasText: opcao }).first().click();
 }
+// Laboratórios escolhidos na Nova (v2.12): botões com × abaixo do campo.
+const labsEscolhidos = page => page.locator('#n-labs [data-tirar-lab]').evaluateAll(bs => bs.map(b => b.dataset.tirarLab));
 const erroDo = (page, id) => page.locator(`#${id}-erro`);
 async function semErroVisivel(page) { return page.locator('.campo.tem-erro').count(); }
 
@@ -416,7 +418,7 @@ teste('detalhe: coordenador reenvia campanha reprovada com os dados copiados', a
   igual(await titulo(page), 'Reenviar campanha', 'título');
   igual(await page.inputValue('#n-campanha'), 'Ração Premium', 'nome copiado');
   igual(await page.inputValue('#n-empresa'), 'Pet Center Imperatriz', 'empresa copiada');
-  igual(await page.inputValue('#n-laboratorio'), 'Farmina', 'laboratório copiado');
+  igual(JSON.stringify(await labsEscolhidos(page)), '["Farmina"]', 'laboratório copiado');
   igual(await page.inputValue('#n-inv-lynkz'), '2.500,00', 'investimento copiado');
 });
 
@@ -441,9 +443,11 @@ teste('nova: combo de empresa funciona só com teclado', async ({ page }) => {
   igual(await page.inputValue('#n-empresa'), 'Pet Center Imperatriz', 'Enter escolhe (busca por cidade)');
   await page.fill('#n-laboratorio', ''); await page.click('#n-laboratorio'); await page.keyboard.type('bag');
   await page.keyboard.press('ArrowDown'); await page.keyboard.press('ArrowUp'); await page.keyboard.press('Enter');
-  igual(await page.inputValue('#n-laboratorio'), 'Biogénesis Bagó Pet', 'setas + Enter');
+  igual(JSON.stringify(await labsEscolhidos(page)), '["Biogénesis Bagó Pet"]', 'setas + Enter acrescenta o laboratório');
+  igual(await page.inputValue('#n-laboratorio'), '', 'o campo fica livre para acrescentar outro');
   await page.click('#n-laboratorio'); await page.keyboard.type('xyz'); await page.keyboard.press('Escape'); await page.keyboard.press('Tab');
-  igual(await page.inputValue('#n-laboratorio'), 'Biogénesis Bagó Pet', 'texto solto volta ao último válido');
+  igual(await page.inputValue('#n-laboratorio'), '', 'texto solto não fica no campo');
+  igual(JSON.stringify(await labsEscolhidos(page)), '["Biogénesis Bagó Pet"]', 'texto solto não mexe nos escolhidos');
 });
 
 teste('nova: Swile + balconista preenche, edição atualiza o cadastro e a campanha grava tudo', async ({ page }) => {
@@ -1127,7 +1131,7 @@ teste('lote E: "Usar como modelo" numa aprovada copia os campos, sem as datas', 
   igual(await titulo(page), 'Nova campanha', 'é campanha nova, não reenvio');
   afirma((await page.locator('#conteudo').innerText()).includes('como modelo'), 'nota de origem');
   igual(await page.inputValue('#n-campanha'), 'Combo Vermífugos', 'nome copiado');
-  igual(await page.inputValue('#n-laboratorio'), 'Vansil', 'laboratório copiado');
+  igual(JSON.stringify(await labsEscolhidos(page)), '["Vansil"]', 'laboratório copiado');
   igual(await page.inputValue('#n-inicio'), '', 'início não copiado');
   igual(await page.inputValue('#n-fim'), '', 'fim não copiado');
 });
@@ -1402,8 +1406,49 @@ teste('lote R: empresa sem código do Qlik e "Recurso próprio" não consultam n
   await page.fill('#n-inicio', '2026-10-01'); await page.fill('#n-fim', '2026-10-31'); await page.dispatchEvent('#n-fim', 'change');
   await page.locator('#compras-corpo', { hasText: 'não tem código de cliente do Qlik' }).waitFor();
   await escolherNoCombo(page, '#n-empresa', '4821', 'Casa do Criador');
+  // Ouro Fino + Recurso próprio: consulta só a Ouro Fino e avisa que o Recurso próprio fica fora.
   await escolherNoCombo(page, '#n-laboratorio', 'recurso', 'Recurso próprio');
+  await page.locator('#compras-corpo', { hasText: 'Recurso próprio não entra na consulta' }).waitFor();
+  await page.click('[data-tirar-lab="Ouro Fino"]');
   await page.locator('#compras-corpo', { hasText: 'não é um fornecedor do Qlik' }).waitFor();
+});
+
+teste('v2.12: Nova com dois laboratórios — consulta os dois juntos, grava "A, B" e o filtro acha por qualquer um', async ({ page }) => {
+  const pedidos = [];
+  page.on('request', r => { if (r.url().includes('/api/qlik/compras')) pedidos.push(JSON.parse(r.postData() || '{}')); });
+  await abrir(page, { rota: '#/nova' });
+  await escolherNoCombo(page, '#n-empresa', '4821', 'Casa do Criador');
+  await escolherNoCombo(page, '#n-laboratorio', 'ouro', 'Ouro Fino');
+  await escolherNoCombo(page, '#n-laboratorio', 'avert', 'Avert');
+  igual(JSON.stringify(await labsEscolhidos(page)), '["Ouro Fino","Avert"]', 'os dois escolhidos, na ordem');
+  igual(await page.inputValue('#n-laboratorio'), '', 'campo livre para o próximo');
+  // Quem já foi escolhido some da lista.
+  await page.fill('#n-laboratorio', ''); await page.type('#n-laboratorio', 'ouro', { delay: 15 });
+  igual(await page.locator('#n-laboratorio ~ .combo-lista [role=option]', { hasText: 'Ouro Fino' }).count(), 0, 'Ouro Fino não aparece de novo');
+  await page.keyboard.press('Escape');
+  await page.fill('#n-inicio', '2026-10-01'); await page.fill('#n-fim', '2026-10-31'); await page.dispatchEvent('#n-fim', 'change');
+  await page.locator('#compras-corpo .compras-total').waitFor();
+  const ultimo = pedidos[pedidos.length - 1];
+  igual(JSON.stringify(ultimo.fornecedor_padrao), '["OURO FINO*","*Avert*"]', 'o Qlik recebe os dois laboratórios');
+  afirma((await page.locator('#compras-corpo').innerText()).includes('somando os laboratórios escolhidos'), 'avisa que é a soma');
+  // Tirar e pôr de novo: a consulta segue a lista.
+  await page.click('[data-tirar-lab="Avert"]');
+  igual(JSON.stringify(await labsEscolhidos(page)), '["Ouro Fino"]', 'tirou o Avert');
+  for (let i = 0; i < 40 && typeof pedidos[pedidos.length - 1].fornecedor_padrao !== 'string'; i++) await page.waitForTimeout(100);
+  igual(pedidos[pedidos.length - 1].fornecedor_padrao, 'OURO FINO*', 'com um só, o pedido volta ao formato antigo');
+  await escolherNoCombo(page, '#n-laboratorio', 'avert', 'Avert');
+  await page.fill('#n-campanha', 'Dois laboratórios');
+  await page.locator('[data-enviar]:visible').first().click();
+  await page.locator('dialog.dialogo button', { hasText: 'Enviar assim' }).click();   // sem meta: o app avisa
+  await page.waitForFunction(() => /^#\/campanhas\/\d+/.test(location.hash));
+  const d = await db(page);
+  const c = d.campanhas.find(x => x.campanha === 'Dois laboratórios');
+  igual(c.laboratorio, 'Ouro Fino, Avert', 'grava os dois na campanha');
+  afirma((await page.locator('.det-sub').first().innerText()).includes('Ouro Fino, Avert'), 'detalhe mostra os dois');
+  await page.goto(`${BASE}/#/campanhas`);
+  await page.selectOption('#cp-lab', 'Avert');
+  await page.locator('#cp-itens .cartao', { hasText: 'Dois laboratórios' }).waitFor();
+  igual(await page.locator('#cp-lab option[value="Ouro Fino, Avert"]').count(), 0, 'o filtro lista cada laboratório, não a dupla');
 });
 
 teste('lote R: cliente sem compras no período avisa', async ({ page }) => {

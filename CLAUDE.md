@@ -112,6 +112,13 @@ histórico do app quando existe.
   (`LIMITES.compras_devolucoes`/`compras_devolvidas`, conferidos por `tests/regras.test.mjs`). Nulas = site 2.8.1 ou sem consulta.
   A conferência do aprovador no Qlik compara total **e** devoluções.
 - Total zero: o Worker manda `cliente_total` (sem o laboratório) e a Nova explica o caso. R$ 0,00 em tudo? `npm run qlik:diagnosticar` (v2.8.1).
+- **Vários laboratórios (v2.12, sem mudança de banco):** a campanha guarda 1 ou mais na mesma coluna `laboratorio`,
+  separados por ", " ("Ouro Fino, Avert"). Use sempre `listaLaboratorios()`/`juntarLaboratorios()` de `lib/regras.js`
+  (nenhum nome de `LABORATORIOS` pode ter vírgula — o teste confere; juntos cabem em `LIMITES.textos.laboratorio`).
+  Nova: o combo `#n-laboratorio` só acrescenta; os escolhidos ficam em `st.labs` e viram botões `[data-tirar-lab]` em `#n-labs`.
+  Qlik: `fornecedor_padrao` pode ser texto (um laboratório, como antes) ou lista de até 5 (`MAX_PADROES`); o total soma todos.
+  Mesmo campo vai junto (`[Fornecedor]={"A","B"}`); fornecedor + "marca:" viram união `{1<…>+1<…>}` (`montarConjunto`).
+  "Recurso próprio" fica fora da consulta (`laboratoriosConsultaveis`). Filtro da lista de Campanhas acha por qualquer um.
 
 ## Segurança (v2.6) — não enfraquecer
 

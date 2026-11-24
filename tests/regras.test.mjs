@@ -4,8 +4,22 @@ import assert from 'node:assert/strict';
 import {
   calc, banda, posRegua, lerValor, valorCampo, pct, brl, contem, cpfValido, cnpjValido, maskCPF, maskCNPJ,
   maskTelefone, telefoneValido, dataCivil, dataBR, dias, dataExcel, colunaExcel, errosRecebedor,
-  nomeCompleto, emailValido, textoDevolucoes,
+  nomeCompleto, emailValido, textoDevolucoes, listaLaboratorios, juntarLaboratorios,
 } from '../public/js/lib/regras.js';
+
+test('laboratórios (v2.12): texto da campanha ↔ lista', () => {
+  assert.deepEqual(listaLaboratorios('Ouro Fino, Avert'), ['Ouro Fino', 'Avert']);
+  assert.deepEqual(listaLaboratorios('Avert'), ['Avert'], 'campanha antiga, com um só');
+  assert.deepEqual(listaLaboratorios(' Ouro Fino ,, Avert, Ouro Fino '), ['Ouro Fino', 'Avert'], 'espaços, vazios e repetidos');
+  assert.deepEqual(listaLaboratorios(null), []);
+  assert.equal(juntarLaboratorios(['Ouro Fino', 'Avert', 'Ouro Fino']), 'Ouro Fino, Avert');
+  assert.equal(juntarLaboratorios([]), '');
+  // O separador é a vírgula: nenhum nome da lista do config.js pode ter vírgula.
+  const cfg = readFileSync(new URL('../public/config.js', import.meta.url), 'utf8');
+  const labs = JSON.parse(cfg.match(/LABORATORIOS:\s*(\[[^\]]*\])/)[1]);
+  assert.ok(labs.length && labs.every(l => !l.includes(',')), 'LABORATORIOS sem vírgula');
+  assert.ok(labs.every(l => l.length <= LIMITES.textos.laboratorio));
+});
 
 const FAIXAS = { verde: 0.08, amarela: 0.15 };
 

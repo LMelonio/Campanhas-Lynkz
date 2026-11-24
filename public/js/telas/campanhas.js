@@ -4,7 +4,7 @@
 //  Atualização ao vivo redesenha só a lista, preservando rolagem e foco.
 // ============================================================
 import { mostrarFiltroAtivo, html, pintar, $, ao, debounce } from '../lib/dom.js';
-import { contem, calc, dataCivil, hojeCivil, STATUS } from '../lib/regras.js';
+import { contem, calc, dataCivil, hojeCivil, STATUS, listaLaboratorios } from '../lib/regras.js';
 import { campoBusca, ligarBusca } from '../ui/campos.js';
 import { icone } from '../ui/icones.js';
 import { cartao, vazio } from '../ui/pecas.js';
@@ -60,7 +60,8 @@ function aplicarFiltros(ctx, { ignorarStatus = false } = {}) {
   const eu = ctx.perfil.id;
   return ctx.campanhas.todas().filter(c =>
     (ignorarStatus || filtros.status === 'Todas' || c.status === filtros.status) &&
-    (!filtros.lab || c.laboratorio === filtros.lab) &&
+    // Campanha com vários laboratórios ("Ouro Fino, Avert") aparece no filtro de cada um (v2.12).
+    (!filtros.lab || listaLaboratorios(c.laboratorio).includes(filtros.lab)) &&
     (!filtros.minhas || c.solicitante_id === eu) &&
     (!filtros.busca || contem(filtros.busca, `${c.cliente} ${c.campanha} ${c.laboratorio} ${c.codigo} ${c.solicitante_nome || ''}`)) &&
     (!daUrl.mes || dataCivil(c.data_decisao || c.criado_em).startsWith(daUrl.mes)) &&
@@ -180,7 +181,7 @@ export function montar(el, ctx, params) {
   if (params.id) garantirNaLista(ctx, params.id);
   s = { el, ctx, id: null, desligar: [], desmontarDetalhe: null, rolagemLista: 0 };
 
-  const labs = [...new Set([...(window.CONFIG.LABORATORIOS || []), ...ctx.campanhas.todas().map(c => c.laboratorio)])]
+  const labs = [...new Set([...(window.CONFIG.LABORATORIOS || []), ...ctx.campanhas.todas().flatMap(c => listaLaboratorios(c.laboratorio))])]
     .filter(Boolean).sort((a, b) => a.localeCompare(b, 'pt-BR'));
 
   pintar(el, html`<div class="mestre-detalhe" data-com-detalhe="false">

@@ -38,9 +38,14 @@ export function qlikSimulado(rq, rs) {
     const cod = String(p.codigo_cliente);
     const devolucoes = vazio || p.marca ? 0 : cod.endsWith('7') ? 300 : cod.endsWith('8') ? 50 : 0;
     if (cod.endsWith('7') && !vazio && !p.marca) notas = notas.map(n => (n.numero === '209001' ? { ...n, provavel_devolucao: true } : n));
+    // Vários laboratórios (v2.12): um fornecedor por padrão, como o Worker devolve.
+    const padroes = Array.isArray(p.fornecedor_padrao) ? p.fornecedor_padrao : [p.fornecedor_padrao];
+    const fornecedores = padroes.length > 1
+      ? padroes.map(x => String(x).replace(/\*/g, '').trim().toUpperCase() + ' DISTRIBUIDORA').sort()
+      : ['OURO FINO SAUDE ANIMAL'];
     responder(200, {
       total: Math.round((soma(notas) - devolucoes) * 100) / 100, notas, devolucoes, marcas,
-      fornecedores: vazio ? [] : ['OURO FINO SAUDE ANIMAL'], consultado_em: new Date().toISOString(),
+      fornecedores: vazio ? [] : fornecedores, consultado_em: new Date().toISOString(),
       cliente_total: vazio ? (String(p.codigo_cliente).endsWith('00') ? 0 : 850) : null,
     });
   }, 150));

@@ -52,6 +52,14 @@ export const normaliza = s => String(s ?? '')
   .normalize('NFD').replace(/[̀-ͯ]/g, '')
   .toLowerCase().trim();
 
+// ---------- laboratórios (v2.12) ----------
+// Uma campanha pode ter 1 ou mais laboratórios. Ficam na mesma coluna "laboratorio",
+// separados por ", " ("Ouro Fino, Avert"): o banco não muda e tela, Excel e e-mail
+// mostram o texto como sempre. Nenhum nome da lista LABORATORIOS tem vírgula.
+export const SEPARADOR_LABORATORIOS = ', ';
+export const listaLaboratorios = texto => [...new Set(String(texto ?? '').split(',').map(s => s.trim()).filter(Boolean))];
+export const juntarLaboratorios = lista => listaLaboratorios((lista || []).join(',')).join(SEPARADOR_LABORATORIOS);
+
 // Busca sem acento: todas as palavras do termo precisam aparecer no texto.
 export function contem(termo, texto) {
   const palavras = normaliza(termo).split(/\s+/).filter(Boolean);

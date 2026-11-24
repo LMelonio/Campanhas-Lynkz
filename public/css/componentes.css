@@ -394,6 +394,8 @@ dialog.dialogo[open] { animation: sobe .22s ease; display: flex; flex-direction:
 
 /* chip de filtro vindo da URL (com ×) */
 .chips-filtro { margin: var(--e-3) 0 0; }
+/* Nova: laboratórios escolhidos, cada um com × para tirar (v2.12) */
+.labs-escolhidos { margin: var(--e-2) 0 0; }
 .chip-filtro { display: inline-flex; align-items: center; gap: var(--e-1); min-height: var(--tap); border-color: var(--ink); background: var(--card-2); color: var(--ink); font-weight: 600; }
 .chip-filtro svg.ico { width: 16px; height: 16px; }
 

@@ -11,7 +11,7 @@
 //    SUPABASE_URL · SUPABASE_ANON_KEY
 //    QLIK_CAMPOS · QLIK_FILTROS · QLIK_EXPRESSAO_VALOR   (opcionais, JSON/texto)
 // ============================================================
-import { abrirEngine, consultarCompras, ErroQlik, CONFIG_PADRAO, codigoSeguro, padraoSeguro, serialQlik } from './qlik-engine.js';
+import { abrirEngine, consultarCompras, ErroQlik, CONFIG_PADRAO, codigoSeguro, padraoSeguro, serialQlik, MAX_PADROES } from './qlik-engine.js';
 
 // Cabeçalhos de segurança também nas respostas da API (o _headers só vale para arquivos estáticos).
 const CABECALHOS = {
@@ -100,7 +100,10 @@ export async function tratarCompras(request, env, { conectar = conectarQlik } = 
   const corpo = await lerCorpo(request);
   if (!corpo || typeof corpo !== 'object' || Array.isArray(corpo)) return json({ erro: 'Pedido inválido.' }, 400);
   const codigoCliente = codigoSeguro(corpo.codigo_cliente);
-  const padraoFornecedor = padraoSeguro(corpo.fornecedor_padrao, 'Laboratório');
+  // Um laboratório (texto) ou vários (lista, v2.12); cada padrão passa por padraoSeguro.
+  const fp = corpo.fornecedor_padrao;
+  if (Array.isArray(fp) && (!fp.length || fp.length > MAX_PADROES)) throw new ErroQlik('Laboratório inválido.', { status: 400 });
+  const padraoFornecedor = Array.isArray(fp) ? fp.map(p => padraoSeguro(p, 'Laboratório')) : padraoSeguro(fp, 'Laboratório');
   const marca = corpo.marca ? padraoSeguro(corpo.marca, 'Marca') : null;
   const { inicio, fim } = corpo;
   const dias = serialQlik(fim) - serialQlik(inicio);

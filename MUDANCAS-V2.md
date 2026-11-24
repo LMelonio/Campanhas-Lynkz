@@ -1,3 +1,14 @@
+# Mudanças da v2.12.0 (24/11/2026) — mais de um laboratório por campanha
+
+Sem mudança de banco.
+- **Nova campanha:** o campo agora é "Laboratórios" e aceita 1 ou mais. Cada laboratório escolhido vira um botão com ×
+  logo abaixo do campo (clicar tira), e o campo fica livre para acrescentar o próximo. Quem já foi escolhido some da lista.
+  Rascunho, reenviar e "Usar como modelo" trazem todos.
+- **Compras no Qlik:** a consulta soma o que o cliente comprou de todos os laboratórios escolhidos (até 5), com as notas
+  de todos. "Recurso próprio" não entra na consulta e a tela avisa. Vale também para "Conferir no Qlik agora" no detalhe.
+- **Gravação:** os laboratórios vão juntos na coluna de sempre ("Ouro Fino, Avert"): cartões, detalhe, histórico, Excel e
+  e-mail mostram assim, sem mudança. O filtro de laboratório da lista de Campanhas acha a campanha por qualquer um deles.
+
 # Mudanças da v2.11.1 (27/11/2026) — ADP sem nomes
 
 Sem mudança de banco.

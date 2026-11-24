@@ -87,25 +87,53 @@ export function alvoLaboratorio(config, padrao) {
   return m ? { campo: config.campos.marca, padrao: m[1].trim() } : { campo: config.campos.fornecedor, padrao: seguro };
 }
 
+// Vários laboratórios (v2.12): agrupa os padrões pelo campo do Qlik (fornecedor ou marca do produto).
+export const MAX_PADROES = 5;
+export function alvosLaboratorios(config, padroes) {
+  const lista = (Array.isArray(padroes) ? padroes : [padroes]);
+  if (!lista.length || lista.length > MAX_PADROES) throw new ErroQlik('Laboratório inválido.', { status: 400 });
+  const porCampo = new Map();
+  for (const p of lista) {
+    const a = alvoLaboratorio(config, p);
+    const atual = porCampo.get(a.campo) || [];
+    if (!atual.includes(a.padrao)) atual.push(a.padrao);
+    porCampo.set(a.campo, atual);
+  }
+  return [...porCampo].map(([campo, ps]) => ({ campo, padroes: ps }));
+}
+
 // Modificador de conjunto (vai dentro de {1…}, ver expressao()): <[Cód. Cliente]={'123'}, [Fornecedor]={"OURO*"}, [Data Venda]={"=Num(..)>=A and Num(..)<=B"}, …>
 // A data usa expressão: a busca numérica (">=46000<=46030") não casa neste app do Qlik.
+// padraoFornecedor: um padrão ou uma lista (vários laboratórios, v2.12). Os do mesmo campo vão juntos
+// ([Fornecedor]={"OURO FINO*","*Avert*"}); fornecedor + marca do produto viram a união de dois conjuntos
+// ("<…>+1<…>", que expressao() embrulha em {1…}).
 // semLaboratorio: o mesmo filtro sem fornecedor nem marca (tudo o que o cliente comprou no período).
-export function montarConjunto({ config = CONFIG_PADRAO, codigoCliente, padraoFornecedor, marca = null, inicio, fim, semLaboratorio = false }) {
+// extras: filtros a mais em todos os conjuntos (ex.: só as linhas de devolução).
+export function montarConjunto({ config = CONFIG_PADRAO, codigoCliente, padraoFornecedor, marca = null, inicio, fim, semLaboratorio = false, extras = [] }) {
   const c = config.campos;
-  const alvo = alvoLaboratorio(config, padraoFornecedor);
+  const alvos = alvosLaboratorios(config, padraoFornecedor);
+  const marcaSegura = marca && !semLaboratorio ? padraoSeguro(marca, 'Marca') : null;
   // Only({1} …): a busca por expressão é avaliada nas seleções salvas do app; sem o {1},
   // só as datas do mês selecionado (ex.: jul/2026) passavam no filtro (conferido no Qlik real, v2.8.1).
   const dt = `Only({1} Num(${nomeCampo(c.data)}))`;
-  const partes = [
-    `${nomeCampo(c.cliente)}={'${codigoSeguro(codigoCliente)}'}`,
-    ...(semLaboratorio ? [] : [`${nomeCampo(alvo.campo)}={"${alvo.padrao}"}`]),
-    // "< fim + 1": inclui o último dia inteiro, mesmo se a data vier com hora.
-    `${nomeCampo(c.data)}={"=${dt}>=${serialQlik(inicio)} and ${dt}<${serialQlik(fim) + 1}"}`,
-    // Marca (opcional): uma linha de produtos do laboratório, ex.: WELLPET dentro da Ouro Fino.
-    ...(marca && !semLaboratorio ? [`${nomeCampo(c.marca)}={"${padraoSeguro(marca, 'Marca')}"}`] : []),
-    ...(config.filtros || []).map(f => `${nomeCampo(f.campo)}={'${valorSeguro(f.valor, 'Filtro')}'}`),
-  ];
-  return `<${partes.join(', ')}>`;
+  const lista = ps => ps.map(p => `"${p}"`).join(',');
+  const parte = alvo => {
+    // Laboratório que no Qlik é marca + marca escolhida: interseção no mesmo campo ({"CATLIFE"}*{"X"}).
+    const marcaNoAlvo = marcaSegura && alvo && alvo.campo === c.marca;
+    const partes = [
+      `${nomeCampo(c.cliente)}={'${codigoSeguro(codigoCliente)}'}`,
+      ...(alvo ? [`${nomeCampo(alvo.campo)}={${lista(alvo.padroes)}}${marcaNoAlvo ? `*{"${marcaSegura}"}` : ''}`] : []),
+      // "< fim + 1": inclui o último dia inteiro, mesmo se a data vier com hora.
+      `${nomeCampo(c.data)}={"=${dt}>=${serialQlik(inicio)} and ${dt}<${serialQlik(fim) + 1}"}`,
+      // Marca (opcional): uma linha de produtos do laboratório, ex.: WELLPET dentro da Ouro Fino.
+      ...(marcaSegura && !marcaNoAlvo ? [`${nomeCampo(c.marca)}={"${marcaSegura}"}`] : []),
+      ...(config.filtros || []).map(f => `${nomeCampo(f.campo)}={'${valorSeguro(f.valor, 'Filtro')}'}`),
+      ...extras,
+    ];
+    return `<${partes.join(', ')}>`;
+  };
+  if (semLaboratorio) return parte(null);
+  return alvos.map(parte).join('+1');
 }
 // "{1<…>}" e não "{<…>}": o app do Qlik abre com as seleções salvas de quem usou por último
 // (ex.: jul/2026 + PLANTAS NATURAIS), e "{<…>}" partiria delas — tudo dava R$ 0,00 (v2.8.1).
@@ -251,7 +279,8 @@ export async function consultarCompras(engine, { appId, config = CONFIG_PADRAO, 
   if (diferenca > 0) devolucoes = diferenca / 100;
   if (diferenca > 0 && c.tipoVenda && c.serieOrigem) {
     try {
-      const soDevolucoes = `${conjunto.slice(0, -1)}, ${nomeCampo(c.tipoVenda)}={'${valorSeguro(config.devolucao ?? CONFIG_PADRAO.devolucao, 'Devolução')}'}>`;
+      const soDevolucoes = montarConjunto({ config, codigoCliente, padraoFornecedor, marca, inicio, fim,
+        extras: [`${nomeCampo(c.tipoVenda)}={'${valorSeguro(config.devolucao ?? CONFIG_PADRAO.devolucao, 'Devolução')}'}`] });
       const d = await criarCubo(engine, hDoc, {
         qDimensions: [{ qDef: { qFieldDefs: [c.serieOrigem] }, qNullSuppression: false }],
         qMeasures: [{ qDef: { qDef: expressao(config, soDevolucoes) } }], qSuppressZero: true, qInitialDataFetch: [],
@@ -265,9 +294,12 @@ export async function consultarCompras(engine, { appId, config = CONFIG_PADRAO, 
     }
   }
 
-  // 3) quais fornecedores o padrão do laboratório pegou (o usuário confere)
+  // 3) quais fornecedores os padrões dos laboratórios pegaram (o usuário confere).
+  // Com algum laboratório por fornecedor, lista os fornecedores; só por marca, as marcas.
+  const alvos = alvosLaboratorios(config, padraoFornecedor);
+  const campoConferir = alvos.some(a => a.campo === c.fornecedor) ? c.fornecedor : alvos[0].campo;
   const f = await criarCubo(engine, hDoc, {
-    qDimensions: [{ qDef: { qFieldDefs: [alvoLaboratorio(config, padraoFornecedor).campo] }, qNullSuppression: true }],
+    qDimensions: [{ qDef: { qFieldDefs: [campoConferir] }, qNullSuppression: true }],
     qMeasures: [medida], qSuppressZero: true, qInitialDataFetch: [],
   }, 'fornecedor');
   const fornecedores = (await lerLinhas(engine, f.h, f.cubo.qSize.qcy, 2)).map(l => limpa(l[0].qText)).filter(Boolean).sort();

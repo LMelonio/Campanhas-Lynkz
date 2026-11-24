@@ -12,6 +12,7 @@ import { html, pintar, $, $$, ao, debounce, armazenamento } from '../lib/dom.js'
 import {
   calc, banda, brl, textoDevolucoes, pct, lerValor, valorCampo, soDigitos, normaliza, maskCPF, maskTelefone,
   errosRecebedor, LIMITES, hojeCivil, horaBR, somaDias, periodoMes, dias, dataBR, STATUS,
+  listaLaboratorios, juntarLaboratorios,
 } from '../lib/regras.js';
 import { icone } from '../ui/icones.js';
 import { regua, FAIXAS } from '../ui/pecas.js';
@@ -20,7 +21,7 @@ import { combo } from '../ui/combo.js';
 import { confirmar } from '../ui/avisos.js';
 import { textoBuscaEmpresa, camposBalconista } from '../dados/cadastros.js';
 import { empresaCheia } from '../ui/cadastro-dialogos.js';
-import { consultarCompras, laboratorioConsultavel } from '../dados/qlik.js';
+import { consultarCompras, laboratoriosConsultaveis, MAX_LABORATORIOS_CONSULTA } from '../dados/qlik.js';
 
 const C = window.CONFIG;
 const CHAVE_RASCUNHO = 'lynkz_rascunho_campanha_v2';
@@ -55,6 +56,34 @@ export function limparRascunho() {
 let st = null;
 
 const v = id => ($('#' + id, st.el)?.value ?? '').trim();
+
+// ---------- laboratórios (1 ou mais, v2.12) ----------
+// O combo serve para acrescentar; os escolhidos ficam em st.labs e aparecem como botões com ×.
+const labsTexto = () => juntarLaboratorios(st.labs);
+// "Ouro Fino" · "Ouro Fino nem Avert" · "Ouro Fino, Avert nem Vansil"
+const nemLista = l => (l.length > 1 ? `${l.slice(0, -1).join(', ')} nem ${l[l.length - 1]}` : l[0] || '');
+
+// Nomes da lista LABORATORIOS na grafia de lá; os que não estão nela ficam de fora (como antes).
+function labsConhecidos(texto) {
+  const lista = C.LABORATORIOS || [];
+  return listaLaboratorios(texto).map(l => lista.find(x => normaliza(x) === normaliza(l))).filter((l, i, a) => l && a.indexOf(l) === i);
+}
+
+function desenharLabs() {
+  const caixa = $('#n-labs', st.el);
+  if (!caixa) return;
+  caixa.hidden = !st.labs.length;
+  pintar(caixa, html`${st.labs.map(l => html`<button type="button" class="chip chip-filtro" data-tirar-lab="${l}" aria-label="Tirar o laboratório ${l}">${l}${icone('x')}</button>`)}`);
+}
+
+// Acrescentar/tirar laboratório: redesenha os botões, grava o rascunho e consulta de novo.
+function mudouLabs() {
+  desenharLabs();
+  limparErro($('#form-nova', st.el), 'n-laboratorio');
+  st.salvar?.();
+  st.atualizarComprasDepois?.();
+  atualizarResumoPassos();
+}
 const num = id => lerValor(v(id));
 const marcado = id => !!$('#' + id, st.el)?.checked;
 
@@ -252,7 +281,7 @@ function atualizarResumoPassos() {
   const empresa = st.ctx.cadastros.empresa(st.comboEmpresa?.valor());
   pintar(alvo, html`<dl class="linhas">
     <div class="linha"><dt>Empresa</dt><dd>${empresa?.nome || '—'}</dd></div>
-    <div class="linha"><dt>Laboratório</dt><dd>${st.comboLab?.valor() || '—'}</dd></div>
+    <div class="linha"><dt>${st.labs.length > 1 ? 'Laboratórios' : 'Laboratório'}</dt><dd>${labsTexto() || '—'}</dd></div>
     <div class="linha"><dt>Custo total</dt><dd class="valor">R$ ${brl(k.total)}</dd></div>
     <div class="linha"><dt>% da meta</dt><dd>${k.pctMeta == null ? 'sem meta' : pct(k.pctMeta)}</dd></div>
     <div class="linha"><dt>Notas marcadas</dt><dd>${m.length ? `${m.length} · R$ ${brl(m.reduce((t, x) => t + x.valor, 0))}` : 'nenhuma'}</dd></div>
@@ -263,7 +292,8 @@ function atualizarResumoPassos() {
 function validar() {
   const e = {};
   if (!st.comboEmpresa.valor()) e['n-empresa'] = 'Escolha a empresa.';
-  if (!st.comboLab.valor()) e['n-laboratorio'] = 'Escolha o laboratório.';
+  if (!st.labs.length) e['n-laboratorio'] = 'Escolha ao menos um laboratório.';
+  else if (labsTexto().length > LIMITES.textos.laboratorio) e['n-laboratorio'] = `Laboratórios demais: os nomes juntos passam de ${LIMITES.textos.laboratorio} caracteres. Tire algum.`;
   if (!v('n-campanha')) e['n-campanha'] = 'Dê um nome à campanha.';
   if (v('n-inicio') && v('n-fim') && v('n-fim') < v('n-inicio')) e['n-fim'] = 'O fim está antes do início.';
 
@@ -324,7 +354,7 @@ function salvarRascunho() {
     if (val !== '' && val !== false && !(el.type === 'checkbox' && el.id.startsWith('n-rec-'))) algum = true;
   });
   r.empresaId = st.comboEmpresa.valor();
-  r.laboratorio = st.comboLab.valor();
+  r.laboratorio = labsTexto();   // "Ouro Fino, Avert"; rascunho antigo, com um só, também serve
   r.pessoa = st.pessoa;
   r.passo = st.passo;
   r.visitado = st.visitado;
@@ -403,7 +433,8 @@ function atualizarSomaNotas() {
 
 function desenharResultadoCompras() {
   const c = st.compras;
-  const forn = c.fornecedores.length ? c.fornecedores.join(', ') : c.laboratorio;
+  const forn = c.fornecedores.length ? c.fornecedores.join(', ') : juntarLaboratorios(c.laboratorios);
+  const varios = c.laboratorios.length > 1;
   // Por que não veio nada (cliente_total só vem quando o total é zero; Worker antigo não manda).
   const semNada = !c.notas.length && c.total === 0 && c.cliente_total === 0;
   const outros = !c.notas.length && c.total === 0 && c.cliente_total > 0;
@@ -411,9 +442,10 @@ function desenharResultadoCompras() {
   pintarCompras(html`
     <p class="compras-total" role="status">${icone('info')}<span>No período de ${dataBR(c.inicio)} a ${dataBR(c.fim)}, este cliente comprou <strong class="valor">${moeda(c.total)}</strong> de ${forn}${c.marca ? html`, marca <strong>${c.marca}</strong>` : ''}.</span></p>
     ${c.devolucoes > 0 ? html`<p class="compras-devolucoes" id="compras-devolucoes">Devoluções no período: <strong class="valor">${textoDevolucoes(c.devolucoes, devolvidasDe(c).length)}</strong></p>` : ''}
-    ${c.fornecedores.length ? html`<p class="campo-dica compras-origem">Vem do Qlik. Confira se o fornecedor acima é mesmo o laboratório da campanha.</p>` : ''}
+    ${c.fornecedores.length ? html`<p class="campo-dica compras-origem">Vem do Qlik${varios ? ', somando os laboratórios escolhidos' : ''}. Confira se ${varios ? 'os fornecedores acima são mesmo os laboratórios' : 'o fornecedor acima é mesmo o laboratório'} da campanha.</p>` : ''}
+    ${c.foraDaConsulta.length ? html`<p class="campo-dica">${juntarLaboratorios(c.foraDaConsulta)} não ${c.foraDaConsulta.length === 1 ? 'entra' : 'entram'} na consulta: não é fornecedor do Qlik.</p>` : ''}
     ${c.marcas.length > 1 || c.marca ? selecao({
-      id: 'n-marca', rotulo: 'Marca do laboratório', opcional: true, vazio: 'Todas as marcas',
+      id: 'n-marca', rotulo: varios ? 'Marca' : 'Marca do laboratório', opcional: true, vazio: 'Todas as marcas',
       dica: 'Escolha uma marca para ver só o que o cliente comprou dela (ex.: WellPet dentro da Ouro Fino).',
       opcoes: c.marcas.map(m => ({ valor: m.nome, rotulo: `${m.nome} · ${moeda(m.valor)}` })), valor: c.marca || '',
     }) : ''}
@@ -430,10 +462,14 @@ function desenharResultadoCompras() {
         <p class="campo-dica" id="notas-soma" aria-live="polite"></p>
       </fieldset>`
     : semNada ? html`<p class="nota nota-alerta" role="alert">${icone('alerta')}<span>O Qlik não mostra nenhuma compra deste cliente no período, de nenhum laboratório. Se ele comprou, avise o TI: a consulta pode estar sem acesso aos dados. Você pode enviar a campanha sem as notas.</span></p>`
-    : outros ? html`<p class="nota">${icone('info')}<span>No período, o cliente comprou <strong class="valor">${moeda(c.cliente_total)}</strong> de outros laboratórios, mas nada de ${c.laboratorio}. Se ${c.laboratorio} vende com outro nome no Qlik, avise o TI.</span></p>`
+    : outros ? html`<p class="nota">${icone('info')}<span>No período, o cliente comprou <strong class="valor">${moeda(c.cliente_total)}</strong> de outros laboratórios, mas nada de ${nemLista(c.laboratorios)}. Se ${varios ? 'algum deles' : c.laboratorios[0]} vende com outro nome no Qlik, avise o TI.</span></p>`
     : html`<p class="nota">${icone('info')}<span>Nenhuma nota fiscal encontrada nesse período.</span></p>`}`);
   atualizarSomaNotas();
 }
+
+// O que identifica uma consulta: cliente, laboratórios consultáveis e período (a marca vem depois).
+const baseCompras = (empresa, inicio, fim) =>
+  [empresa.codigo_cliente, laboratoriosConsultaveis(st.labs).join(','), inicio, fim].join('|');
 
 // Consulta de novo quando empresa, laboratório ou datas mudam. Só consulta
 // com os quatro preenchidos, e descarta a resposta de uma consulta antiga.
@@ -441,19 +477,24 @@ async function atualizarCompras() {
   if (!st) return;
   const meu = st;
   const empresa = st.ctx.cadastros.empresa(st.comboEmpresa.valor());
-  const lab = st.comboLab.valor();
+  const labs = st.labs;
+  const consultaveis = laboratoriosConsultaveis(labs);
   const inicio = v('n-inicio'), fim = v('n-fim');
 
   const aviso = texto => { st.compras = null; pintarCompras(html`<p class="campo-dica">${texto}</p>`); };
   st.consulta?.abort();
-  if (!empresa || !lab) return aviso('Escolha a empresa e o laboratório para ver quanto o cliente comprou.');
+  if (!empresa || !labs.length) return aviso('Escolha a empresa e o laboratório para ver quanto o cliente comprou.');
   if (!empresa.codigo_cliente) return aviso('Esta empresa não tem código de cliente do Qlik, então não há compras para consultar.');
-  if (!laboratorioConsultavel(lab)) return aviso('Este laboratório não é um fornecedor do Qlik. Siga sem notas fiscais.');
+  if (!consultaveis.length) {
+    return aviso(labs.length === 1 ? 'Este laboratório não é um fornecedor do Qlik. Siga sem notas fiscais.'
+      : 'Nenhum destes laboratórios é fornecedor do Qlik. Siga sem notas fiscais.');
+  }
+  if (consultaveis.length > MAX_LABORATORIOS_CONSULTA) return aviso(`Para ver as compras no Qlik, escolha no máximo ${MAX_LABORATORIOS_CONSULTA} laboratórios.`);
   if (!inicio || !fim) return aviso('Informe o início e o fim da campanha para ver as compras do período.');
   if (fim < inicio) return aviso('O fim está antes do início.');
 
-  // Trocar empresa, laboratório ou datas zera a marca escolhida (cada laboratório tem as suas).
-  const base = [empresa.codigo_cliente, lab, inicio, fim].join('|');
+  // Trocar empresa, laboratórios ou datas zera a marca escolhida (cada laboratório tem as suas).
+  const base = baseCompras(empresa, inicio, fim);
   if (st.baseCompras !== base) { st.marca = ''; st.baseCompras = base; }
   const chave = `${base}|${st.marca || ''}`;
   if (st.compras?.chave === chave) return desenharResultadoCompras();
@@ -462,9 +503,10 @@ async function atualizarCompras() {
   const controle = st.consulta = new AbortController();
   pintarCompras(html`<p class="campo-dica" role="status">Consultando o Qlik…</p>`);
   try {
-    const r = await consultarCompras({ codigoCliente: empresa.codigo_cliente, laboratorio: lab, marca: st.marca || null, inicio, fim, sinal: controle.signal });
+    const r = await consultarCompras({ codigoCliente: empresa.codigo_cliente, laboratorio: consultaveis, marca: st.marca || null, inicio, fim, sinal: controle.signal });
     if (st !== meu || controle.signal.aborted) return;
-    st.compras = { ...r, marcas: r.marcas || [], chave, inicio, fim, laboratorio: lab, marca: st.marca || '', marcadas: new Set() };
+    st.compras = { ...r, marcas: r.marcas || [], chave, inicio, fim, laboratorios: consultaveis,
+      foraDaConsulta: labs.filter(l => !consultaveis.includes(l)), marca: st.marca || '', marcadas: new Set() };
     desenharResultadoCompras();
   } catch (e) {
     if (e.name === 'AbortError' || st !== meu) return;
@@ -545,11 +587,11 @@ async function enviar() {
 
     const rb = marcado('n-rebate');
     // Só vale a consulta que bate com o que está na tela agora.
-    const comprasAtuais = st.compras && st.compras.chave === [empresa.codigo_cliente, st.comboLab.valor(), v('n-inicio'), v('n-fim'), st.marca || ''].join('|') ? st.compras : null;
+    const comprasAtuais = st.compras && st.compras.chave === `${baseCompras(empresa, v('n-inicio'), v('n-fim'))}|${st.marca || ''}` ? st.compras : null;
     const { campanha: c, balconistaId: novoBalcId } = await ctx.campanhas.enviar({
       campanha: {
         cliente: empresa.nome, empresa_id: empresa.id, balconista_id: balconistaId,
-        laboratorio: st.comboLab.valor(), campanha: v('n-campanha'),
+        laboratorio: labsTexto(), campanha: v('n-campanha'),
         tipo: v('n-tipo') || null, mecanica: v('n-mecanica') || null,
         investimento_lynkz: num('n-inv-lynkz') || 0, investimento_industria: num('n-inv-industria') || 0,
         forma_pagamento: v('n-pagamento') || null,
@@ -610,7 +652,8 @@ export function montar(el, ctx, params) {
   }
   st = { el, ctx, pessoa: ini.pessoa ?? null, enviando: false, enviado: false, desligar: [],
          rascunhoSemPessoais: !!(rascunho && rascunho.pessoa === 'outra'),
-         passo: Math.min(3, Math.max(1, +rascunho?.passo || 1)) };
+         passo: Math.min(3, Math.max(1, +rascunho?.passo || 1)),
+         labs: labsConhecidos(ini.laboratorio) };
   st.visitado = Math.max(st.passo, Math.min(3, +rascunho?.visitado || 1));
 
   ctx.cabecalho({ titulo: reenvio ? 'Reenviar campanha' : 'Nova campanha', voltar: origem ? `#/campanhas/${origem.id}` : '#/inicio' });
@@ -631,7 +674,10 @@ export function montar(el, ctx, params) {
 
       <section class="painel" data-passo="1"><h2 class="painel-titulo">Empresa e laboratório</h2><div class="painel-corpo">
         ${campo({ id: 'n-empresa', rotulo: 'Empresa', obrigatorio: true, dica: 'Digite nome, nome fantasia, código, cidade ou CNPJ.', atributos: { placeholder: 'Nome, código, cidade ou CNPJ' } })}
-        ${campo({ id: 'n-laboratorio', rotulo: 'Laboratório', obrigatorio: true, atributos: { placeholder: 'Selecione ou digite para buscar' } })}
+        ${campo({ id: 'n-laboratorio', rotulo: 'Laboratórios', obrigatorio: true,
+                  dica: 'Escolha um ou mais. Para acrescentar outro, escolha de novo na lista.',
+                  atributos: { placeholder: 'Selecione ou digite para buscar' },
+                  depois: html`<div class="chips labs-escolhidos" id="n-labs" role="group" aria-label="Laboratórios escolhidos" hidden></div>` })}
       </div></section>
 
       <section class="painel" data-passo="1"><h2 class="painel-titulo">A campanha</h2><div class="painel-corpo">
@@ -718,10 +764,16 @@ export function montar(el, ctx, params) {
 
   const form = $('#form-nova', el);
 
+  // O combo só acrescenta: escolheu, entra na lista de botões e o campo volta a ficar vazio.
   st.comboLab = combo($('#n-laboratorio', el), {
-    opcoes: () => (C.LABORATORIOS || []).map(l => ({ valor: l, rotulo: l })),
-    valor: (C.LABORATORIOS || []).find(l => normaliza(l) === normaliza(ini.laboratorio || '')) || null,
-    aoEscolher: () => { limparErro(form, 'n-laboratorio'); salvar(); atualizarComprasDepois(); },
+    opcoes: () => (C.LABORATORIOS || []).filter(l => !st.labs.includes(l)).map(l => ({ valor: l, rotulo: l })),
+    vazio: 'Nenhum laboratório com esse nome (ou já está escolhido).',
+    aoEscolher: o => {
+      if (!o) return;
+      if (!st.labs.includes(o.valor)) st.labs = [...st.labs, o.valor];
+      st.comboLab.definir(null);
+      mudouLabs();
+    },
   });
 
   st.comboEmpresa = combo($('#n-empresa', el), {
@@ -745,6 +797,8 @@ export function montar(el, ctx, params) {
   const salvar = debounce(salvarRascunho, 400);
   st.salvar = salvar;
   const atualizarComprasDepois = debounce(atualizarCompras, 500);
+  st.atualizarComprasDepois = atualizarComprasDepois;
+  desenharLabs();
 
   // Primeiro desenho do bloco "Quem recebe" com o que veio do rascunho/campanha.
   desenharRecebedor({ dados: ini.dadosPessoais || null });
@@ -758,6 +812,14 @@ export function montar(el, ctx, params) {
     // Enter no celular, antes do último passo, vale como "Continuar".
     ao(form, 'submit', 'form', e => { e.preventDefault(); if (telaDePassos() && st.passo < PASSOS.length) continuar(); else enviar(); }),
     ao(el, 'click', '[data-passo-continuar]', () => continuar()),
+    // Tirar um laboratório: o foco vai para o próximo botão (ou para o campo, se acabaram).
+    ao(form, 'click', '[data-tirar-lab]', (e, b) => {
+      const i = st.labs.indexOf(b.dataset.tirarLab);
+      st.labs = st.labs.filter(l => l !== b.dataset.tirarLab);
+      mudouLabs();
+      const botoes = $$('[data-tirar-lab]', form);
+      (botoes[Math.min(i, botoes.length - 1)] || $('#n-laboratorio', el)).focus();
+    }),
     ao(el, 'click', '[data-passo-voltar]', () => irParaPasso(st.passo - 1)),
     ao(el, 'click', '[data-ir-passo]', (e, b) => { if (!b.disabled) irParaPasso(+b.dataset.irPasso); }),
     ao(el, 'click', '[data-acrescentar]', (e, b) => {
