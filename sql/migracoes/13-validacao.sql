@@ -1,5 +1,6 @@
 -- ============================================================
 --  13 — VALIDAÇÃO (só leitura). Esperado: 5 linhas, todas com ok = true.
+--  Rode DEPOIS de 13-devolucoes-da-consulta.sql. Linhas false = a migração não entrou.
 -- ============================================================
 select n, ok, teste from (values
   (1, exists (select 1 from information_schema.columns where table_schema='public' and table_name='campanhas' and column_name='compras_devolucoes')
@@ -8,9 +9,13 @@ select n, ok, teste from (values
   (2, exists (select 1 from information_schema.columns where table_schema='public' and table_name='campanhas_app' and column_name='compras_devolucoes')
       and exists (select 1 from information_schema.columns where table_schema='public' and table_name='campanhas_app' and column_name='compras_devolvidas'),
       'view campanhas_app entrega as duas colunas'),
-  (3, has_column_privilege('authenticated', 'public.campanhas', 'compras_devolucoes', 'insert')
-      and has_column_privilege('authenticated', 'public.campanhas', 'compras_devolvidas', 'insert')
-      and not has_column_privilege('authenticated', 'public.campanhas', 'compras_devolucoes', 'update'),
+  -- has_column_privilege dá ERRO se a coluna não existe: o case só pergunta depois de conferir (migração não rodada = false).
+  (3, case when (select count(*) from information_schema.columns where table_schema='public' and table_name='campanhas'
+                  and column_name in ('compras_devolucoes', 'compras_devolvidas')) = 2
+      then has_column_privilege('authenticated', 'public.campanhas', 'compras_devolucoes', 'insert')
+       and has_column_privilege('authenticated', 'public.campanhas', 'compras_devolvidas', 'insert')
+       and not has_column_privilege('authenticated', 'public.campanhas', 'compras_devolucoes', 'update')
+      else false end,
       'app grava as colunas ao criar, mas não altera depois'),
   (4, coalesce(position('compras_devolvidas' in pg_get_functiondef('public.enviar_campanha(jsonb,jsonb,jsonb)'::regprocedure)) > 0, false),
       'enviar_campanha grava as devoluções'),
