@@ -161,6 +161,10 @@ update perfis set papel = 'aprovador', ativo = true where email = 'seu.email@emp
 > **Daqui em diante, tudo pelo app.** Quem cria conta aparece em **Usuários → Sem acesso**. Toque em
 > **Liberar acesso** e, se a pessoa também for aprovar campanhas, em **Editar → Administrador**.
 > Ninguém consegue tirar o próprio papel de administrador: sempre sobra pelo menos um.
+>
+> **Nome que aparece como "charles.machado"?** Contas novas ganham o nome a partir do e-mail. O administrador
+> corrige em **Usuários → Editar → Nome** (ex.: "Charles Machado"); o nome novo aparece nas campanhas e no menu.
+> Desde a v2.9 o menu mostra quantas contas estão esperando liberação, e o Início do administrador avisa.
 
 ---
 

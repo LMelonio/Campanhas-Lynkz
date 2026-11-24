@@ -3,7 +3,7 @@
 //  #/campanhas/:id abre o detalhe (≥ 1200 px: lado a lado).
 //  Atualização ao vivo redesenha só a lista, preservando rolagem e foco.
 // ============================================================
-import { html, pintar, $, ao, debounce } from '../lib/dom.js';
+import { mostrarFiltroAtivo, html, pintar, $, ao, debounce } from '../lib/dom.js';
 import { contem, calc, dataCivil, hojeCivil, STATUS } from '../lib/regras.js';
 import { campoBusca, ligarBusca } from '../ui/campos.js';
 import { icone } from '../ui/icones.js';
@@ -11,6 +11,7 @@ import { cartao, vazio } from '../ui/pecas.js';
 import * as detalhe from './detalhe.js';
 import { exportarExcel, nomeParaArquivo } from '../exportar.js';
 import { estadoLista } from '../ui/estado.js';
+import { aprovarComDesfazer, reprovarComMotivo, desfazerAprovacao, assinarDecisao, botoesDecisao } from '../ui/decisao.js';
 
 const PASSO = 40;
 const STATUS_FILTROS = [
@@ -94,6 +95,7 @@ function desenharFiltros() {
   const base = aplicarFiltros(ctx, { ignorarStatus: true });
   const conta = v => v === 'Todas' ? base.length : base.filter(c => c.status === v).length;
   pintar($('#cp-status', el), html`${STATUS_FILTROS.map(f => html`<button type="button" class="filtro" data-status="${f.valor}" aria-pressed="${filtros.status === f.valor}">${f.rotulo}<span class="n">${conta(f.valor)}</span></button>`)}`);
+  mostrarFiltroAtivo($('#cp-status', el));
 }
 
 function desenharLista() {
@@ -102,6 +104,9 @@ function desenharLista() {
   // Guarda o foco (cartão ou "Mostrar mais") para devolver depois.
   const focado = document.activeElement;
   const idFoco = caixa.contains(focado) ? (focado.dataset.id || focado.id) : null;
+  // Foco num botão de decisão: volta para o rodapé do mesmo cartão (ou para o cartão).
+  const cartaoFoco = caixa.contains(focado) ? focado.closest('[data-cartao]')?.dataset.cartao : null;
+  const rodape = c => (ctx.ehAprovador && c.status === STATUS.PENDENTE ? botoesDecisao(c) : '');
 
   const lista = ordenar(aplicarFiltros(ctx));
   const visiveis = lista.slice(0, filtros.limite);
@@ -112,7 +117,7 @@ function desenharLista() {
   $('#cp-excel', el).hidden = !lista.length;
   pintar($('#cp-resumo', el), lista.length === 1 ? '1 campanha' : `${lista.length} campanhas`);
   pintar(caixa, lista.length
-    ? html`${visiveis.map(c => cartao(c, { ativo: String(c.id) === String(s.id) }))}
+    ? html`${visiveis.map(c => cartao(c, { ativo: String(c.id) === String(s.id), rodape: rodape(c) }))}
       ${lista.length > visiveis.length ? html`<button type="button" class="btn btn-fantasma btn-largo" id="cp-mais">Mostrar mais (${lista.length - visiveis.length} restantes)</button>` : ''}`
     : vazio({
         // "Só as minhas" ligado por padrão e nenhuma campanha enviada ainda: não é busca sem resultado.
@@ -124,7 +129,10 @@ function desenharLista() {
               texto: filtrando ? 'Tente outro nome, código ou laboratório, ou limpe os filtros.' : 'Campanhas com este status aparecem aqui.',
             }),
       }));
-  if (idFoco) (caixa.querySelector(`[data-id="${CSS.escape(idFoco)}"]`) || document.getElementById(idFoco))?.focus({ preventScroll: true });
+  if (cartaoFoco) {
+    const box = caixa.querySelector(`[data-cartao="${CSS.escape(cartaoFoco)}"]`);
+    (box?.querySelector('[data-lista-desfazer], [data-lista-aprovar]') || box?.querySelector('.cartao') || caixa.querySelector('.cartao'))?.focus({ preventScroll: true });
+  } else if (idFoco) (caixa.querySelector(`[data-id="${CSS.escape(idFoco)}"]`) || document.getElementById(idFoco))?.focus({ preventScroll: true });
 }
 
 function mostrarDetalhe(id) {
@@ -177,7 +185,7 @@ export function montar(el, ctx, params) {
   pintar(el, html`<div class="mestre-detalhe" data-com-detalhe="false">
     <section class="md-lista" aria-label="Lista de campanhas">
       <div class="ferramentas">
-        ${campoBusca({ id: 'cp-busca', rotulo: 'Buscar campanhas', valor: filtros.busca, placeholder: 'Empresa, campanha, laboratório ou código' })}
+        ${campoBusca({ id: 'cp-busca', rotulo: 'Buscar campanhas', valor: filtros.busca, placeholder: 'Buscar campanha ou código', dica: 'Procura empresa, campanha, laboratório, código e quem enviou.' })}
         <div class="filtros" id="cp-status" role="group" aria-label="Filtrar por status"></div>
         <div class="ferramentas-linha">
           <div class="campo">
@@ -242,6 +250,11 @@ export function montar(el, ctx, params) {
       $('#cp-itens', el).querySelectorAll('.cartao')[antes]?.focus();
     }),
     ctx.campanhas.assinar(redesenhar),
+    // Decidir pela lista (v2.9): o mesmo de ui/decisao.js que o detalhe usa.
+    ao(el, 'click', '[data-lista-aprovar]', (e, b) => { const c = ctx.campanhas.porId(b.dataset.listaAprovar); if (c) aprovarComDesfazer(ctx, c); }),
+    ao(el, 'click', '[data-lista-reprovar]', (e, b) => { const c = ctx.campanhas.porId(b.dataset.listaReprovar); if (c) reprovarComMotivo(ctx, c); }),
+    ao(el, 'click', '[data-lista-desfazer]', () => desfazerAprovacao()),
+    assinarDecisao(() => { if (s) desenharLista(); }),
     () => buscar.cancelar(),
   );
 

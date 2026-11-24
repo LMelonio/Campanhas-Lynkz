@@ -104,8 +104,8 @@ body.menu-aberto .menu { transform: none; visibility: visible; box-shadow: var(-
 .menu-nova { margin: var(--e-3) 0 var(--e-4); }
 .menu-rodape { margin-top: auto; padding: var(--e-4) var(--e-3) 0; border-top: 1px solid var(--line); display: grid; gap: var(--e-2); }
 .menu-usuario { font-size: var(--t-14); font-weight: 600; }
-.menu-usuario small { display: block; font-weight: 400; color: var(--ink-2); font-size: var(--t-12); }
-.versao { font-size: var(--t-12); color: var(--ink-3); }
+.menu-usuario small { display: block; font-weight: 400; color: var(--ink-2); font-size: var(--t-13); }
+.versao { font-size: var(--t-13); color: var(--ink-3); }
 
 .contador {
   min-width: 22px; height: 22px; padding: 0 6px; border-radius: var(--r-pill);

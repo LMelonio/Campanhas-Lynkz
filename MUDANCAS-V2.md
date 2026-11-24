@@ -1,3 +1,36 @@
+# Mudanças da v2.9.0 (24/11/2026) — origem: MELHORIAS-V2.9.md
+
+**Banco — rodar `sql/migracoes/13-devolucoes-da-consulta.sql` ANTES de publicar o site (depois `13-validacao.sql`: 5 linhas `true`; desfazer: `13-rollback.sql`)**
+- `campanhas.compras_devolucoes` e `compras_devolvidas` (até R$ 10 milhões e 50 notas); `enviar_campanha` grava as duas.
+- Com a 13 no banco e o site ainda na 2.8.1, enviar campanha continua funcionando (as colunas ficam vazias).
+
+**Correções**
+- **Devoluções (A1):** o total do Qlik já desconta as devoluções, mas a nota devolvida vinha com o valor cheio e a soma
+  das notas passava do total. Agora a nota de provável devolução (valor que fecha com o devolvido na série) aparece
+  riscada, com o selo "Provável devolução", fora da soma e sem poder marcar; e a linha
+  **"Devoluções no período: −R$ X (Y notas)"** fecha a conta. O detalhe mostra igual ao aprovador, e a conferência
+  no Qlik compara total e devoluções. Excel ganhou a coluna "Devoluções no período (Qlik)".
+- **Versão misturada (A2):** logo depois de publicar, a tela podia abrir com módulos da versão anterior. O app agora
+  percebe, limpa as cópias guardadas e recarrega uma vez ("Atualizando para a versão…"), sem loop.
+- **Ordem de publicação (A3):** quadro "Banco primeiro, site depois" no `PUBLICAR.md` e no `COMECE-AQUI.md`.
+
+**Celular**
+- **Nova campanha em 3 passos (B1)**, abaixo de 900 px: Cliente → Valores → Quem recebe e revisão. "Continuar" confere
+  só o passo; "Enviar" leva ao passo do primeiro erro; o passo fica no rascunho. No computador, continua uma página só.
+- **Notas recolhidas (B2):** com mais de 5, aparecem as 5 primeiras e "Ver todas as N notas" (Nova e detalhe).
+- **Ajustes (D1–D5):** buscas com texto de exemplo curto; filtros de status numa linha só; os 3 números da ficha da
+  empresa na mesma linha; Histórico em cartões (com a data e quem decidiu); textos de leitura em 13 px.
+
+**Aprovador**
+- **Aprovar e reprovar na lista (C1):** botões no cartão das campanhas pendentes, com o mesmo comportamento do detalhe
+  (5 s para desfazer; motivo obrigatório na reprova).
+- **Contas esperando liberação (C2):** número no menu "Usuários" e aviso no Início.
+- **Aviso por e-mail (C3):** plano em `NOTIFICACOES.md` e função pronta em `supabase/functions/avisar-aprovador/`.
+  **Não publicada** (precisa de conta no Resend e segredos no Supabase).
+
+**Desempenho (E1):** a abertura lê só as colunas usadas e só as empresas ativas (as desativadas vêm sob demanda).
+Medido na produção: −14% no volume das empresas e −49% no dos balconistas.
+
 # Mudanças da v2.8.1 (23/11/2026) — consulta de compras no Qlik
 
 Teste em produção (v2.6.0): a consulta devolvia **R$ 0,00 para qualquer cliente, laboratório e período**

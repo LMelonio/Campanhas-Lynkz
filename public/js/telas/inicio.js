@@ -7,6 +7,7 @@ import { calc, brl, brl0, dataCivil, hojeCivil, STATUS } from '../lib/regras.js'
 import { icone } from '../ui/icones.js';
 import { cartao, vazio } from '../ui/pecas.js';
 import { estadoLista } from '../ui/estado.js';
+import { usuarios } from '../dados/usuarios.js';
 
 const MESES = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'];
 
@@ -27,9 +28,11 @@ function desenhar(el, ctx) {
 
   const recentes = (ctx.ehAprovador ? todas : todas.filter(c => c.solicitante_id === eu)).slice(0, 5);
   const primeiroNome = String(ctx.perfil.nome || '').split(/\s+/)[0];
+  const semAcesso = ctx.ehAprovador ? usuarios.semAcesso() || 0 : 0;
 
   pintar(el, html`
     <p class="saudacao">Olá, ${primeiroNome}.</p>
+    ${semAcesso > 0 ? html`<p class="nota aviso-usuarios" role="status">${icone('pessoa')}<span>${semAcesso} ${semAcesso === 1 ? 'pessoa esperando' : 'pessoas esperando'} liberação de acesso. <a href="#/usuarios">Liberar em Usuários</a></span></p>` : ''}
 
     ${ctx.ehAprovador
       ? (fila.length
@@ -85,5 +88,6 @@ export function montar(el, ctx) {
   desenhar(el, ctx);
   // Atualização ao vivo: a tela não tem campo, pode redesenhar inteira.
   const desligar = ctx.campanhas.assinar(() => desenhar(el, ctx));
-  return desligar;
+  const desligarUsuarios = ctx.ehAprovador ? usuarios.assinar(() => desenhar(el, ctx)) : () => {};
+  return () => { desligar(); desligarUsuarios(); };
 }

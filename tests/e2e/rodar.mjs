@@ -313,6 +313,60 @@ teste('detalhe: aprovar → desfazer mantém pendente; aprovar de novo grava e a
   await toastCom(page, 'Aprovada');
 });
 
+// v2.9 (C1): decidir direto na lista, com o mesmo módulo (ui/decisao.js) do detalhe.
+teste('lista: aprovar pelo cartão grava o mesmo que pelo detalhe; desfazer volta; reprovar pede motivo', async ({ page }) => {
+  await abrir(page, { rota: '#/campanhas' });
+  const pend = (await db(page)).campanhas.filter(c => c.status === 'Pendente').map(c => c.id);
+  afirma(pend.length >= 3, 'semente com 3 pendentes');
+  const [a, b, r] = pend;
+  const rodape = page.locator(`[data-cartao="${a}"] .cartao-acoes`);
+  await rodape.waitFor();
+  afirma(/da meta|sem meta/.test(await page.locator(`[data-cartao="${a}"]`).innerText()) && /R\$/.test(await page.locator(`[data-cartao="${a}"]`).innerText()), 'cartão mostra custo e % da meta');
+  const [y1, y2] = await Promise.all([`[data-lista-reprovar="${a}"]`, `[data-lista-aprovar="${a}"]`].map(s => page.locator(s).boundingBox().then(r => Math.round(r.y))));
+  igual(y1, y2, 'Reprovar e Aprovar na mesma linha');
+  const alt = await page.locator(`[data-lista-aprovar="${a}"]`).boundingBox();
+  afirma(alt.height >= 44, 'botão com alvo de 44 px: ' + alt.height);
+  igual(await page.locator(`a.cartao [data-lista-aprovar]`).count(), 0, 'botões fora do link do cartão');
+
+  // desfazer dentro de 5 s
+  await page.click(`[data-lista-aprovar="${a}"]`);
+  await page.locator(`[data-cartao="${a}"] [data-lista-desfazer]`).click();
+  await page.waitForTimeout(5600);
+  igual((await db(page)).campanhas.find(c => c.id === a).status, 'Pendente', 'desfazer mantém pendente');
+  await page.locator(`[data-lista-aprovar="${a}"]`).waitFor();
+
+  // aprova pela lista
+  await page.click(`[data-lista-aprovar="${a}"]`);
+  await page.locator(`[data-cartao="${a}"]`, { hasText: 'Aprovando em instantes' }).waitFor();
+  await toastCom(page, 'Aprovada ·');
+  await page.locator(`[data-cartao="${a}"]`).waitFor({ state: 'detached' });   // sai de "Pendentes"
+
+  // aprova pelo detalhe e compara
+  await page.goto(`${BASE}/?papel=aprovador#/campanhas/${b}`);
+  await page.locator('[data-aprovar]').click();
+  await page.waitForFunction(id => JSON.parse(sessionStorage.getItem('simulado-db-v3')).campanhas.find(c => c.id === id).status === 'Aprovada', b, { timeout: 9000 });
+  const d = await db(page);
+  const [ca, cb] = [a, b].map(id => d.campanhas.find(c => c.id === id));
+  for (const k of ['status', 'aprovador_nome', 'data_decisao', 'motivo']) igual(ca[k], cb[k], `lista e detalhe gravam o mesmo ${k}`);
+
+  // reprova pela lista: motivo obrigatório
+  await page.goto(`${BASE}/?papel=aprovador#/campanhas`);
+  await page.click(`[data-lista-reprovar="${r}"]`);
+  const dlg = page.locator('dialog.dialogo'); await dlg.waitFor();
+  await dlg.locator('button[type="submit"]').click();
+  await erroDo(page, 'rp-motivo').waitFor();
+  await dlg.locator('#rp-motivo').fill('Meta baixa para o investimento');
+  await dlg.locator('button[type="submit"]').click(); await dlg.waitFor({ state: 'detached' });
+  const cr = (await db(page)).campanhas.find(c => c.id === r);
+  igual(cr.status, 'Reprovada', 'reprovada pela lista'); igual(cr.motivo, 'Meta baixa para o investimento', 'motivo gravado');
+});
+
+teste('lista: usuário comum não vê Aprovar/Reprovar nos cartões', async ({ page }) => {
+  await abrir(page, { papel: 'coordenador', rota: '#/campanhas' });
+  await page.locator('#cp-itens .cartao').first().waitFor();
+  igual(await page.locator('[data-lista-aprovar], [data-lista-reprovar]').count(), 0, 'sem botões de decisão');
+});
+
 teste('detalhe: reprovar exige motivo; motivo rápido preenche; grava', async ({ page }) => {
   await abrir(page, { rota: '#/campanhas/3' });
   await page.click('[data-reprovar]');
@@ -533,6 +587,8 @@ teste('gestão: lista, busca por balconista e desativadas', async ({ page }) => 
   const linhas = () => page.locator('#gs-itens a[href^="#/gestao/empresas/"]').count();
   igual(await linhas(), 3, '3 empresas ativas');
   await page.click('label[for="gs-inativas"]');
+  // v2.9 (E1): as desativadas são lidas só agora, sob demanda.
+  await page.waitForFunction(() => document.querySelectorAll('#gs-itens a[href^="#/gestao/empresas/"]').length === 4, null, { timeout: 5000 }).catch(() => {});
   igual(await linhas(), 4, 'com desativadas: 4');
   await page.fill('#gs-busca', 'joao'); await page.waitForTimeout(400);
   igual(await linhas(), 1, 'busca pelo nome do balconista (sem acento)');
@@ -639,6 +695,25 @@ teste('usuários: administrador libera conta, muda papel com confirmação e nã
   afirma(await d.locator('input[name="du-papel"]').first().isDisabled(), 'o próprio papel fica travado');
   igual(await d.locator('#du-ativo').count(), 0, 'sem desligar o próprio acesso');
   await d.locator('button', { hasText: 'Cancelar' }).click();
+});
+
+// v2.9 (C2): contas esperando liberação no menu e no Início do administrador.
+teste('usuários: menu mostra quantas contas esperam liberação; o Início avisa; liberar zera', async ({ page }) => {
+  await abrir(page, { rota: '#/inicio' });
+  const cont = page.locator('#menu [data-contador-usuarios]');
+  await page.waitForFunction(() => document.querySelector('#menu [data-contador-usuarios]')?.hidden === false);
+  igual((await cont.innerText()).trim(), '1', 'u-novo desativado conta 1');
+  afirma(/1 conta esperando liberação/.test(await cont.getAttribute('aria-label')), 'nome acessível do contador');
+  const aviso = page.locator('.aviso-usuarios');
+  afirma(/1 pessoa esperando liberação/.test(await aviso.innerText()), 'Início avisa');
+  await aviso.locator('a').click();
+  await page.waitForFunction(() => location.hash === '#/usuarios');
+  await page.click('[data-liberar="u-novo"]');
+  await toastCom(page, 'já pode entrar');
+  await page.waitForFunction(() => document.querySelector('#menu [data-contador-usuarios]')?.hidden === true);
+  await page.goto(`${BASE}/?papel=aprovador#/inicio`);
+  await page.locator('.saudacao').waitFor();
+  igual(await page.locator('.aviso-usuarios').count(), 0, 'sem aviso depois de liberar');
 });
 
 teste('usuários: usuário comum não vê o menu nem a tela', async ({ page }) => {
@@ -1698,6 +1773,72 @@ teste('v2.9: com erro em outro passo, "Enviar" leva até ele; o passo fica no ra
   await page.waitForTimeout(600);
   await page.reload(); await page.waitForSelector('#app:not([hidden])');
   await page.locator('#passo-atual', { hasText: '2 de 3' }).waitFor();
+}, { largura: 390, altura: 844 });
+
+// v2.9 (D1–D5): ajustes de celular.
+teste('v2.9: D1 placeholders da busca não cortam e D2 filtros numa linha com o ativo à vista (360 px)', async ({ page }) => {
+  // Largura do texto do placeholder (mesma fonte do campo) x espaço útil do campo.
+  const cabe = sel => page.evaluate(s => {
+    const i = document.querySelector(s); const cs = getComputedStyle(i);
+    const ctx = document.createElement('canvas').getContext('2d'); ctx.font = `${cs.fontWeight} ${cs.fontSize} ${cs.fontFamily}`;
+    const util = i.getBoundingClientRect().width - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight) - parseFloat(cs.borderLeftWidth) - parseFloat(cs.borderRightWidth);
+    return { texto: i.placeholder, largura: ctx.measureText(i.placeholder).width, util, descrito: !!document.getElementById(i.getAttribute('aria-describedby') || '-') };
+  }, sel);
+  for (const [rota, sel] of [['#/campanhas', '#cp-busca'], ['#/gestao', '#gs-busca'], ['#/historico', '#hs-busca']]) {
+    await abrir(page, { rota });
+    const r = await cabe(sel);
+    afirma(r.largura <= r.util, `placeholder "${r.texto}" cabe: ${r.largura.toFixed(0)} de ${r.util.toFixed(0)} px`);
+    afirma(r.descrito, `${sel}: a dica completa vai no aria-describedby`);
+  }
+  for (const [rota, grupo, alvo] of [['#/campanhas', '#cp-status', 'Todas'], ['#/historico', '#hs-status', 'Reprovada']]) {
+    await abrir(page, { rota });
+    await page.click(`${grupo} [data-status="${alvo}"]`);
+    const r = await page.evaluate(g => {
+      const caixa = document.querySelector(g), bs = [...caixa.querySelectorAll('.filtro')];
+      const a = caixa.querySelector('[aria-pressed="true"]').getBoundingClientRect(), c = caixa.getBoundingClientRect();
+      return { linhas: new Set(bs.map(b => Math.round(b.getBoundingClientRect().top))).size, visivel: a.left >= c.left - 1 && a.right <= c.right + 1,
+               pagina: document.documentElement.scrollWidth <= innerWidth };
+    }, grupo);
+    igual(r.linhas, 1, `${grupo}: uma linha só`);
+    afirma(r.visivel, `${grupo}: filtro ativo à vista`);
+    afirma(r.pagina, `${grupo}: sem rolagem lateral da página`);
+  }
+}, { largura: 360, altura: 740 });
+
+teste('v2.9: D3 ficha sem número órfão e D4 histórico em cartões (390 px)', async ({ page }) => {
+  await abrir(page, { rota: '#/gestao/empresas/1' });
+  const topos = await page.$$eval('.numeros-3 .numero', ns => ns.map(n => Math.round(n.getBoundingClientRect().top)));
+  igual(new Set(topos).size, 1, 'os 3 números na mesma linha');
+  await abrir(page, { rota: '#/historico' });
+  await page.locator('.hs-cartoes .cartao').first().waitFor();
+  afirma(!(await page.locator('#hs-itens .tabela-caixa').isVisible()), 'tabela escondida no celular');
+  const r = await page.evaluate(() => {
+    const cs = [...document.querySelectorAll('.hs-cartoes .cartao-com-acoes')];
+    return { n: cs.length, media: cs.reduce((t, c) => t + c.getBoundingClientRect().height, 0) / cs.length, rodape: cs[0]?.querySelector('.cartao-acoes')?.innerText };
+  });
+  afirma(r.n > 0 && r.media < 220, `cartão compacto: ${r.media.toFixed(0)} px de altura média`);
+  afirma(/(Aprovada|Reprovada) em \d{2}\/\d{2}\/\d{4} · /.test(r.rodape), 'rodapé com a data da decisão e quem decidiu: ' + r.rodape);
+  await page.screenshot({ path: path.join(SAIDA, 'historico-390.png'), fullPage: false });
+}, { largura: 390, altura: 844 });
+
+teste('v2.9: D5 nenhum texto de conteúdo abaixo de 13 px (390 px)', async ({ page }) => {
+  // 12 px só em selos, régua, contadores, botões pequenos, títulos de painel, cabeçalhos de tabela e atalhos.
+  const PODE_12 = '.selo, .regua, .regua-legenda, .mini, .contador, .btn-pequeno, .painel-titulo, .tabela th, kbd, .atalho, .passo, .menu-marca, .acesso-marca, .bi-item, .campo-opcional, .campo-opc, .toast-acao, .manutencao-detalhes, .esqueleto';
+  const pequenos = [];
+  for (const rota of ['#/inicio', '#/campanhas', '#/campanhas/2', '#/nova', '#/historico', '#/gestao', '#/gestao/empresas/1', '#/perfil', '#/usuarios']) {
+    await abrir(page, { rota });
+    pequenos.push(...(await page.evaluate(([r, pode]) => {
+      const fora = [];
+      for (const el of document.querySelectorAll('#conteudo *, #menu *')) {
+        const proprio = [...el.childNodes].some(n => n.nodeType === 3 && n.textContent.trim());
+        if (!proprio || el.closest(pode) || !el.getClientRects().length) continue;
+        const px = parseFloat(getComputedStyle(el).fontSize);
+        if (px < 12.9) fora.push(`${r} ${el.tagName.toLowerCase()}.${[...el.classList].join('.')} "${el.textContent.trim().slice(0, 30)}" ${px}px`);
+      }
+      return fora;
+    }, [rota, PODE_12])));
+  }
+  afirma(!pequenos.length, 'texto de conteúdo abaixo de 13 px:\n' + [...new Set(pequenos)].slice(0, 15).join('\n'));
 }, { largura: 390, altura: 844 });
 
 teste('v2.7: enviar sem período ou sem meta avisa; Voltar não envia, "Enviar assim" envia', async ({ page }) => {

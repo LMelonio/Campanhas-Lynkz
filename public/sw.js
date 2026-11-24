@@ -26,7 +26,7 @@ const ARQUIVOS = [
   'js/lib/dom.js', 'js/lib/regras.js', 'js/lib/supabase.js', 'js/lib/url-auth.js',
   'js/telas/campanhas.js', 'js/telas/detalhe.js', 'js/telas/gestao.js', 'js/telas/historico.js',
   'js/telas/inicio.js', 'js/telas/nova.js', 'js/telas/perfil.js', 'js/telas/usuarios.js',
-  'js/ui/avisos.js', 'js/ui/cadastro-dialogos.js', 'js/ui/campos.js', 'js/ui/combo.js', 'js/ui/copiar.js',
+  'js/ui/avisos.js', 'js/ui/cadastro-dialogos.js', 'js/ui/campos.js', 'js/ui/combo.js', 'js/ui/copiar.js', 'js/ui/decisao.js',
   'js/ui/estado.js', 'js/ui/icones.js', 'js/ui/pecas.js', 'js/ui/senha.js',
 ];
 const FONTES = ['fonts.googleapis.com', 'fonts.gstatic.com'];

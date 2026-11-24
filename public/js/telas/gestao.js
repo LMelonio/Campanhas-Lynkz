@@ -70,7 +70,7 @@ function montarLista() {
       <button type="button" class="btn btn-primario" id="gs-novo-balc">${icone('mais')} Cadastrar balconista</button>
     </div>
     <div class="ferramentas ferramentas-linha-larga">
-      ${campoBusca({ id: 'gs-busca', rotulo: 'Buscar empresas', valor: filtros.busca, placeholder: 'Nome, código, cidade, CNPJ ou balconista' })}
+      ${campoBusca({ id: 'gs-busca', rotulo: 'Buscar empresas', valor: filtros.busca, placeholder: 'Buscar empresa ou código', dica: 'Procura nome, nome fantasia, código do cliente, cidade, CNPJ, vendedor e balconistas.' })}
       <label class="interruptor sem-caixa" for="gs-inativas">
         <input type="checkbox" role="switch" id="gs-inativas"${filtros.inativas ? html` checked` : ''}>
         <span class="interruptor-trilho" aria-hidden="true"></span>
@@ -83,7 +83,11 @@ function montarLista() {
   const buscar = debounce(v => { filtros.busca = v; filtros.limite = PASSO; desenharLista(); }, 200);
   s.desligar.push(
     ao(el, 'input', '#gs-busca', (e, i) => buscar(i.value)),
-    ao(el, 'change', '#gs-inativas', (e, cb) => { filtros.inativas = cb.checked; filtros.limite = PASSO; desenharLista(); }),
+    ao(el, 'change', '#gs-inativas', async (e, cb) => {
+      filtros.inativas = cb.checked; filtros.limite = PASSO;
+      if (cb.checked) await ctx.cadastros.carregarInativas();   // E1: desativadas só sob demanda
+      desenharLista();
+    }),
     ao(el, 'click', '#gs-mais', () => { filtros.limite += PASSO * 5; desenharLista(); }),
     ao(el, 'click', '#gs-novo-balc', async () => {
       const b = await dialogoBalconista(null);

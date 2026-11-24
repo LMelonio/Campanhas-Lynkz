@@ -152,6 +152,21 @@ histórico do app quando existe.
 - Nova: com 2 cadastros na empresa, some "Outra pessoa"; escolhe-se um dos balconistas ativos.
 - Simulador: `perfis` ficam no banco simulado (com a conta nova `u-novo`, desativada), `sb.rpc('definir_perfil')` e o limite de 2.
 
+## v2.9 — decisão na lista, passos no celular, carga leve
+
+- Decisão: `ui/decisao.js` (`aprovarComDesfazer`, `reprovarComMotivo`, `desfazerAprovacao`, `botoesDecisao`) é a ÚNICA lógica
+  de aprovar/reprovar; detalhe e lista usam o mesmo. Uma aprovação em espera por vez; quem desenha assina `assinarDecisao`.
+  Os botões da lista ficam no rodapé do cartão (`cartao(c, { rodape })`), fora do link.
+- Nova: abaixo de 900 px, 3 passos por CSS (`data-passo` nas seções, `data-passo-atual` em `.nova`). Mesmo formulário:
+  campo novo precisa de `data-passo` na seção certa. `continuar()` valida só o passo; `enviar()` vai ao passo do 1º erro.
+- `VERSAO_APP` em `js/app.js` = `VERSAO` de `config.js` e `sw.js` (o lote S confere). Diferença → recarrega 1× por aba.
+- Carga: `dados/cadastros.js` lê só `COLUNAS` (coluna nova usada na tela entra lá) e só empresas ativas;
+  as desativadas vêm por `carregarInativas()` (Gestão "Mostrar desativadas" ou `empresa(id)` que não achou).
+- Contas sem acesso: `usuarios.semAcesso()`/`assinar` (`dados/usuarios.js`), no menu e no Início do administrador.
+- Texto de leitura no mínimo `--t-13`; `--t-12` só em selos, régua, contadores, botões pequenos e rótulos curtos (teste D5).
+- Busca: placeholder curto + `dica` (vai para `aria-describedby`) em `campoBusca`.
+- Aviso por e-mail: `supabase/functions/avisar-aprovador/` + `NOTIFICACOES.md` — **não publicado**. E-mail nunca leva `swile_*`.
+
 ## Regras de código
 
 - Português do Brasil em nomes, comentários e textos.

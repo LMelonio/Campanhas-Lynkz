@@ -11,6 +11,7 @@ import { iniciarAcesso, sair as sairDaConta } from './acesso.js';
 import { campanhas } from './dados/campanhas.js';
 import { cadastros } from './dados/cadastros.js';
 import { conferirBanco } from './dados/saude.js';
+import { usuarios } from './dados/usuarios.js';
 import { sb } from './lib/supabase.js';
 import { html, pintar, $, $$ } from './lib/dom.js';
 import { PAPEL, STATUS, brl, calc, rotuloPapel } from './lib/regras.js';
@@ -69,7 +70,7 @@ const NAV = [
   { nome: 'campanhas', rotulo: 'Campanhas', href: '#/campanhas', ico: 'campanhas', contador: true },
   { nome: 'historico', rotulo: 'Histórico', href: '#/historico', ico: 'historico' },
   { nome: 'gestao',    rotulo: 'Gestão',    href: '#/gestao',    ico: 'gestao' },
-  { nome: 'usuarios',  rotulo: 'Usuários',  href: '#/usuarios',  ico: 'pessoa', soAdmin: true },
+  { nome: 'usuarios',  rotulo: 'Usuários',  href: '#/usuarios',  ico: 'pessoa', soAdmin: true, contadorUsuarios: true },
   { nome: 'perfil',    rotulo: 'Perfil',    href: '#/perfil',    ico: 'perfil' },
 ];
 
@@ -186,7 +187,7 @@ function montarCasca() {
     <div class="menu-marca"><img src="assets/logo.png" alt="${C.MARCA || 'LYNKZ'}" width="96" height="22"><span>${C.SUBMARCA || 'Campanhas'}</span></div>
     <a class="btn btn-primario btn-largo menu-nova" href="#/nova" data-nav="nova">${icone('mais')} Nova campanha</a>
     <ul class="menu-lista">
-      ${NAV.filter(n => !n.soAdmin || ctx.ehAprovador).map(n => html`<li><a class="menu-item" href="${n.href}" data-nav="${n.nome}">${icone(n.ico)}${n.rotulo}${n.contador ? html`<span class="contador" data-contador hidden></span>` : ''}</a></li>`)}
+      ${NAV.filter(n => !n.soAdmin || ctx.ehAprovador).map(n => html`<li><a class="menu-item" href="${n.href}" data-nav="${n.nome}">${icone(n.ico)}${n.rotulo}${n.contador ? html`<span class="contador" data-contador hidden></span>` : ''}${n.contadorUsuarios ? html`<span class="contador" data-contador-usuarios hidden></span>` : ''}</a></li>`)}
     </ul>
     <div class="menu-rodape">
       <p class="menu-usuario">${p.nome}<small>${rotuloPapel(p.papel)} · ${p.email}</small></p>
@@ -273,6 +274,27 @@ function fecharMenu() {
 }
 // O menu fica fora do "inert" no desktop; ao virar desktop com ele aberto, fecha.
 matchMedia('(min-width: 900px)').addEventListener('change', fecharMenu);
+
+// ---------- contas esperando liberação (só administrador, v2.9) ----------
+function contarSemAcesso(n = usuarios.semAcesso()) {
+  $$('[data-contador-usuarios]').forEach(s => {
+    s.hidden = !n;
+    s.textContent = n > 99 ? '99+' : String(n || 0);
+    s.setAttribute('aria-label', `${n} ${n === 1 ? 'conta esperando' : 'contas esperando'} liberação`);
+  });
+}
+let usuariosLigados = false;
+function ligarContagemUsuarios() {
+  if (!ctx.ehAprovador) return;
+  if (!usuariosLigados) {
+    usuariosLigados = true;
+    usuarios.assinar(contarSemAcesso);
+    // Volta para o app: conta de novo (alguém pode ter criado conta nesse meio-tempo).
+    document.addEventListener('visibilitychange', () => { if (!document.hidden && ctx.ehAprovador) usuarios.contarSemAcesso(); });
+  }
+  contarSemAcesso();
+  usuarios.contarSemAcesso();
+}
 
 // ---------- contador de pendentes ----------
 // Aprovador: todas as pendentes. Coordenador: só as dele.
@@ -373,6 +395,7 @@ async function iniciarDados() {
     campanhas.assinar(avisarNovidades);
   }
   contarPendentes();
+  ligarContagemUsuarios();
 
   if (!resolver(location.hash)) history.replaceState({ i: indiceHistorico }, '', '#/inicio');
   else history.replaceState({ i: indiceHistorico }, '', location.hash);

@@ -8,18 +8,14 @@ import { calc, banda, pct, brl, textoDevolucoes, dataBR, dias, maskCPF, maskTele
 import { icone } from '../ui/icones.js';
 import { selo, seloNeutro, regua, vazio, carregando, FAIXAS } from '../ui/pecas.js';
 import { botaoCopiar, ligarCopiar } from '../ui/copiar.js';
-import { abrirDialogo, erroNoDialogo } from '../ui/avisos.js';
-import { areaTexto, aplicarErros } from '../ui/campos.js';
+import { abrirDialogo } from '../ui/avisos.js';
 import { estadoLista } from '../ui/estado.js';
 import { consultarCompras } from '../dados/qlik.js';
+import { aprovarComDesfazer, reprovarComMotivo, desfazerAprovacao, esperandoAprovar, assinarDecisao } from '../ui/decisao.js';
 
-const C = window.CONFIG;
-const ESPERA_APROVAR = 5000;
-const MOTIVOS_RAPIDOS = C.MOTIVOS_RAPIDOS || [];
 
 // Aprovação em espera. Fica fora da tela montada: se a pessoa sair do
 // detalhe durante os 5 s, a aprovação continua e é gravada.
-let emEspera = null;   // { id, cliente, total, desfeito, feito, timer, aviso }
 
 let atual = null;      // { el, ctx, id, desligar[] }
 
@@ -228,7 +224,7 @@ function custoDecisao(c) {
 
 function barra(c, ctx) {
   if (!ctx.ehAprovador || c.status !== STATUS.PENDENTE) return '';
-  if (emEspera && String(emEspera.id) === String(c.id)) {
+  if (esperandoAprovar(c.id)) {
     return html`<div class="barra-decisao" role="region" aria-label="Decisão">
       ${custoDecisao(c)}
       <p class="barra-decisao-msg" role="status">${icone('historico')} Aprovando em instantes…</p>
@@ -278,88 +274,6 @@ function abrirProxima(ctx, idAtual) {
 
 const estaAberta = id => location.hash === `#/campanhas/${id}`;
 
-async function gravarAprovacao(ctx, e) {
-  if (e.desfeito || e.feito) return;
-  e.feito = true;
-  clearTimeout(e.timer);
-  e.aviso?.fechar('gravando');
-  if (emEspera === e) emEspera = null;
-  try {
-    await ctx.campanhas.decidir(e.id, STATUS.APROVADA);
-    ctx.toast(`Aprovada · ${e.cliente} · R$ ${brl(e.total)}`, { tom: 'sucesso' });
-    if (estaAberta(e.id)) abrirProxima(ctx, e.id);
-  } catch (err) {
-    ctx.toast(err.message, { tom: 'erro', duracao: 8000 });
-    if (atual && String(atual.id) === String(e.id)) desenhar();
-  }
-}
-
-function aprovar(ctx, c) {
-  // Estado novo a cada clique: um "Desfazer" antigo não vale para este.
-  const e = { id: c.id, cliente: c.cliente, total: calc(c).total, desfeito: false, feito: false, timer: null, aviso: null };
-  emEspera = e;
-  e.aviso = ctx.toast(`Aprovando ${c.cliente}…`, {
-    acao: { rotulo: 'Desfazer', aoClicar: () => desfazer(ctx, e) },
-    duracao: ESPERA_APROVAR + 500,
-  });
-  e.timer = setTimeout(() => gravarAprovacao(ctx, e), ESPERA_APROVAR);
-  desenhar();
-}
-
-function desfazer(ctx, e) {
-  if (!e || e.feito || e.desfeito) return;
-  e.desfeito = true;
-  clearTimeout(e.timer);
-  e.aviso?.fechar('desfeito');
-  if (emEspera === e) emEspera = null;
-  ctx.toast('Aprovação desfeita. A campanha continua pendente.');
-  if (atual && String(atual.id) === String(e.id)) desenhar();
-}
-
-async function reprovar(ctx, c) {
-  const corpoDlg = html`
-    ${MOTIVOS_RAPIDOS.length ? html`<p class="campo-legenda" id="mr-rot">Motivos rápidos</p>
-      <div class="chips" role="group" aria-labelledby="mr-rot">${MOTIVOS_RAPIDOS.map(m => html`<button type="button" class="chip" data-motivo="${m}">${m}</button>`)}</div>` : ''}
-    ${areaTexto({ id: 'rp-motivo', rotulo: 'Motivo da reprova', obrigatorio: true, dica: 'O coordenador vai ler isso. Diga o que precisa mudar.', atributos: { maxlength: 1000 } })}`;
-  let desligarChips = () => {};
-  await abrirDialogo({
-    titulo: 'Reprovar campanha',
-    descricao: `${c.cliente} · ${c.campanha} · R$ ${brl(calc(c).total)}`,
-    corpo: corpoDlg,
-    acoes: [
-      { rotulo: 'Voltar', valor: null, tipo: 'fantasma' },
-      { rotulo: 'Reprovar', valor: 'reprovar', tipo: 'perigo', principal: true },
-    ],
-    aoAbrir: d => {
-      desligarChips = ao(d, 'click', '[data-motivo]', (ev, b) => {
-        const t = $('#rp-motivo', d);
-        t.value = b.dataset.motivo;
-        d.querySelectorAll('[data-motivo]').forEach(x => x.setAttribute('aria-pressed', String(x === b)));
-        aplicarErros(d, {});
-        t.focus();
-        t.setSelectionRange(t.value.length, t.value.length);
-      });
-    },
-    antesDeFechar: async (_v, d) => {
-      erroNoDialogo(d, '');
-      const motivo = $('#rp-motivo', d).value.trim();
-      if (!motivo) { aplicarErros(d, { 'rp-motivo': 'Escreva o motivo antes de reprovar.' }); return false; }
-      try {
-        await ctx.campanhas.decidir(c.id, STATUS.REPROVADA, motivo);
-      } catch (err) { erroNoDialogo(d, err.message); return false; }
-      ctx.toast(`Reprovada · ${c.cliente}`);
-      if (estaAberta(c.id)) abrirProxima(ctx, c.id);
-      return true;
-    },
-  });
-  desligarChips();
-}
-
-// Se o app for para segundo plano durante a espera, grava já (não perde a aprovação).
-document.addEventListener('visibilitychange', () => {
-  if (document.hidden && emEspera && atual) gravarAprovacao(atual.ctx, emEspera);
-});
-
 // ---------- atalhos de teclado (só ≥ 900 px) ----------
 const ATALHOS = [
   ['A', 'Aprovar (com 5 s para desfazer)'],
@@ -406,17 +320,19 @@ export function montar(el, ctx, { id, lista = null }) {
   document.addEventListener('keydown', aoTeclar);
   atual.desligar.push(() => document.removeEventListener('keydown', aoTeclar), ligarCopiar(el, ctx.toast));
   atual.desligar.push(
+    // Decisão (ui/decisao.js, a mesma da lista). Gravou com o detalhe aberto: abre a próxima pendente.
     ao(el, 'click', '[data-aprovar]', () => {
       const c = ctx.campanhas.porId(id);
-      if (!c) return;
-      // Outra aprovação ainda esperando: grava aquela já e começa esta.
-      if (emEspera && String(emEspera.id) !== String(c.id)) gravarAprovacao(ctx, emEspera);
-      if (!emEspera) aprovar(ctx, c);
+      if (c) aprovarComDesfazer(ctx, c, { depois: e => { if (estaAberta(e.id)) abrirProxima(ctx, e.id); } });
     }),
-    ao(el, 'click', '[data-reprovar]', () => { const c = ctx.campanhas.porId(id); if (c) reprovar(ctx, c); }),
+    ao(el, 'click', '[data-reprovar]', () => {
+      const c = ctx.campanhas.porId(id);
+      if (c) reprovarComMotivo(ctx, c, { depois: () => { if (estaAberta(c.id)) abrirProxima(ctx, c.id); } });
+    }),
     ao(el, 'click', '[data-ver-notas]', () => { const k = String(id); if (notasAbertas.has(k)) notasAbertas.delete(k); else notasAbertas.add(k); desenhar(); }),
     ao(el, 'click', '[data-conferir-qlik]', () => { const c = ctx.campanhas.porId(id); if (c) conferirQlik(ctx, c); }),
-    ao(el, 'click', '[data-desfazer]', () => desfazer(ctx, emEspera)),
+    ao(el, 'click', '[data-desfazer]', () => desfazerAprovacao()),
+    assinarDecisao(() => desenhar()),
     ctx.campanhas.assinar(ev => { if (ev.tipo === 'carga' || ev.tipo === 'erro' || String(ev.id) === String(id)) desenhar(); }),
     ctx.cadastros.assinar(() => desenhar()),
   );

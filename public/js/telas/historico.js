@@ -1,11 +1,12 @@
 // ============================================================
 //  HISTÓRICO — campanhas decididas, pela data da decisão.
-//  Tabela no desktop, blocos no celular.
+//  Tabela a partir de 700 px; no celular, os mesmos cartões da lista de
+//  Campanhas, com a data da decisão e quem decidiu no rodapé (v2.9).
 // ============================================================
-import { html, pintar, $, ao, debounce } from '../lib/dom.js';
+import { mostrarFiltroAtivo, html, pintar, $, ao, debounce } from '../lib/dom.js';
 import { calc, brl, dataBR, contem, STATUS } from '../lib/regras.js';
 import { icone } from '../ui/icones.js';
-import { selo, vazio } from '../ui/pecas.js';
+import { selo, vazio, cartao } from '../ui/pecas.js';
 import { estadoLista } from '../ui/estado.js';
 import { exportarExcel } from '../exportar.js';
 import { campoBusca, ligarBusca } from '../ui/campos.js';
@@ -36,6 +37,7 @@ function desenhar(el, ctx) {
   const vis = lista.slice(0, filtros.limite);
 
   pintar($('#hs-status', el), html`${OPCOES.map(o => html`<button type="button" class="filtro" data-status="${o.valor}" aria-pressed="${filtros.status === o.valor}">${o.rotulo}<span class="n">${conta(o.valor)}</span></button>`)}`);
+  mostrarFiltroAtivo($('#hs-status', el));
   const est = estadoLista({ carregado: ctx.campanhas.carregado, erro: ctx.campanhas.erro });
   if (est) { pintar($('#hs-resumo', el), ''); $('#hs-excel', el).hidden = true; pintar($('#hs-itens', el), est); return; }
   $('#hs-excel', el).hidden = !lista.length;
@@ -53,6 +55,7 @@ function desenhar(el, ctx) {
         <td data-rotulo="Decidida por">${c.aprovador_nome || '—'}</td>
       </tr>`)}</tbody>
     </table></div>
+    <div class="hs-cartoes">${vis.map(c => cartao(c, { rodape: html`<span class="cartao-acoes-info">${icone('historico')} ${c.status === STATUS.APROVADA ? 'Aprovada' : 'Reprovada'} em ${dataBR(c.data_decisao)} · ${c.aprovador_nome || '—'}</span>` }))}</div>
     ${lista.length > vis.length ? html`<button type="button" class="btn btn-fantasma btn-largo mais" id="hs-mais">Mostrar mais (${lista.length - vis.length} restantes)</button>` : ''}`
     : vazio({
         icone: 'historico',
@@ -65,7 +68,7 @@ export function montar(el, ctx) {
   ctx.cabecalho({ titulo: 'Histórico' });
   pintar(el, html`
     <div class="ferramentas ferramentas-linha-larga">
-      ${campoBusca({ id: 'hs-busca', rotulo: 'Buscar no histórico', valor: filtros.busca, placeholder: 'Empresa, campanha, código ou aprovador' })}
+      ${campoBusca({ id: 'hs-busca', rotulo: 'Buscar no histórico', valor: filtros.busca, placeholder: 'Buscar no histórico', dica: 'Procura empresa, campanha, código e quem aprovou ou reprovou.' })}
       <div class="filtros" id="hs-status" role="group" aria-label="Filtrar por decisão"></div>
     </div>
     <div class="lista-cabeca">

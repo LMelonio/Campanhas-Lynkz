@@ -11,6 +11,10 @@ let empresasMap = new Map();
 let balconistasMap = new Map();
 let porEmpresa = null;   // índice empresa_id → balconistas (refeito quando algo muda)
 let carregado = false;
+// Empresas desativadas não vêm na abertura (E1): só quando alguém pede (Gestão → "Mostrar desativadas",
+// ou uma tela procura uma empresa que não está carregada, como a de uma campanha antiga).
+let inativasCarregadas = false;
+let lendoInativas = null;
 let ultimoErro = null;   // mensagem da última carga que falhou (null = ok)
 let canal = null;
 const ouvintes = new Set();
@@ -26,10 +30,16 @@ function avisar(evento) {
 // O Supabase devolve no máximo 1.000 linhas por consulta. Com os clientes do
 // Qlik passam disso: lê em blocos até acabar.
 const BLOCO = 1000;
-async function lerTudo(tabela, ordem) {
+// v2.9 (E1): só as colunas que as telas usam (sem criado_por, atualizado_em, atualizado_por).
+// Coluna nova que a tela precise mostrar: acrescente aqui.
+const COLUNAS = {
+  empresas: 'id,nome,nome_fantasia,cnpj,cidade,uf,telefone,observacoes,ativo,codigo_cliente,vendedor,origem,sincronizado_em,criado_em',
+  balconistas: 'id,empresa_id,nome_completo,cpf,data_nascimento,email,telefone,ativo',
+};
+async function lerTudo(tabela, ordem, filtrar = q => q) {
   const todas = [];
   for (let de = 0; ; de += BLOCO) {
-    const parte = exigir(await sb.from(tabela).select('*').order(ordem).order('id').range(de, de + BLOCO - 1)) || [];
+    const parte = exigir(await filtrar(sb.from(tabela).select(COLUNAS[tabela] || '*')).order(ordem).order('id').range(de, de + BLOCO - 1)) || [];
     todas.push(...parte);
     if (parte.length < BLOCO) return todas;
   }
@@ -75,11 +85,18 @@ export const cadastros = {
   get erro() { return ultimoErro; },
 
   async carregar() {
+    const t0 = performance.now();
     try {
-      const [emp, bal] = await Promise.all([lerTudo('empresas', 'nome'), lerTudo('balconistas', 'nome_completo')]);
+      // Balconistas: todos (o limite de 2 por empresa conta os desativados).
+      const [emp, bal] = await Promise.all([
+        lerTudo('empresas', 'nome', q => q.eq('ativo', true)),
+        lerTudo('balconistas', 'nome_completo'),
+      ]);
       empresasMap = new Map(emp.map(e => [String(e.id), e]));
       balconistasMap = new Map(bal.map(b => [String(b.id), b]));
       porEmpresa = null;
+      inativasCarregadas = false;
+      console.info(`cadastros: ${emp.length} empresas ativas e ${bal.length} balconistas em ${Math.round(performance.now() - t0)} ms`);
     } catch (e) {
       ultimoErro = e.message;
       avisar({ tipo: 'erro' });
@@ -90,13 +107,31 @@ export const cadastros = {
     avisar({ tipo: 'carga' });
   },
 
+  // Lê as empresas desativadas uma vez; avisa as telas (que redesenham) quando chegarem.
+  carregarInativas() {
+    if (inativasCarregadas) return Promise.resolve();
+    if (!lendoInativas) {
+      lendoInativas = lerTudo('empresas', 'nome', q => q.eq('ativo', false))
+        .then(l => { for (const e of l) if (!empresasMap.has(String(e.id))) empresasMap.set(String(e.id), e); inativasCarregadas = true; avisar({ tipo: 'carga' }); })
+        .catch(e => console.warn('Empresas desativadas não carregaram', e))
+        .finally(() => { lendoInativas = null; });
+    }
+    return lendoInativas;
+  },
+
   empresas({ inativas = false } = {}) {
+    if (inativas && !inativasCarregadas) this.carregarInativas();
     return [...empresasMap.values()]
       .filter(e => inativas || e.ativo)
       .sort((a, b) => ordemPt(a.nome, b.nome));
   },
 
-  empresa(id) { return id == null ? null : empresasMap.get(String(id)) || null; },
+  empresa(id) {
+    if (id == null) return null;
+    const e = empresasMap.get(String(id));
+    if (!e && carregado && !inativasCarregadas) this.carregarInativas();   // talvez seja uma desativada
+    return e || null;
+  },
 
   balconista(id) { return id == null ? null : balconistasMap.get(String(id)) || null; },
 

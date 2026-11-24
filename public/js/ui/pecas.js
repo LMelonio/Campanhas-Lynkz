@@ -88,9 +88,10 @@ function miniRegua(c) {
   </div>`;
 }
 
-export function cartao(c, { ativo = false } = {}) {
+// rodape: ações fora do link do cartão (ex.: Aprovar/Reprovar na lista, v2.9).
+export function cartao(c, { ativo = false, rodape = '' } = {}) {
   const k = calc(c);
-  return html`<a class="cartao" href="#/campanhas/${c.id}" data-id="${c.id}"${ativo ? bruto(' aria-current="true"') : ''}>
+  const link = html`<a class="cartao" href="#/campanhas/${c.id}" data-id="${c.id}"${ativo ? bruto(' aria-current="true"') : ''}>
     <div class="cartao-topo">
       <p class="cartao-nome">${c.cliente}</p>
       ${selo(c.status)}
@@ -102,6 +103,7 @@ export function cartao(c, { ativo = false } = {}) {
       <span class="cartao-quando">${icone('historico')}${dataBR(c.criado_em)} · ${c.codigo}${c.importada ? ' · importada' : ''}</span>
     </div>
   </a>`;
+  return rodape ? html`<div class="cartao-com-acoes" data-cartao="${c.id}">${link}<div class="cartao-acoes">${rodape}</div></div>` : link;
 }
 
 export function vazio({ icone: ic = 'campanhas', titulo, texto = '', acao = null }) {

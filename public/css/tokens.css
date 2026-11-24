@@ -59,7 +59,8 @@
 
   /* tipo — escala 12/14/16/20/28/40 */
   --font: 'Instrument Sans', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
-  --t-12: .75rem;
+  --t-12: .75rem;   /* só selos, legendas da régua, contadores e rótulos curtos */
+  --t-13: .8125rem; /* menor texto de leitura (v2.9): datas, dicas, "Balconistas: 1 de 2" */
   --t-14: .875rem;
   --t-16: 1rem;
   --t-20: 1.25rem;

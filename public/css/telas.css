@@ -30,8 +30,8 @@
 .secao-cabeca { display: flex; align-items: flex-end; justify-content: space-between; gap: var(--e-3); flex-wrap: wrap; margin: var(--e-6) 0 var(--e-3); }
 .secao-titulo { font-size: var(--t-16); font-weight: 700; margin: var(--e-6) 0 var(--e-3); }
 .secao-cabeca .secao-titulo { margin: 0; }
-.secao-nota { font-size: var(--t-12); color: var(--ink-2); margin-top: var(--e-2); }
-.lista-resumo { font-size: var(--t-12); color: var(--ink-2); margin: var(--e-3) 0 var(--e-2); }
+.secao-nota { font-size: var(--t-13); color: var(--ink-2); margin-top: var(--e-2); }
+.lista-resumo { font-size: var(--t-13); color: var(--ink-2); margin: var(--e-3) 0 var(--e-2); }
 .grade-cartoes { display: grid; gap: 0 var(--e-3); }
 @media (min-width: 700px) { .grade-cartoes { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 .mais { margin-top: var(--e-3); }
@@ -51,13 +51,19 @@
 
 .numeros { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--e-2); }
 .numero { background: var(--card); border: 1px solid var(--line); border-radius: var(--r-panel); padding: var(--e-4); box-shadow: var(--sombra); min-width: 0; }
-.numero dt { font-size: var(--t-12); color: var(--ink-2); font-weight: 600; }
+.numero dt { font-size: var(--t-13); color: var(--ink-2); font-weight: 600; }
 .numero dd { font-size: var(--t-28); font-weight: 700; line-height: 1.2; margin-top: var(--e-1); }
 @media (min-width: 700px) {
   .numeros { grid-template-columns: repeat(4, minmax(0, 1fr)); }
   .numeros-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 }
 .numeros-3 { margin-bottom: var(--e-4); }
+/* Ficha da empresa no celular (v2.9): os 3 números numa linha só, compactos — sem cartão sozinho embaixo. */
+@media (max-width: 699.98px) {
+  .numeros-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--e-1); }
+  .numeros-3 .numero { padding: var(--e-2) var(--e-3); }
+  .numeros-3 .numero dd { font-size: var(--t-16); overflow-wrap: anywhere; }
+}
 
 /* ---------- lista de campanhas ---------- */
 .ferramentas { display: grid; gap: var(--e-3); }
@@ -141,9 +147,9 @@ a.det-empresa:hover { text-decoration-color: currentColor; }
   background: var(--card); border-top: 1px solid var(--line); box-shadow: var(--sombra-alta);
 }
 .barra-envio-total { flex: 1 1 auto; display: grid; grid-template-columns: auto 1fr; column-gap: var(--e-2); align-items: baseline; min-width: 0; }
-.barra-envio-rotulo { grid-column: 1 / -1; font-size: var(--t-12); color: var(--ink-2); }
+.barra-envio-rotulo { grid-column: 1 / -1; font-size: var(--t-13); color: var(--ink-2); }
 .barra-envio-total strong { font-size: var(--t-20); font-weight: 700; white-space: nowrap; }
-.barra-envio-pct { font-size: var(--t-12); font-weight: 700; white-space: nowrap; }
+.barra-envio-pct { font-size: var(--t-13); font-weight: 700; white-space: nowrap; }
 .barra-envio .btn { min-height: 48px; padding: 0 var(--e-8); }
 @media (min-width: 900px) {
   .barra-envio { left: var(--menu-w); }
@@ -169,14 +175,14 @@ a.det-empresa:hover { text-decoration-color: currentColor; }
 .empresa-icone { width: 40px; height: 40px; flex: 0 0 auto; border-radius: var(--r-ctrl); display: grid; place-items: center; background: var(--card-2); color: var(--ink-2); }
 .empresa-texto { flex: 1 1 auto; display: grid; gap: 2px; min-width: 0; }
 .empresa-texto strong { font-size: var(--t-16); display: flex; align-items: center; gap: var(--e-2); flex-wrap: wrap; }
-.empresa-texto small { font-size: var(--t-12); color: var(--ink-2); }
+.empresa-texto small { font-size: var(--t-13); color: var(--ink-2); }
 
 .ficha .painel-titulo .acoes { text-transform: none; letter-spacing: 0; }
 .balconistas { display: grid; }
 .balconista { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--e-2) var(--e-3); padding: var(--e-3) var(--e-4); border-top: 1px solid var(--line); }
 .balconista-dados { display: grid; gap: 2px; min-width: 0; }
 .balconista-dados strong { font-size: var(--t-14); display: flex; align-items: center; gap: var(--e-2); flex-wrap: wrap; }
-.balconista-dados small { font-size: var(--t-12); color: var(--ink-2); }
+.balconista-dados small { font-size: var(--t-13); color: var(--ink-2); }
 .balconista.inativo .balconista-dados { opacity: .8; }
 
 /* ---------- perfil ---------- */
@@ -213,14 +219,14 @@ a.det-empresa:hover { text-decoration-color: currentColor; }
 }
 .numero-link:hover { border-color: var(--line-2); }
 .numero-link > svg.ico { position: absolute; right: var(--e-3); top: 50%; transform: translateY(-50%); color: var(--ink-3); width: 18px; height: 18px; }
-.numero-rotulo { font-size: var(--t-12); color: var(--ink-2); font-weight: 600; }
+.numero-rotulo { font-size: var(--t-13); color: var(--ink-2); font-weight: 600; }
 .numero-link strong { font-size: var(--t-28); font-weight: 700; line-height: 1.2; }
 @media (max-width: 420px) { .numero-link strong { font-size: var(--t-20); } }
 
 /* barra de decisão com o custo */
 .decisao-custo { display: grid; gap: 2px; margin-right: auto; min-width: 0; }
 .decisao-custo strong { font-size: var(--t-20); font-weight: 700; line-height: 1.1; }
-.decisao-pct { font-size: var(--t-12); font-weight: 650; }
+.decisao-pct { font-size: var(--t-13); font-weight: 650; }
 @media (max-width: 899px) {
   .barra-decisao { flex-wrap: wrap; row-gap: var(--e-2); }
   .decisao-custo { flex: 1 0 100%; grid-template-columns: auto 1fr; align-items: baseline; column-gap: var(--e-2); }
@@ -231,8 +237,8 @@ a.det-empresa:hover { text-decoration-color: currentColor; }
 
 /* ---------- nova: período e rascunho ---------- */
 .chips-periodo { margin: calc(-1 * var(--e-1)) 0 var(--e-4); }
-.duracao { font-size: var(--t-12); font-weight: 650; color: var(--ink-2); min-height: 1em; }
-.rascunho-status { font-size: var(--t-12); color: var(--ink-2); }
+.duracao { font-size: var(--t-13); font-weight: 650; color: var(--ink-2); min-height: 1em; }
+.rascunho-status { font-size: var(--t-13); color: var(--ink-2); }
 .rascunho-status:empty { display: none; }
 .rascunho-status-form { margin-top: var(--e-2); }
 .barra-envio-total .rascunho-status { grid-column: 1 / -1; }
@@ -242,7 +248,7 @@ a.det-empresa:hover { text-decoration-color: currentColor; }
 .lista-cabeca { display: flex; align-items: center; justify-content: space-between; gap: var(--e-2); flex-wrap: wrap; margin: var(--e-2) 0; }
 .lista-cabeca .lista-resumo { margin: 0; }
 .lista-cabeca .btn-texto { min-height: var(--tap); }
-.perfil-acesso { font-size: var(--t-12); color: var(--ink-2); margin: calc(-1 * var(--e-1)) 0 var(--e-2); }
+.perfil-acesso { font-size: var(--t-13); color: var(--ink-2); margin: calc(-1 * var(--e-1)) 0 var(--e-2); }
 
 /* ---------- usuários (v2.8) ---------- */
 .usuarios { max-width: 760px; display: grid; gap: var(--e-4); }
@@ -255,7 +261,7 @@ a.det-empresa:hover { text-decoration-color: currentColor; }
 }
 .usuario-dados { display: grid; gap: 2px; min-width: 0; flex: 1 1 200px; }
 .usuario-dados strong { font-size: var(--t-14); display: flex; align-items: center; gap: var(--e-2); flex-wrap: wrap; }
-.usuario-dados small { font-size: var(--t-12); color: var(--ink-2); overflow-wrap: anywhere; }
+.usuario-dados small { font-size: var(--t-13); color: var(--ink-2); overflow-wrap: anywhere; }
 .usuario .acoes { align-items: center; }
 .selo-admin { background: var(--ink); color: var(--card); }
 .selo-admin svg { width: 12px; height: 12px; }
@@ -263,7 +269,7 @@ a.det-empresa:hover { text-decoration-color: currentColor; }
 
 /* ---------- vagas de balconista (v2.8) ---------- */
 .vagas { font-weight: 600; color: var(--ink-2); text-transform: none; letter-spacing: 0; margin-left: var(--e-1); }
-.cadastro-passo { font-size: var(--t-12); font-weight: 700; color: var(--ink-2); margin: 0 0 var(--e-2); }
+.cadastro-passo { font-size: var(--t-13); font-weight: 700; color: var(--ink-2); margin: 0 0 var(--e-2); }
 .cadastro-dados[disabled] { opacity: .55; }
 .cadastro-dados { border: 0; padding: 0; margin: 0; min-width: 0; }
 
@@ -312,4 +318,11 @@ a.det-empresa:hover { text-decoration-color: currentColor; }
 
   .recolhivel.recolhido > .acrescentar { display: inline-flex; }
   .recolhivel.recolhido > .campo { display: none; }
+}
+
+/* ---------- histórico no celular: cartões em vez da tabela (v2.9) ---------- */
+.hs-cartoes { display: none; }
+@media (max-width: 699.98px) {
+  #hs-itens .tabela-caixa { display: none; }
+  .hs-cartoes { display: block; }
 }

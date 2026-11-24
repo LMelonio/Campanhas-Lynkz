@@ -38,6 +38,15 @@ export function atributos(obj = {}) {
   return new Html(s);
 }
 
+// Filtros segmentados que rolam de lado no celular: traz o ativo para a vista (só a rolagem do grupo, v2.9).
+export function mostrarFiltroAtivo(grupo) {
+  const b = grupo?.querySelector('[aria-pressed="true"]');
+  if (!b || grupo.scrollWidth <= grupo.clientWidth) return;
+  const g = grupo.getBoundingClientRect(), r = b.getBoundingClientRect();
+  if (r.left < g.left) grupo.scrollLeft -= g.left - r.left + 8;
+  else if (r.right > g.right) grupo.scrollLeft += r.right - g.right + 8;
+}
+
 export function pintar(el, conteudo) {
   el.innerHTML = conteudo instanceof Html ? conteudo.s : esc(conteudo);
 }

@@ -51,8 +51,8 @@
 .campo input::placeholder, .campo textarea::placeholder { color: var(--ink-3); opacity: 1; }
 .campo input:focus, .campo select:focus, .campo textarea:focus { outline: 3px solid var(--foco); outline-offset: 0; border-color: var(--foco); }
 .campo input[readonly] { background: var(--card-2); color: var(--ink-2); }
-.campo-dica { font-size: var(--t-12); color: var(--ink-2); line-height: 1.45; }
-.campo-erro { display: flex; gap: 6px; align-items: flex-start; font-size: var(--t-12); font-weight: 600; color: var(--erro); line-height: 1.45; }
+.campo-dica { font-size: var(--t-13); color: var(--ink-2); line-height: 1.45; }
+.campo-erro { display: flex; gap: 6px; align-items: flex-start; font-size: var(--t-13); font-weight: 600; color: var(--erro); line-height: 1.45; }
 .campo-erro svg.ico { width: 16px; height: 16px; margin-top: 1px; }
 /* Erro nunca só pela cor: borda de 2 px + ícone + texto. */
 /* Mesmo peso do seletor base (.campo input:not():not()) para a borda de erro aparecer de fato. */
@@ -76,7 +76,7 @@
   display: flex; align-items: center; gap: var(--e-2); min-height: var(--tap); padding: var(--e-2) var(--e-3);
   border-radius: 8px; cursor: pointer; font-size: var(--t-14);
 }
-.combo-opcao small { color: var(--ink-2); margin-left: auto; font-size: var(--t-12); }
+.combo-opcao small { color: var(--ink-2); margin-left: auto; font-size: var(--t-13); }
 .combo-opcao.ativa, .combo-opcao:hover { background: var(--card-2); }
 .combo-opcao[aria-selected="true"] { font-weight: 650; }
 .combo-criar { color: var(--red-ink); font-weight: 650; border-top: 1px solid var(--line); border-radius: 0 0 8px 8px; }
@@ -102,7 +102,7 @@
 .interruptor input:checked + .interruptor-trilho::after { transform: translateX(18px); }
 .interruptor input:focus-visible + .interruptor-trilho { outline: 3px solid var(--foco); outline-offset: 2px; }
 .interruptor-texto { font-size: var(--t-14); font-weight: 600; }
-.interruptor-texto small { display: block; font-weight: 400; color: var(--ink-2); font-size: var(--t-12); }
+.interruptor-texto small { display: block; font-weight: 400; color: var(--ink-2); font-size: var(--t-13); }
 
 /* ---------- selos ---------- */
 .selo {
@@ -197,8 +197,19 @@
 .cartao-sub { font-size: var(--t-14); color: var(--ink-2); }
 .cartao-pe { display: flex; justify-content: space-between; align-items: center; gap: var(--e-3); padding-top: var(--e-2); border-top: 1px solid var(--line); margin-top: var(--e-1); }
 .cartao-valor { font-size: var(--t-16); font-weight: 700; }
-.cartao-quando { display: inline-flex; align-items: center; gap: 4px; font-size: var(--t-12); color: var(--ink-2); }
+.cartao-quando { display: inline-flex; align-items: center; gap: 4px; font-size: var(--t-13); color: var(--ink-2); }
 .cartao-quando svg.ico { width: 14px; height: 14px; }
+/* cartão com Aprovar/Reprovar (administrador, lista de Campanhas — v2.9) */
+.cartao-com-acoes { margin-bottom: var(--e-2); }
+.cartao-com-acoes > .cartao { margin-bottom: 0; border-bottom-left-radius: 0; border-bottom-right-radius: 0; }
+.cartao-acoes {
+  display: flex; flex-wrap: wrap; align-items: center; gap: var(--e-2); padding: var(--e-2) var(--e-4);
+  background: var(--card-2); border: 1px solid var(--line); border-top: 0; border-radius: 0 0 var(--r-panel) var(--r-panel);
+}
+.cartao-acoes-info { margin-right: auto; display: inline-flex; align-items: center; gap: 4px; font-size: var(--t-13); font-weight: 650; }
+.cartao-acoes-info svg.ico { width: 14px; height: 14px; }
+.cartao-acoes .btn { min-height: var(--tap); padding: 0 var(--e-4); }
+.cartao-acoes [data-lista-aprovar], .cartao-acoes [data-lista-reprovar] { flex: 1 1 0; justify-content: center; }
 
 /* ---------- filtros segmentados ---------- */
 .filtros {
@@ -211,10 +222,10 @@
   background: none; color: var(--ink-2); font-size: var(--t-14); font-weight: 600; white-space: nowrap;
 }
 .filtro[aria-pressed="true"] { background: var(--red); color: var(--on-red); }
-/* Celular estreito: as 4 abas de status quebram em 2×2 em vez de esconder "Todas" fora da tela. */
+/* Celular estreito (v2.9): uma linha só; se não couber, rola de lado DENTRO do grupo (sem barra
+   visível) e a tela traz o filtro ativo para a vista (mostrarFiltroAtivo em lib/dom.js). */
 @media (max-width: 420px) {
-  .filtros { flex-wrap: wrap; }
-  .filtro { flex: 1 1 40%; }
+  .filtro { padding: 0 8px; }
 }
 .filtro .n { font-variant-numeric: tabular-nums; opacity: .9; margin-left: 2px; }
 
@@ -237,7 +248,7 @@
 .pessoa input { width: 20px; height: 20px; accent-color: var(--ink); margin: 0; flex: 0 0 auto; }
 .pessoa:has(input:checked) { border: 2px solid var(--ink); padding: calc(var(--e-3) - 1px) calc(var(--e-4) - 1px); }
 .pessoa-nome { font-weight: 600; font-size: var(--t-14); }
-.pessoa-nome small { display: block; font-weight: 400; color: var(--ink-2); font-size: var(--t-12); }
+.pessoa-nome small { display: block; font-weight: 400; color: var(--ink-2); font-size: var(--t-13); }
 
 /* ---------- tabela (vira blocos abaixo de 700 px) ---------- */
 .tabela-caixa { background: var(--card); border: 1px solid var(--line); border-radius: var(--r-panel); overflow: hidden; box-shadow: var(--sombra); }
@@ -256,7 +267,7 @@
   .tabela, .tabela tbody, .tabela tr, .tabela td { display: block; width: 100%; }
   .tabela tr { background: var(--card); border: 1px solid var(--line); border-radius: var(--r-panel); margin-bottom: var(--e-2); padding: var(--e-2) 0; box-shadow: var(--sombra); }
   .tabela td { display: flex; justify-content: space-between; gap: var(--e-3); border: 0; padding: 6px var(--e-4); text-align: right; }
-  .tabela td::before { content: attr(data-rotulo); color: var(--ink-2); font-size: var(--t-12); text-align: left; flex: 0 0 auto; }
+  .tabela td::before { content: attr(data-rotulo); color: var(--ink-2); font-size: var(--t-13); text-align: left; flex: 0 0 auto; }
   .tabela td.principal { text-align: left; font-size: var(--t-16); }
   .tabela td.principal::before { display: none; }
 }
@@ -361,7 +372,7 @@ dialog.dialogo[open] { animation: sobe .22s ease; display: flex; flex-direction:
 .campo .senha-caixa input { padding-right: calc(var(--tap) + var(--e-1)); }
 .senha-olho { position: absolute; top: 0; right: 0; color: var(--ink-2); border-radius: var(--r-ctrl); }
 .senha-caps:empty { display: none; }
-.senha-caps { display: flex; align-items: center; gap: 6px; font-size: var(--t-12); font-weight: 650; color: var(--amber); }
+.senha-caps { display: flex; align-items: center; gap: 6px; font-size: var(--t-13); font-weight: 650; color: var(--amber); }
 .senha-caps svg.ico { width: 16px; height: 16px; }
 .senha-forca { display: grid; gap: var(--e-1); }
 .forca-barra { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; }
@@ -369,8 +380,8 @@ dialog.dialogo[open] { animation: sobe .22s ease; display: flex; flex-direction:
 .senha-forca[data-nivel="1"] .forca-barra i:nth-child(-n+1) { background: var(--faixa-vermelha); }
 .senha-forca[data-nivel="2"] .forca-barra i:nth-child(-n+2) { background: var(--faixa-ambar); }
 .senha-forca[data-nivel="3"] .forca-barra i:nth-child(-n+3) { background: var(--faixa-verde); }
-.forca-texto { font-size: var(--t-12); font-weight: 650; color: var(--ink-2); min-height: 1em; }
-.forca-req { display: grid; gap: 2px; font-size: var(--t-12); color: var(--ink-2); }
+.forca-texto { font-size: var(--t-13); font-weight: 650; color: var(--ink-2); min-height: 1em; }
+.forca-req { display: grid; gap: 2px; font-size: var(--t-13); color: var(--ink-2); }
 .forca-req li { display: flex; align-items: center; gap: 6px; }
 .forca-req li svg.ico { width: 14px; height: 14px; color: var(--erro); }
 .forca-req li.ok { color: var(--ink); }

@@ -66,11 +66,13 @@ export function areaTexto({ id, rotulo, valor = '', dica = '', obrigatorio = fal
 }
 
 // Busca com botão "limpar" (×) de 44 px, visível só com texto. Esc também limpa.
-export function campoBusca({ id, rotulo, valor = '', placeholder = '' }) {
+// placeholder curto (cabe em 360 px); a explicação completa vai em dica, lida pelo leitor de tela (v2.9).
+export function campoBusca({ id, rotulo, valor = '', placeholder = '', dica = '' }) {
   return html`<div class="campo busca">
     <label class="so-leitor" for="${id}">${rotulo}</label>
+    ${dica ? html`<span class="so-leitor" id="${id}-dica">${dica}</span>` : ''}
     ${icone('busca')}
-    <input${atributos({ id, type: 'search', value: valor ?? '', placeholder, autocomplete: 'off', 'data-busca': true })}>
+    <input${atributos({ id, type: 'search', value: valor ?? '', placeholder, autocomplete: 'off', 'data-busca': true, 'aria-describedby': dica ? `${id}-dica` : false })}>
     <button type="button" class="btn-icone busca-limpar" data-limpar-busca="${id}" aria-label="Limpar busca"${atributos({ hidden: !valor })}>${icone('x')}</button>
   </div>`;
 }
