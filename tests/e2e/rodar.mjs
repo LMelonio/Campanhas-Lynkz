@@ -194,16 +194,31 @@ teste('navegação: todas as rotas, menu ativo, rota inválida e Voltar', async 
   afirma((await page.locator('#conteudo').innerText()).includes('Balconista destaque'), 'link direto abre o detalhe');
 });
 
+teste('navegação: barra de baixo leva ao Perfil; o menu abre só pelo ☰ do topo (v2.9.1)', async ({ page }) => {
+  await abrir(page, { rota: '#/inicio' });
+  igual(await page.locator('#bi-menu').count(), 0, 'sem botão Menu na barra de baixo');
+  const perfil = page.locator('#barra-inferior a[href="#/perfil"]');
+  afirma(await perfil.isVisible(), 'Perfil na barra de baixo');
+  await perfil.click();
+  await page.waitForFunction(() => location.hash === '#/perfil');
+  igual(await perfil.getAttribute('aria-current'), 'page', 'Perfil marcado como página atual');
+  const alvo = await perfil.boundingBox();
+  afirma(alvo.height >= 44, 'alvo de toque de 44 px');
+  // Administrador com conta esperando liberação (u-novo no simulador): ponto no ☰.
+  await page.locator('#abrir-menu.com-aviso').waitFor({ timeout: 5000 });
+  afirma(/esperando liberação/.test(await page.getAttribute('#abrir-menu', 'aria-label')), 'o ☰ diz que há contas esperando');
+}, { largura: 390, altura: 844 });
+
 teste('navegação: menu do celular abre, trava o fundo e fecha com Esc', async ({ page }) => {
   await abrir(page);
-  await page.click('#bi-menu');
+  await page.click('#abrir-menu');
   afirma(await page.evaluate(() => document.body.classList.contains('menu-aberto')), 'menu aberto');
   afirma(await page.evaluate(() => document.querySelector('#conteudo').inert), 'conteúdo inerte com o menu aberto');
-  igual(await page.getAttribute('#bi-menu', 'aria-expanded'), 'true', 'aria-expanded');
+  igual(await page.getAttribute('#abrir-menu', 'aria-expanded'), 'true', 'aria-expanded');
   await page.keyboard.press('Escape');
   afirma(!(await page.evaluate(() => document.body.classList.contains('menu-aberto'))), 'Esc fecha');
   afirma(!(await page.evaluate(() => document.querySelector('#conteudo').inert)), 'conteúdo volta a ser usável');
-  await page.click('#bi-menu'); await page.click('#menu a[href="#/historico"]');
+  await page.click('#abrir-menu'); await page.click('#menu a[href="#/historico"]');
   await page.waitForFunction(() => location.hash === '#/historico');
   afirma(!(await page.evaluate(() => document.body.classList.contains('menu-aberto'))), 'escolher item fecha o menu');
 }, { largura: 390, altura: 844 });

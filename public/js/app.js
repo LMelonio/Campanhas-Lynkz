@@ -31,7 +31,7 @@ const C = window.CONFIG;
 // Versão destes módulos. Igual à VERSAO de config.js e sw.js (o teste do lote S confere).
 // Logo depois de publicar, o config.js já chega novo pela rede, mas os módulos podem vir
 // da cópia guardada da versão anterior: a tela ficava misturada até a segunda recarga (v2.9).
-export const VERSAO_APP = '2.9.0';
+export const VERSAO_APP = '2.9.1';
 const CHAVE_RECARGA = 'lynkz-recarregou-para';
 
 const TELAS = {
@@ -200,7 +200,7 @@ function montarCasca() {
     <a class="bi-item" href="#/campanhas" data-nav="campanhas">${icone('campanhas')}Campanhas<span class="contador" data-contador hidden></span></a>
     <a class="bi-item bi-nova" href="#/nova" data-nav="nova" aria-label="Nova campanha"><span>${icone('mais')}</span></a>
     <a class="bi-item" href="#/gestao" data-nav="gestao">${icone('gestao')}Gestão</a>
-    <button class="bi-item" type="button" id="bi-menu" aria-controls="menu" aria-expanded="false">${icone('menu')}Menu</button>`);
+    <a class="bi-item" href="#/perfil" data-nav="perfil">${icone('perfil')}Perfil</a>`);
 
   pintar($('#offline'), html`${icone('offline')}Sem conexão — mostrando o que já estava carregado`);
 
@@ -231,7 +231,6 @@ function montarCasca() {
   });
 
   $('#abrir-menu').addEventListener('click', abrirMenu);
-  $('#bi-menu').addEventListener('click', abrirMenu);
   $('#menu-fundo').addEventListener('click', fecharMenu);
   $('#menu-sair').addEventListener('click', sair);
   document.addEventListener('keydown', e => { if (e.key === 'Escape' && document.body.classList.contains('menu-aberto')) fecharMenu(); });
@@ -277,6 +276,12 @@ matchMedia('(min-width: 900px)').addEventListener('change', fecharMenu);
 
 // ---------- contas esperando liberação (só administrador, v2.9) ----------
 function contarSemAcesso(n = usuarios.semAcesso()) {
+  // Celular: o menu só abre pelo ☰ do topo (v2.9.1); um ponto nele avisa que há contas esperando.
+  const botao = $('#abrir-menu');
+  if (botao) {
+    botao.classList.toggle('com-aviso', !!n);
+    botao.setAttribute('aria-label', n ? `Abrir menu (${n} ${n === 1 ? 'conta esperando' : 'contas esperando'} liberação)` : 'Abrir menu');
+  }
   $$('[data-contador-usuarios]').forEach(s => {
     s.hidden = !n;
     s.textContent = n > 99 ? '99+' : String(n || 0);

@@ -1,3 +1,11 @@
+# Mudanças da v2.9.1 (25/11/2026) — barra de baixo no celular
+
+Sem mudança de banco.
+- **Barra de baixo:** o botão "Menu" virou **"Perfil"**. Havia dois botões para o mesmo menu lateral (☰ no topo e Menu embaixo);
+  agora o menu abre só pelo ☰ do topo, e o Perfil fica a um toque.
+- **Aviso no ☰:** administrador com conta esperando liberação vê um ponto vermelho no ☰ (o item Usuários, com o número, está dentro do menu).
+- **Toast:** o botão "Desfazer" não quebra mais em duas linhas ("DESFAZ / ER") no celular.
+
 # Mudanças da v2.9.0 (24/11/2026) — origem: MELHORIAS-V2.9.md
 
 **Banco — rodar `sql/migracoes/13-devolucoes-da-consulta.sql` ANTES de publicar o site (depois `13-validacao.sql`: 5 linhas `true`; desfazer: `13-rollback.sql`)**

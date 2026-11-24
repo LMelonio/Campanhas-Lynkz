@@ -193,7 +193,8 @@ histórico do app quando existe.
 - Todo texto com contraste ≥ 4,5:1. Erro de campo: borda 2 px + ícone + texto (nunca só cor).
 - Fonte Instrument Sans; números grandes em `.num-display`. Escala 12/14/16/20/28/40, espaço base 4,
   raios `--r-panel` > `--r-ctrl` > `--r-pill`, alvo de toque `--tap` (44 px).
-- < 900 px: topo fixo + barra inferior (Início, Campanhas, +, Gestão, Menu) + menu deslizante.
+- < 900 px: topo fixo + barra inferior (Início, Campanhas, +, Gestão, Perfil) + menu deslizante, que abre só pelo ☰ do topo
+  (v2.9.1: antes havia dois botões para o mesmo menu). Administrador com conta esperando liberação vê um ponto vermelho no ☰.
   ≥ 900 px: menu lateral fixo. ≥ 1100 px: régua ao lado do formulário Nova. ≥ 1200 px: lista e detalhe lado a lado.
 - Toast no celular embaixo; no desktop no alto à direita (não cobre os botões de decisão).
 
