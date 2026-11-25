@@ -67,7 +67,7 @@ export function detalhar(error) {
   if (error.status === 429 || /rate limit/i.test(msg)) {
     return { mensagem: 'Muitos pedidos seguidos. Aguarde alguns minutos e tente de novo.', campo: null };
   }
-  if (codigo === 'PGRST205' || codigo === '42P01') {
+  if (codigo === 'PGRST205' || codigo === 'PGRST202' || codigo === '42P01') {
     return { mensagem: 'O sistema está em atualização. Tente de novo em alguns minutos ou avise a gerência.', campo: null };
   }
   // O texto técnico (às vezes em inglês) vai só para o console, nunca para a tela.

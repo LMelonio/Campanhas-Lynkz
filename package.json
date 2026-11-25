@@ -1,6 +1,6 @@
 {
   "name": "lynkz-campanhas",
-  "version": "3.0.0",
+  "version": "3.1.0",
   "private": true,
   "description": "LYNKZ Campanhas — solicitação e aprovação de campanhas promocionais (app estático + Supabase). O app não tem build: estas dependências são só ferramentas de publicação.",
   "type": "module",

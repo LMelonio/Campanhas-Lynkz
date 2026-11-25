@@ -233,11 +233,28 @@ function definirPerfil({ p_id: id, p_papel: papel = null, p_ativo: ativo = null,
   return { data: JSON.parse(JSON.stringify(alvo)), error: null };
 }
 
+// excluir_campanha(p_id, p_motivo): só administrador ativo; motivo de 3 a 500 letras; notas saem junto.
+function excluirCampanha({ p_id: id, p_motivo: motivo = '' }) {
+  const u = usuario();
+  if (!u) return { data: null, error: erro('JWT expired', 'PGRST301') };
+  if (!(u.papel === 'aprovador' && u.ativo)) return { data: null, error: erro('Só um administrador exclui campanhas.', '42501') };
+  const m = String(motivo ?? '').trim().replace(/\s+/g, ' ');
+  if (m.length < 3 || m.length > 500) return { data: null, error: erro('Escreva o motivo da exclusão (de 3 a 500 caracteres).') };
+  const i = db.campanhas.findIndex(c => c.id == id);
+  if (i < 0) return { data: null, error: erro('Campanha não encontrada. Talvez outra pessoa já tenha excluído.') };
+  const [c] = db.campanhas.splice(i, 1);
+  db.campanha_notas = (db.campanha_notas || []).filter(n => n.campanha_id != id);
+  (db.campanhas_excluidas ||= []).push({ campanha_id: c.id, codigo: c.codigo, motivo: m, excluida_por: u.id, dados: { campanha: c } });
+  gravarDb();
+  emitir('campanhas', 'DELETE', c);
+  return { data: { id: c.id, codigo: c.codigo }, error: null };
+}
+
 // ---------- tempo real ----------
 const canais = new Set();
 function emitir(tabela, eventType, row) {
   setTimeout(() => canais.forEach(c => c.ouvintes.forEach(o => {
-    if (o.filtro.table === tabela) o.fn({ eventType, new: { id: row.id }, old: {} });
+    if (o.filtro.table === tabela) o.fn(eventType === 'DELETE' ? { eventType, new: {}, old: { id: row.id } } : { eventType, new: { id: row.id }, old: {} });
   })), 50);
 }
 
@@ -344,6 +361,7 @@ export const sb = {
   rpc(nome, args = {}) {
     const rodar = () => {
       if (nome === 'definir_perfil') return definirPerfil(args);
+      if (nome === 'excluir_campanha') return excluirCampanha(args);
       if (nome !== 'enviar_campanha') return { data: null, error: erro(`Could not find the function public.${nome} in the schema cache`, 'PGRST202') };
       const r = enviarCampanha(args);
       return r.error ? { data: null, error: r.error } : r;

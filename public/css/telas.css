@@ -68,10 +68,18 @@
 /* ---------- lista de campanhas ---------- */
 .ferramentas { display: grid; gap: var(--e-3); }
 .ferramentas .campo { margin: 0; }
-.ferramentas-linha { display: flex; gap: var(--e-3); align-items: center; flex-wrap: wrap; }
-.ferramentas-linha .campo { flex: 1 1 200px; }
-.ferramentas-linha .interruptor { margin: 0; }
-@media (max-width: 599px) { .ferramentas-linha .campo { flex-basis: 100%; } }
+/* Filtros da lista: fornecedor e cliente com a mesma largura; "Só as minhas" embaixo, ou ao lado
+   quando a lista tem espaço (container query: vale também para a lista estreita ao lado do detalhe). */
+.ferramentas { container-type: inline-size; }
+.filtros-campos { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--e-2) var(--e-3); align-items: end; }
+.filtros-campos .interruptor { grid-column: 1 / -1; margin: 0; }
+.campo-filtro { gap: var(--e-1); }
+.campo-filtro > label { font-size: var(--t-13); font-weight: 600; color: var(--ink-2); }
+.campo-filtro select { width: 100%; min-width: 0; text-overflow: ellipsis; }
+@container (min-width: 560px) {
+  .filtros-campos { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto; }
+  .filtros-campos .interruptor { grid-column: auto; min-height: 44px; }
+}
 @media (min-width: 900px) {
   .ferramentas-linha-larga { grid-template-columns: minmax(0, 1fr) auto; align-items: center; }
   .ferramentas-linha-larga .interruptor { margin: 0; }
@@ -106,7 +114,8 @@ a.det-empresa:hover { text-decoration-color: currentColor; }
 .painel-motivo { border-left: 4px solid var(--red-ink); }
 .painel-motivo .painel-corpo { white-space: pre-wrap; }
 .painel-nota { margin: 0 var(--e-4) var(--e-4); }
-.det-reenviar { margin-top: var(--e-2); }
+.det-reenviar { margin-top: var(--e-2); flex-wrap: wrap; align-items: center; }
+.det-reenviar [data-excluir] { margin-left: auto; min-height: 44px; }
 @media (min-width: 1000px) {
   .det-paineis { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 var(--e-4); align-items: start; }
 }
@@ -188,6 +197,8 @@ a.det-empresa:hover { text-decoration-color: currentColor; }
 
 /* ---------- perfil ---------- */
 .perfil { max-width: 560px; }
+.relatorios { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: var(--e-2); }
+.relatorios .btn { width: 100%; }
 .perfil-cartao { display: flex; align-items: center; gap: var(--e-4); padding: var(--e-5); }
 .avatar {
   width: 56px; height: 56px; flex: 0 0 auto; border-radius: 50%; display: grid; place-items: center;

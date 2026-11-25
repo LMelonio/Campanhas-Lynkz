@@ -4,7 +4,8 @@ import { calc, banda, pct, brl, textoDevolucoes, dataBR, dias, maskCPF, maskTele
 import { icone } from '../ui/icones.js';
 import { selo, seloNeutro, regua, vazio, carregando, FAIXAS } from '../ui/pecas.js';
 import { botaoCopiar, ligarCopiar } from '../ui/copiar.js';
-import { abrirDialogo } from '../ui/avisos.js';
+import { abrirDialogo, erroNoDialogo } from '../ui/avisos.js';
+import { areaTexto, aplicarErros } from '../ui/campos.js';
 import { estadoLista } from '../ui/estado.js';
 import { consultarCompras } from '../dados/qlik.js';
 import { aprovarComDesfazer, reprovarComMotivo, desfazerAprovacao, esperandoAprovar, assinarDecisao } from '../ui/decisao.js';
@@ -220,6 +221,7 @@ function corpo(c, ctx) {
       ${c.status === STATUS.REPROVADA && minha
         ? html`<a class="btn btn-primario" href="#/nova/de/${c.id}">${icone('repetir')} Reenviar com ajustes</a>`
         : html`<a class="btn btn-fantasma" href="#/nova/de/${c.id}" data-modelo>${icone('repetir')} Usar como modelo</a>`}
+      ${ctx.ehAprovador ? html`<button type="button" class="btn btn-texto btn-texto-perigo" data-excluir>${icone('lixeira')} Excluir campanha</button>` : ''}
     </div>
   </article>`;
 }
@@ -285,6 +287,34 @@ function abrirProxima(ctx, idAtual) {
 
 const estaAberta = id => location.hash === `#/campanhas/${id}`;
 
+// Exclusão (só administrador; o banco confere de novo e guarda uma cópia com o motivo).
+async function excluirCampanha(ctx, c) {
+  let excluida = false;
+  await abrirDialogo({
+    titulo: 'Excluir campanha?',
+    descricao: `${c.codigo} · ${c.cliente} · ${c.campanha}. Ela sai da lista de todos e não volta pelo app. O banco guarda uma cópia com o motivo e o seu nome.`,
+    corpo: areaTexto({ id: 'ex-motivo', rotulo: 'Motivo da exclusão', obrigatorio: true, dica: 'Ex.: enviada em duplicidade, cliente desistiu antes de começar.', atributos: { maxlength: 500 } }),
+    acoes: [
+      { rotulo: 'Voltar', valor: null, tipo: 'fantasma' },
+      { rotulo: 'Excluir de vez', valor: 'excluir', tipo: 'perigo', principal: true },
+    ],
+    aoAbrir: d => $('#ex-motivo', d).focus(),
+    antesDeFechar: async (_v, d) => {
+      erroNoDialogo(d, '');
+      const motivo = $('#ex-motivo', d).value.trim();
+      if (motivo.length < 3) { aplicarErros(d, { 'ex-motivo': 'Escreva o motivo (pelo menos 3 letras).' }); return false; }
+      try { await ctx.campanhas.excluir(c.id, motivo); }
+      catch (err) { erroNoDialogo(d, err.message); return false; }
+      excluida = true;
+      return true;
+    },
+  });
+  if (excluida) {
+    ctx.toast(`Campanha ${c.codigo} excluída.`, { tom: 'sucesso' });
+    ctx.navegar('#/campanhas', { substituir: true });
+  }
+}
+
 // ---------- atalhos de teclado (só ≥ 900 px) ----------
 const ATALHOS = [
   ['A', 'Aprovar (com 5 s para desfazer)'],
@@ -343,6 +373,7 @@ export function montar(el, ctx, { id, lista = null }) {
     ao(el, 'click', '[data-ver-notas]', () => { const k = String(id); if (notasAbertas.has(k)) notasAbertas.delete(k); else notasAbertas.add(k); desenhar(); }),
     ao(el, 'click', '[data-conferir-qlik]', () => { const c = ctx.campanhas.porId(id); if (c) conferirQlik(ctx, c); }),
     ao(el, 'click', '[data-desfazer]', () => desfazerAprovacao()),
+    ao(el, 'click', '[data-excluir]', () => { const c = ctx.campanhas.porId(id); if (c && ctx.ehAprovador) excluirCampanha(ctx, c); }),
     assinarDecisao(() => desenhar()),
     ctx.campanhas.assinar(ev => { if (ev.tipo === 'carga' || ev.tipo === 'erro' || String(ev.id) === String(id)) desenhar(); }),
     ctx.cadastros.assinar(() => desenhar()),

@@ -9,7 +9,9 @@ exportação para Excel e ADP (autorização de pagamento) em PDF.
 - HTML, CSS e JavaScript puros em módulos ES, **sem framework e sem build**: `public/` é exatamente o que vai para o ar.
   Não introduza React, Vue, Tailwind, bundler ou etapa de build sem pedido explícito. Quem mantém não é desenvolvedor.
 - Supabase (banco, autenticação, RLS). Cloudflare Worker publica `public/` e responde `/api/*` (`worker/`).
-- Bibliotecas em `public/vendor/` com a versão no nome (supabase-js, SheetJS, pdf-lib). Sem CDN: a CSP é `script-src 'self'`.
+- Bibliotecas e fonte em `public/vendor/` com a versão no nome (supabase-js, SheetJS, pdf-lib, Instrument Sans). Sem CDN nem
+  Google Fonts: a CSP é `script-src 'self'` e `font-src 'self'`. SheetJS é um recorte minificado (`utils` + `writeFile`) do
+  `xlsx.mjs` 0.20.3: `echo "export { utils, writeFile } from './xlsx.mjs';" > e.mjs && npx esbuild e.mjs --bundle --format=esm --minify --outfile=xlsx-0.20.3.min.js`.
 
 ## Estrutura
 
@@ -58,7 +60,10 @@ Tela: `export function montar(el, ctx, params) → desmontar`. `ctx`: `perfil`, 
 - Marcas da consulta do Qlik: até 10 (`MAX_MARCAS`), gravadas em `compras_marca` separadas por "; ".
 - Até 2 balconistas por empresa, contando desativados. Empresas vêm do Qlik (o app só edita telefone e observações).
 - Decisão: `ui/decisao.js` é a única lógica de aprovar/recusar (aprovação com 5 s para desfazer).
-- ADP: aprovadas com Swile do mês em que terminaram. Vencimento padrão de 7 dias úteis (`somaDiasUteis()`, sem fins de
+- Exclusão: só administrador, pelo detalhe, com motivo. `campanhas.excluir()` → função `excluir_campanha()` (migração 15),
+  que guarda a campanha e as notas em `campanhas_excluidas` antes de apagar. O app não tem DELETE direto em nenhuma tabela.
+- Filtros da lista de campanhas: status, fornecedor, cliente (só clientes com campanha) e "Só as minhas".
+- ADP: aprovadas com Swile do mês em que terminaram; gerada pela lista de Campanhas, pelo Histórico ou pelo Perfil. Vencimento padrão de 7 dias úteis (`somaDiasUteis()`, sem fins de
   semana e feriados nacionais), editável. As edições do diálogo valem só para o PDF. Textos fixos em `config.js` → `ADP`.
 - Temas: `ui/tema.js` (automático, claro, escuro, daltônico), salvo no aparelho; `tema-inicial.js` aplica antes da pintura.
 - Convite: Administrador convida em Usuários; o Worker chama o invite do Supabase com a chave de serviço e define o perfil
@@ -73,7 +78,9 @@ Tela: `export function montar(el, ctx, params) → desmontar`. `ctx`: `perfil`, 
 
 ## Segurança (não enfraquecer)
 
-- Conta nova sem convite entra desativada. RLS e grants por coluna; dados `swile_*` só para administrador e solicitante.
+- Conta nova sem convite entra desativada (e o cadastro aberto fica desligado no Supabase: só entra quem é convidado).
+  RLS e grants por coluna; dados `swile_*` só para administrador e solicitante.
+- Rascunho da Nova fica no aparelho sem CPF/dados pessoais, marcado com a conta: outra conta no mesmo aparelho não o vê.
 - Segredos só no Worker (`npx wrangler secret put QLIK_API_KEY` e `SUPABASE_SERVICE_ROLE_KEY`) e no `.env` dos scripts.
   Nunca em `public/`, `wrangler.jsonc` ou no Git.
 - `connect-src` só para o projeto Supabase do `config.js`. Trocou de projeto: atualize `_headers`, `deploy/lynkz-seguranca.conf`

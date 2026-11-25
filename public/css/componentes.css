@@ -19,6 +19,7 @@
 .btn-perigo { background: var(--card); color: var(--red-ink); border-color: var(--red-ink); }
 .btn-perigo:hover { background: var(--red-soft); }
 .btn-texto { background: none; border: 0; padding: 0 var(--e-2); color: var(--ink-2); text-decoration: underline; text-underline-offset: 3px; }
+.btn-texto-perigo { color: var(--red-ink); }
 .btn-icone {
   width: var(--tap); height: var(--tap); padding: 0; border-radius: var(--r-pill);
   background: none; border: 0; color: var(--ink);

@@ -70,3 +70,11 @@ test('e-mail já cadastrado, sem chave no servidor e perfil não definido', asyn
   assert.equal(r.status, 201);
   assert.match((await r.json()).aviso, /Confira o perfil/);
 });
+
+test('sem a chave no servidor, quem não é administrador recebe 403 (não descobre a configuração)', async () => {
+  supabaseFalso({ papel: 'coordenador' });
+  const r = await worker.fetch(pedido(CORPO), { ...ENV, SUPABASE_SERVICE_ROLE_KEY: '' });
+  assert.equal(r.status, 403);
+  supabaseFalso();
+  assert.equal((await worker.fetch(pedido(CORPO, { token: '' }), { ...ENV, SUPABASE_SERVICE_ROLE_KEY: '' })).status, 401);
+});

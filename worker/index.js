@@ -103,13 +103,14 @@ export function validarConvite(corpo) {
 }
 
 export async function tratarConvite(request, env, origem) {
-  if (!env.SUPABASE_SERVICE_ROLE_KEY) throw new ErroQlik('Convite indisponível: falta configurar a chave do Supabase no servidor.', { status: 503 });
   const token = tokenDoPedido(request);
   if (!token) return json({ erro: 'Entre no app para convidar.' }, 401);
   const { email, nome, papel } = validarConvite(await lerCorpo(request));
   const perfil = await perfilDoToken(token, env);
   const admin = perfil?.ativo && perfil.papel === 'aprovador' ? perfil.id : null;
   if (!admin) return json({ erro: 'Só administradores convidam usuários.' }, 403);
+  // Só depois de saber que é administrador: quem não é não descobre como o servidor está configurado.
+  if (!env.SUPABASE_SERVICE_ROLE_KEY) throw new ErroQlik('Convite indisponível: falta configurar a chave do Supabase no servidor.', { status: 503 });
   if (!(await dentroDoLimite(env, `convite:${admin}`))) return json({ erro: 'Muitos convites seguidos. Aguarde um minuto.' }, 429, { 'Retry-After': '60' });
 
   const servico = { apikey: env.SUPABASE_SERVICE_ROLE_KEY, Authorization: `Bearer ${env.SUPABASE_SERVICE_ROLE_KEY}`, 'Content-Type': 'application/json' };

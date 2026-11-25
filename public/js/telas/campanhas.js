@@ -19,7 +19,7 @@ const STATUS_FILTROS = [
 ];
 
 // Filtros sobrevivem à troca de tela (até sair do app).
-const filtros = { busca: '', status: null, lab: '', minhas: null, limite: PASSO };
+const filtros = { busca: '', status: null, lab: '', cliente: '', minhas: null, limite: PASSO };
 // Filtros que vieram da URL (indicadores do Início): viram chips com "×".
 // status · mes ('AAAA-MM', pela data da decisão) · rebate (só com rebate)
 const daUrl = {};
@@ -34,8 +34,8 @@ function aplicarQuery(q = {}) {
   if (q.mes === 'atual') daUrl.mes = hojeCivil().slice(0, 7);
   else if (/^\d{4}-\d{2}$/.test(q.mes || '')) daUrl.mes = q.mes;
   if (q.rebate === '1') daUrl.rebate = true;
-  // A lista precisa bater com o número clicado: sem "Só as minhas", busca ou fornecedor.
-  Object.assign(filtros, { minhas: false, busca: '', lab: '', limite: PASSO });
+  // A lista precisa bater com o número clicado: sem "Só as minhas", busca, fornecedor ou cliente.
+  Object.assign(filtros, { minhas: false, busca: '', lab: '', cliente: '', limite: PASSO });
   return true;
 }
 
@@ -50,6 +50,10 @@ function atualizarUrl() {
   history.replaceState(history.state, '', base + (qs ? '?' + qs : ''));
 }
 
+// Cliente da campanha como aparece no filtro (o nome gravado na campanha, sem espaços sobrando).
+const nomeCliente = c => String(c.cliente ?? '').trim().replace(/\s+/g, ' ');
+const ordemPt = (a, b) => a.localeCompare(b, 'pt-BR', { sensitivity: 'base' });
+
 let s = null;   // estado da tela montada: { el, ctx, id, desligar[], desmontarDetalhe, rolagemLista }
 
 function aplicarFiltros(ctx, { ignorarStatus = false } = {}) {
@@ -58,6 +62,7 @@ function aplicarFiltros(ctx, { ignorarStatus = false } = {}) {
     (ignorarStatus || filtros.status === 'Todas' || c.status === filtros.status) &&
     // Campanha com vários fornecedores ("Ouro Fino, Avert") aparece no filtro de cada um.
     (!filtros.lab || listaLaboratorios(c.laboratorio).includes(filtros.lab)) &&
+    (!filtros.cliente || nomeCliente(c) === filtros.cliente) &&
     (!filtros.minhas || c.solicitante_id === eu) &&
     (!filtros.busca || contem(filtros.busca, `${c.cliente} ${c.campanha} ${c.laboratorio} ${c.codigo} ${c.solicitante_nome || ''}`)) &&
     (!daUrl.mes || dataCivil(c.data_decisao || c.criado_em).startsWith(daUrl.mes)) &&
@@ -108,7 +113,7 @@ function desenharLista() {
 
   const lista = ordenar(aplicarFiltros(ctx));
   const visiveis = lista.slice(0, filtros.limite);
-  const filtrando = filtros.busca || filtros.lab || filtros.minhas;
+  const filtrando = filtros.busca || filtros.lab || filtros.cliente || filtros.minhas;
   // Carregando ou erro de carga: nunca dizer "Nada encontrado" nesses casos.
   const est = estadoLista({ carregado: ctx.campanhas.carregado, erro: ctx.campanhas.erro });
   if (est) { pintar($('#cp-resumo', el), ''); $('#cp-excel', el).hidden = true; pintar(caixa, est); return; }
@@ -119,12 +124,12 @@ function desenharLista() {
       ${lista.length > visiveis.length ? html`<button type="button" class="btn btn-fantasma btn-largo" id="cp-mais">Mostrar mais (${lista.length - visiveis.length} restantes)</button>` : ''}`
     : vazio({
         // "Só as minhas" ligado por padrão e nenhuma campanha enviada ainda: não é busca sem resultado.
-        ...(filtros.minhas && !filtros.busca && !filtros.lab && !ctx.campanhas.todas().some(c => c.solicitante_id === ctx.perfil?.id)
+        ...(filtros.minhas && !filtros.busca && !filtros.lab && !filtros.cliente && !ctx.campanhas.todas().some(c => c.solicitante_id === ctx.perfil?.id)
           ? { icone: 'check', titulo: 'Você ainda não enviou campanhas', texto: 'Use o botão Nova campanha para enviar a primeira.' }
           : {
               icone: filtrando ? 'busca' : 'check',
               titulo: filtrando ? 'Nada encontrado' : 'Nada por aqui',
-              texto: filtrando ? 'Tente outro nome, código ou fornecedor, ou limpe os filtros.' : 'Campanhas com este status aparecem aqui.',
+              texto: filtrando ? 'Tente outro nome, código, fornecedor ou cliente, ou limpe os filtros.' : 'Campanhas com este status aparecem aqui.',
             }),
       }));
   if (cartaoFoco) {
@@ -161,12 +166,12 @@ function mostrarDetalhe(id) {
 }
 
 // Abriu uma campanha (ex.: a que acabou de ser enviada) que os filtros guardados escondem:
-// tira o fornecedor e a busca e, se ainda assim não aparecer, mostra todos os status.
+// tira fornecedor, cliente e busca e, se ainda assim não aparecer, mostra todos os status.
 function garantirNaLista(ctx, id) {
   if (!ctx.campanhas.porId(id)) return;
   const aparece = () => aplicarFiltros(ctx).some(c => String(c.id) === String(id));
   if (aparece()) return;
-  Object.assign(filtros, { lab: '', busca: '' });
+  Object.assign(filtros, { lab: '', cliente: '', busca: '' });
   if (!aparece()) filtros.status = 'Todas';
 }
 
@@ -177,20 +182,31 @@ export function montar(el, ctx, params) {
   if (params.id) garantirNaLista(ctx, params.id);
   s = { el, ctx, id: null, desligar: [], desmontarDetalhe: null, rolagemLista: 0 };
 
-  const labs = [...new Set([...(window.CONFIG.LABORATORIOS || []), ...ctx.campanhas.todas().flatMap(c => listaLaboratorios(c.laboratorio))])]
-    .filter(Boolean).sort((a, b) => a.localeCompare(b, 'pt-BR'));
+  const todas = ctx.campanhas.todas();
+  const labs = [...new Set([...(window.CONFIG.LABORATORIOS || []), ...todas.flatMap(c => listaLaboratorios(c.laboratorio))])]
+    .filter(Boolean).sort(ordemPt);
+  // Só clientes que têm campanha (a base do Qlik tem milhares; aqui interessa quem aparece na lista).
+  const clientes = [...new Set(todas.map(nomeCliente))].filter(Boolean).sort(ordemPt);
+  if (filtros.cliente && !clientes.includes(filtros.cliente)) clientes.unshift(filtros.cliente);
 
   pintar(el, html`<div class="mestre-detalhe" data-com-detalhe="false">
     <section class="md-lista" aria-label="Lista de campanhas">
       <div class="ferramentas">
         ${campoBusca({ id: 'cp-busca', rotulo: 'Buscar campanhas', valor: filtros.busca, placeholder: 'Buscar campanha ou código', dica: 'Procura empresa, campanha, fornecedor, código e quem enviou.' })}
         <div class="filtros" id="cp-status" role="group" aria-label="Filtrar por status"></div>
-        <div class="ferramentas-linha">
-          <div class="campo">
-            <label class="so-leitor" for="cp-lab">Fornecedor</label>
+        <div class="filtros-campos">
+          <div class="campo campo-filtro">
+            <label for="cp-lab">Fornecedor</label>
             <select id="cp-lab">
-              <option value="">Todos os fornecedores</option>
+              <option value="">Todos</option>
               ${labs.map(l => html`<option value="${l}"${l === filtros.lab ? html` selected` : ''}>${l}</option>`)}
+            </select>
+          </div>
+          <div class="campo campo-filtro">
+            <label for="cp-cliente">Cliente</label>
+            <select id="cp-cliente">
+              <option value="">Todos</option>
+              ${clientes.map(n => html`<option value="${n}"${n === filtros.cliente ? html` selected` : ''}>${n}</option>`)}
             </select>
           </div>
           <label class="interruptor sem-caixa" for="cp-minhas">
@@ -237,12 +253,13 @@ export function montar(el, ctx, params) {
     ao(el, 'click', '#cp-excel', async (e, b) => {
       b.disabled = true; b.setAttribute('aria-busy', 'true');
       try {
-        await exportarExcel(ordenar(aplicarFiltros(ctx)), ctx.cadastros, { prefixo: `Campanhas_${ROTULO_STATUS[filtros.status] || 'Todas'}${filtros.lab ? '_' + nomeParaArquivo(filtros.lab) : ''}` });
+        await exportarExcel(ordenar(aplicarFiltros(ctx)), ctx.cadastros, { prefixo: `Campanhas_${ROTULO_STATUS[filtros.status] || 'Todas'}${filtros.lab ? '_' + nomeParaArquivo(filtros.lab) : ''}${filtros.cliente ? '_' + nomeParaArquivo(filtros.cliente).slice(0, 40) : ''}` });
         ctx.toast('Planilha gerada.', { tom: 'sucesso' });
       } catch (err) { ctx.toast(err.message, { tom: 'erro', duracao: 8000 }); }
       finally { b.disabled = false; b.removeAttribute('aria-busy'); }
     }),
     ao(el, 'change', '#cp-lab', (e, sel) => { filtros.lab = sel.value; filtros.limite = PASSO; redesenhar(); }),
+    ao(el, 'change', '#cp-cliente', (e, sel) => { filtros.cliente = sel.value; filtros.limite = PASSO; redesenhar(); }),
     ao(el, 'change', '#cp-minhas', (e, cb) => { filtros.minhas = cb.checked; filtros.limite = PASSO; redesenhar(); }),
     ao(el, 'click', '#cp-mais', () => {
       const antes = filtros.limite;
@@ -278,6 +295,7 @@ export function atualizar(params) {
     $('#cp-busca', s.el).value = '';
     $('[data-limpar-busca="cp-busca"]', s.el).hidden = true;
     $('#cp-lab', s.el).value = '';
+    $('#cp-cliente', s.el).value = '';
     $('#cp-minhas', s.el).checked = false;
     desenharFiltros();
     desenharLista();

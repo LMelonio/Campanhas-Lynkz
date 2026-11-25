@@ -23,7 +23,7 @@ import * as telaUsuarios from './telas/usuarios.js';
 const C = window.CONFIG;
 
 // Igual à VERSAO de config.js e sw.js. Se o config.js chegar mais novo que os módulos em cache, recarrega uma vez.
-export const VERSAO_APP = '3.0.0';
+export const VERSAO_APP = '3.1.0';
 const CHAVE_RECARGA = 'lynkz-recarregou-para';
 
 const TELAS = {
@@ -375,14 +375,17 @@ const esconderFaixaErro = () => { $('#faixa-erro').hidden = true; };
 
 // Carrega campanhas e cadastros. Erro não vira aviso flutuante: vira faixa
 // fixa e o estado "Não foi possível carregar" de cada lista.
-async function carregarDados() {
+async function carregarDados({ mostrar = true } = {}) {
   const erros = [];
   await Promise.all([
     campanhas.carregar().catch(e => erros.push(e.message)),
     cadastros.carregar().catch(e => erros.push(e.message)),
   ]);
+  if (mostrar) mostrarErrosDaCarga(erros);
+  return erros;
+}
+function mostrarErrosDaCarga(erros) {
   if (erros.length) mostrarFaixaErro(erros[0]); else esconderFaixaErro();
-  return !erros.length;
 }
 
 // ---------- entrada ----------
@@ -390,12 +393,14 @@ let dadosLigados = false;
 
 async function iniciarDados() {
   if (!emManutencao) pintar($('#conteudo'), carregando(4));
+  // Conferência do banco e carga dos dados ao mesmo tempo (antes era uma depois da outra).
+  const carga = carregarDados({ mostrar: false });
   const saude = await conferirBanco();
-  if (!saude.ok && saude.falta.length) { mostrarManutencao(saude.falta); return; }
+  if (!saude.ok && saude.falta.length) { await carga; mostrarManutencao(saude.falta); return; }
   emManutencao = false;
   document.body.classList.remove('manutencao');
 
-  await carregarDados();
+  mostrarErrosDaCarga(await carga);
   if (!dadosLigados) {
     dadosLigados = true;
     campanhas.aoVivo();

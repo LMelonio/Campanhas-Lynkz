@@ -454,7 +454,7 @@ function validar() {
 // ---------- rascunho ----------
 function salvarRascunho() {
   if (!st || st.enviado) return;
-  const r = { versao: 2 };
+  const r = { versao: 2, dono: st.ctx.perfil?.id ?? null };
   let algum = false;
   $$('input[id], select[id], textarea[id]', $('#form-nova', st.el)).forEach(el => {
     if (IDS_PESSOAIS.includes(el.id) || el.type === 'radio' || el.id === 'n-empresa' || el.id === 'n-laboratorio' || el.id.startsWith('n-div-')) return;
@@ -477,9 +477,11 @@ function salvarRascunho() {
   mostrarRascunhoSalvo(algum ? r.salvoEm : null);
 }
 
-function lerRascunho() {
+// Rascunho de outra conta (aparelho compartilhado) não aparece para quem entrou agora.
+function lerRascunho(dono = null) {
   const r = armazenamento.ler(CHAVE_RASCUNHO);
-  return r && typeof r === 'object' && r.versao === 2 ? r : null;
+  if (!r || typeof r !== 'object' || r.versao !== 2) return null;
+  return dono && r.dono && r.dono !== dono ? null : r;
 }
 
 // "Rascunho salvo às 10:32" no rodapé do formulário e na barra de envio.
@@ -777,7 +779,7 @@ export function montar(el, ctx, params) {
   const origem = params.de ? ctx.campanhas.porId(params.de) : null;
   // Reprovada e minha = reenvio (copia tudo). Qualquer outra = modelo (sem as datas).
   const reenvio = !!origem && origem.status === STATUS.REPROVADA && origem.solicitante_id === ctx.perfil.id;
-  const rascunho = origem ? null : lerRascunho();
+  const rascunho = origem ? null : lerRascunho(ctx.perfil.id);
   let ini = origem ? valoresDaCampanha(origem, ctx, { comoModelo: !reenvio }) : (rascunho || {});
   // "Nova campanha" na ficha da empresa: já vem com ela escolhida.
   let sugerida = null;

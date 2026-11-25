@@ -12,10 +12,11 @@ const NECESSARIAS = [
 // → { ok, falta: [{ tabela, migracao }], erro }
 // erro (rede, sessão) não é "banco desatualizado": quem trata é o fluxo normal.
 export async function conferirBanco() {
+  // As três ao mesmo tempo (uma ida ao banco em vez de três seguidas).
+  const respostas = await Promise.all(NECESSARIAS.map(n => sb.from(n.tabela).select('id').limit(1)));
   const falta = [];
-  for (const n of NECESSARIAS) {
-    const { error } = await sb.from(n.tabela).select('id').limit(1);
-    if (error?.code === 'PGRST205' || error?.code === '42P01') falta.push(n);
+  for (const [i, { error }] of respostas.entries()) {
+    if (error?.code === 'PGRST205' || error?.code === '42P01') falta.push(NECESSARIAS[i]);
     else if (error) return { ok: false, falta: [], erro: error };
   }
   return { ok: falta.length === 0, falta, erro: null };

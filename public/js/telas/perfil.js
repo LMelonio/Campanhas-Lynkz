@@ -1,9 +1,10 @@
-// Perfil: dados da conta, resumo, aparência, planilha Excel, troca de senha e saída.
+// Perfil: dados da conta, resumo, aparência, planilha Excel e ADP, troca de senha e saída.
 import { html, pintar, ao } from '../lib/dom.js';
 import { STATUS, quandoBR, rotuloPapel } from '../lib/regras.js';
 import { icone } from '../ui/icones.js';
 import { seloNeutro } from '../ui/pecas.js';
 import { exportarExcel } from '../exportar.js';
+import { dialogoGerarAdp } from '../ui/adp-dialogo.js';
 import { sb } from '../lib/supabase.js';
 import { abrirDialogo, erroNoDialogo } from '../ui/avisos.js';
 import { aplicarErros } from '../ui/campos.js';
@@ -51,10 +52,13 @@ function desenhar(el, ctx) {
     </section>
 
     <section class="painel">
-      <h3 class="painel-titulo">Relatório</h3>
+      <h3 class="painel-titulo">Relatórios</h3>
       <div class="painel-corpo">
-        <p class="campo-dica bloco-dica">Planilha com todas as campanhas, custo total, rebate e decisão. Dados Swile só saem nas campanhas que você pode ver.</p>
-        <button type="button" class="btn btn-fantasma btn-largo" id="pf-excel">${icone('baixar')} Baixar planilha Excel</button>
+        <p class="campo-dica bloco-dica">Planilha com todas as campanhas, custo total, rebate e decisão. ADP em PDF das campanhas Swile aprovadas do mês. Dados Swile só saem nas campanhas que você pode ver.</p>
+        <div class="relatorios">
+          <button type="button" class="btn btn-fantasma" id="pf-excel">${icone('baixar')} Baixar planilha Excel</button>
+          <button type="button" class="btn btn-fantasma" id="pf-adp">${icone('baixar')} Gerar ADP (PDF)</button>
+        </div>
       </div>
     </section>
 
@@ -120,6 +124,7 @@ export function montar(el, ctx) {
       } catch (err) { ctx.toast(err.message, { tom: 'erro', duracao: 8000 }); }
       finally { b.disabled = false; b.removeAttribute('aria-busy'); }
     }),
+    ao(el, 'click', '#pf-adp', () => dialogoGerarAdp(ctx)),
     ao(el, 'click', '#pf-sair', () => ctx.sair()),
     ao(el, 'click', '#pf-senha', () => alterarSenha(ctx)),
     ao(el, 'change', 'input[name="pf-tema"]', (e, r) => escolherTema(r.value)),

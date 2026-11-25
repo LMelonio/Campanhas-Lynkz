@@ -82,6 +82,13 @@ export const campanhas = {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'campanhas' }, async p => {
         const id = p.new?.id ?? p.old?.id;
         if (id == null) return;
+        if (p.eventType === 'DELETE') {
+          const i = lista.findIndex(c => mesmaId(c.id, id));
+          if (i < 0) return;
+          lista.splice(i, 1);
+          avisar({ tipo: 'linha', id, campanha: null, nova: false, origem: 'remota', evento: 'DELETE' });
+          return;
+        }
         try {
           const { linha, nova } = await relerLinha(id);
           avisar({ tipo: 'linha', id, campanha: linha, nova, origem: 'remota', evento: p.eventType });
@@ -144,6 +151,15 @@ export const campanhas = {
       throw new ErroApp('Não foi possível registrar a decisão. Só administradores decidem campanhas.');
     }
     return linha;
+  },
+
+  // Só administrador (a regra está no banco, em excluir_campanha). O banco guarda uma cópia
+  // com o motivo e quem excluiu; aqui a campanha sai da lista na hora.
+  async excluir(id, motivo) {
+    exigir(await sb.rpc('excluir_campanha', { p_id: Number(id), p_motivo: motivo }));
+    const i = lista.findIndex(c => mesmaId(c.id, id));
+    if (i >= 0) lista.splice(i, 1);
+    avisar({ tipo: 'linha', id, campanha: null, nova: false, origem: 'local', evento: 'DELETE' });
   },
 
   parar() {

@@ -2394,6 +2394,117 @@ teste('v3.0: link de convite abre "Crie sua senha" e, salvando, entra direto no 
 });
 
 // ============================================================
+//  v3.1 — filtros por fornecedor e cliente, excluir campanha, ADP no Perfil, sem terceiros
+// ============================================================
+const caixa = (page, sel) => page.locator(sel).evaluate(e => { const r = e.getBoundingClientRect(); return { x: Math.round(r.left), y: Math.round(r.top), w: Math.round(r.width) }; });
+
+teste('v3.1: filtro por cliente e fornecedor, proporcionais no celular (360 px)', async ({ page }) => {
+  await abrir(page, { rota: '#/campanhas' });
+  await page.click('#cp-status [data-status="Todas"]');
+  const cartoes = () => page.locator('#cp-itens .cartao').count();
+  const total = await cartoes();
+  afirma(await page.locator('#cp-cliente option', { hasText: 'Agropecuária São Luís' }).count() === 1, 'cliente com campanha aparece uma vez');
+  igual(await page.locator('#cp-cliente option', { hasText: 'CLIENTE QLIK' }).count(), 0, 'cliente sem campanha não entra na lista');
+  await page.selectOption('#cp-cliente', 'Agropecuária São Luís');
+  igual(await cartoes(), 2, 'só as campanhas do cliente');
+  await page.selectOption('#cp-lab', 'Vansil');
+  igual(await cartoes(), 1, 'cliente + fornecedor juntos');
+  afirma((await page.locator('#cp-itens .cartao').innerText()).includes('Combo Vermífugos'), 'a campanha certa');
+  await page.selectOption('#cp-lab', '');
+  await page.selectOption('#cp-cliente', '');
+  igual(await cartoes(), total, 'limpar volta tudo');
+  const [lab, cli, sw] = [await caixa(page, '#cp-lab'), await caixa(page, '#cp-cliente'), await caixa(page, 'label[for="cp-minhas"]')];
+  igual(lab.y, cli.y, 'fornecedor e cliente na mesma linha');
+  afirma(Math.abs(lab.w - cli.w) <= 1, `mesma largura (${lab.w} x ${cli.w})`);
+  afirma(sw.y > lab.y, '"Só as minhas" embaixo no celular');
+  afirma(await semOverflow(page, 'Campanhas filtros 360 px'), 'sem rolagem lateral');
+  const vio = (await axe(page, 'Campanhas filtros 360 px')).filter(x => ['critical', 'serious'].includes(x.impacto));
+  afirma(!vio.length, 'acessibilidade: ' + JSON.stringify(vio));
+  // Filtro guardado some quando um indicador do Início abre a lista (o número tem de bater).
+  await page.selectOption('#cp-cliente', 'Casa do Criador');
+  await page.evaluate(() => { location.hash = '#/campanhas?status=Pendente'; });
+  await page.waitForFunction(() => document.querySelector('#cp-cliente')?.value === '');
+}, { largura: 360, altura: 740 });
+
+teste('v3.1: filtros numa linha quando a lista é larga (1000 px)', async ({ page }) => {
+  await abrir(page, { rota: '#/campanhas' });
+  const [lab, cli, sw] = [await caixa(page, '#cp-lab'), await caixa(page, '#cp-cliente'), await caixa(page, 'label[for="cp-minhas"]')];
+  afirma(Math.abs(lab.w - cli.w) <= 1, 'mesma largura');
+  afirma(sw.x > cli.x && Math.abs((sw.y + 22) - (cli.y + 22)) < 30, '"Só as minhas" ao lado');
+  await page.selectOption('#cp-cliente', 'Pet Center Imperatriz');
+  await page.click('#cp-status [data-status="Todas"]');
+  igual(await page.locator('#cp-itens .cartao').count(), 2, 'filtra por cliente no computador');
+  const [dl] = await Promise.all([page.waitForEvent('download'), page.click('#cp-excel')]);
+  afirma(/Pet-Center-Imperatriz/.test(dl.suggestedFilename()), 'nome do Excel leva o cliente: ' + dl.suggestedFilename());
+}, { largura: 1000, altura: 800 });
+
+teste('v3.1: administrador exclui campanha com motivo; sai da lista e fica registrada', async ({ page }) => {
+  await abrir(page, { rota: '#/campanhas/2' });
+  await page.locator('[data-excluir]').click();
+  const d = page.locator('dialog.dialogo'); await d.waitFor();
+  afirma((await d.innerText()).includes('Balconista destaque'), 'diálogo diz qual campanha');
+  const vio = (await axe(page, 'Excluir campanha diálogo')).filter(x => ['critical', 'serious'].includes(x.impacto));
+  afirma(!vio.length, 'acessibilidade do diálogo: ' + JSON.stringify(vio));
+  await d.locator('button', { hasText: 'Excluir de vez' }).click();
+  afirma((await erroDo(page, 'ex-motivo').innerText()).includes('motivo'), 'motivo é obrigatório');
+  igual((await db(page)).campanhas.filter(c => c.id === 2).length, 1, 'sem motivo nada é excluído');
+  await page.fill('#ex-motivo', 'Enviada em duplicidade');
+  await d.locator('button', { hasText: 'Excluir de vez' }).click();
+  await toastCom(page, 'excluída');
+  await page.waitForFunction(() => location.hash === '#/campanhas');
+  const banco = await db(page);
+  igual(banco.campanhas.filter(c => c.id === 2).length, 0, 'saiu do banco');
+  igual(banco.campanhas_excluidas?.[0]?.motivo, 'Enviada em duplicidade', 'registro guarda o motivo');
+  await page.click('#cp-status [data-status="Todas"]');
+  igual(await page.locator('#cp-itens .cartao[data-id="2"]').count(), 0, 'saiu da lista');
+}, { largura: 1440 });
+
+teste('v3.1: usuário regular não vê "Excluir campanha" e o banco recusa', async ({ page }) => {
+  await abrir(page, { papel: 'coordenador', rota: '#/campanhas/3' });
+  await page.locator('.det-reenviar').waitFor();
+  igual(await page.locator('[data-excluir]').count(), 0, 'sem botão para usuário regular');
+  const r = await page.evaluate(async () => {
+    const { sb } = await import('/js/lib/supabase.js');
+    return (await sb.rpc('excluir_campanha', { p_id: 3, p_motivo: 'tentativa direta' })).error?.code;
+  });
+  igual(r, '42501', 'chamada direta recusada');
+  igual((await db(page)).campanhas.filter(c => c.id === 3).length, 1, 'campanha continua');
+}, { largura: 390, altura: 844 });
+
+teste('v3.1: Perfil gera ADP em PDF (além do Excel)', async ({ page }) => {
+  await abrir(page, { rota: '#/inicio' });
+  await prepararAdp(page);
+  await page.goto(`${BASE}/?papel=aprovador#/perfil`);
+  await page.reload();
+  await page.locator('#pf-adp').click();
+  const d = page.locator('dialog.dialogo'); await d.waitFor();
+  igual(await d.locator('.adp-item').count(), 2, 'as aprovadas com Swile do mês');
+  const [dl] = await Promise.all([page.waitForEvent('download'), d.locator('[type=submit]').click()]);
+  afirma(/\.pdf$/i.test(dl.suggestedFilename()), 'baixa um PDF: ' + dl.suggestedFilename());
+  const [xl, ad] = [await caixa(page, '#pf-excel'), await caixa(page, '#pf-adp')];
+  afirma(await semOverflow(page, 'Perfil 390 px'), 'sem rolagem lateral');
+  afirma(xl.w > 0 && ad.w > 0, 'os dois botões aparecem');
+}, { largura: 390, altura: 844 });
+
+teste('v3.1: sem pedidos a terceiros (fonte no próprio site) e Excel com a biblioteca enxuta', async ({ page, contexto }) => {
+  await comCspDeProducao(contexto);
+  const fora = [];
+  page.on('request', r => { const u = new URL(r.url()); if (u.origin !== BASE && !u.protocol.startsWith('data')) fora.push(u.host); });
+  const csp = [];
+  page.on('console', m => { if (/Content Security Policy/i.test(m.text())) csp.push(m.text()); });
+  await abrir(page, { rota: '#/perfil' });
+  const fonte = await page.evaluate(async () => { await document.fonts.ready; return document.fonts.check('600 16px "Instrument Sans"') && [...document.fonts].some(f => f.family.includes('Instrument Sans') && f.status === 'loaded'); });
+  afirma(fonte, 'Instrument Sans carregada do próprio site');
+  igual(fora.length, 0, 'nenhum pedido para fora: ' + fora.join(', '));
+  if (XLSX_LER) {
+    const [dl] = await Promise.all([page.waitForEvent('download'), page.click('#pf-excel')]);
+    const wb = XLSX_LER.read(fs.readFileSync(await dl.path()));
+    afirma(XLSX_LER.utils.sheet_to_json(wb.Sheets.Campanhas).length >= 5, 'planilha abre e tem as campanhas');
+  }
+  igual(csp.length, 0, 'sem bloqueio de CSP: ' + csp.join(' | '));
+}, { largura: 1440 });
+
+// ============================================================
 //  execução
 // ============================================================
 const filtro = process.argv[2];
