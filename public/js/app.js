@@ -19,16 +19,17 @@ import * as telaHistorico from './telas/historico.js';
 import * as telaGestao from './telas/gestao.js';
 import * as telaPerfil from './telas/perfil.js';
 import * as telaUsuarios from './telas/usuarios.js';
+import * as telaComissoes from './telas/comissoes.js';
 
 const C = window.CONFIG;
 
 // Igual à VERSAO de config.js e sw.js. Se o config.js chegar mais novo que os módulos em cache, recarrega uma vez.
-export const VERSAO_APP = '3.1.0';
+export const VERSAO_APP = '3.2.0';
 const CHAVE_RECARGA = 'lynkz-recarregou-para';
 
 const TELAS = {
   inicio: telaInicio, campanhas: telaCampanhas, nova: telaNova,
-  historico: telaHistorico, gestao: telaGestao, perfil: telaPerfil, usuarios: telaUsuarios,
+  historico: telaHistorico, gestao: telaGestao, perfil: telaPerfil, usuarios: telaUsuarios, comissoes: telaComissoes,
 };
 
 const ROTAS = [
@@ -42,6 +43,7 @@ const ROTAS = [
   [/^\/gestao\/empresas\/(\d+)$/, 'gestao',   m => ({ empresa: m[1] })],
   [/^\/perfil$/,                 'perfil',    () => ({})],
   [/^\/usuarios$/,               'usuarios',  () => ({})],
+  [/^\/comissoes$/,              'comissoes', () => ({})],
 ];
 
 // "#/campanhas?status=Pendente" → caminho "/campanhas", query { status: 'Pendente' }.
@@ -62,6 +64,7 @@ const NAV = [
   { nome: 'campanhas', rotulo: 'Campanhas', href: '#/campanhas', ico: 'campanhas', contador: true },
   { nome: 'historico', rotulo: 'Histórico', href: '#/historico', ico: 'historico' },
   { nome: 'gestao',    rotulo: 'Gestão',    href: '#/gestao',    ico: 'gestao' },
+  { nome: 'comissoes', rotulo: 'Comissões', href: '#/comissoes', ico: 'moeda', soAdmin: true },
   { nome: 'usuarios',  rotulo: 'Usuários',  href: '#/usuarios',  ico: 'pessoa', soAdmin: true, contadorUsuarios: true },
   { nome: 'perfil',    rotulo: 'Perfil',    href: '#/perfil',    ico: 'perfil' },
 ];

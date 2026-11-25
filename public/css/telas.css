@@ -343,3 +343,60 @@ a.det-empresa:hover { text-decoration-color: currentColor; }
 .usuarios-topo { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: var(--e-3); margin-bottom: var(--e-4); }
 .usuarios-topo .usuarios-guia { margin: 0; flex: 1 1 280px; }
 @media (max-width: 599px) { .usuarios-topo .btn { width: 100%; } }
+
+/* ---------- comissões ---------- */
+.comissoes { display: grid; gap: var(--e-4); }
+.cm-abas { max-width: 520px; }
+.cm-consulta { display: flex; flex-wrap: wrap; align-items: flex-end; gap: var(--e-3); }
+.cm-consulta .campo { margin: 0; flex: 0 1 240px; }
+.comissoes #cm-conteudo { display: grid; gap: var(--e-4); min-width: 0; }
+.comissoes #cm-conteudo > *, .cm-parametros > * { margin-top: 0; margin-bottom: 0; }
+.cm-cabeca { display: grid; gap: var(--e-2); }
+.cm-periodo { margin: 0; max-width: 72ch; }
+/* O número do mês é o único elemento grande da tela. */
+.cm-total { font-size: var(--t-40); font-weight: 700; line-height: 1.05; }
+.cm-numeros { margin: 0; }
+.cm-numeros .numero dd { font-size: var(--t-20); }
+.cm-numero-alerta { border-color: var(--amber); }
+.cm-numero-alerta dt { color: var(--amber); }
+.cm-sem { border-color: var(--amber); }
+.cm-sem-lista li { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--e-2) var(--e-3); padding: var(--e-3) var(--e-4); border-top: 1px solid var(--line); }
+.cm-sem-lista li > div:first-child { display: grid; gap: 2px; min-width: 0; }
+.cm-sem-lista small { font-size: var(--t-13); color: var(--ink-2); }
+.cm-tabela tbody tr { cursor: default; }
+.cm-tabela tbody tr:hover { background: none; }
+.cm-tabela td strong { display: block; }
+.cm-sub { display: block; font-size: var(--t-13); color: var(--ink-2); font-weight: 400; }
+.cm-nao { color: var(--ink); font-weight: 600; }
+.cm-pagar { font-weight: 700; }
+.cm-alerta-linha { display: flex; gap: var(--e-1); align-items: flex-start; font-size: var(--t-13); color: var(--amber); margin-top: var(--e-1); }
+.cm-alerta-linha .ico, .cm-falta .ico { width: 16px; height: 16px; margin-top: 2px; }
+.comissoes .secao-titulo { margin: var(--e-2) 0 var(--e-3); }
+.cm-cad-topo { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--e-3); }
+.cm-cad-topo .busca { margin: 0; flex: 1 1 260px; max-width: 440px; }
+.comissoes .usuarios-lista .usuario:first-child { border-top: 0; }
+.comissoes .usuario.inativo .usuario-dados > strong { color: var(--ink-2); }
+.cm-discreto { color: var(--ink-3); font-size: var(--t-13); }
+.cm-falta { display: inline-flex; align-items: flex-start; gap: var(--e-1); color: var(--amber) !important; }
+.cm-duas, .cm-tres { display: grid; gap: 0 var(--e-3); grid-template-columns: minmax(0, 1fr); }
+@media (min-width: 560px) {
+  .cm-duas { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .cm-tres { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+.cm-bloco { border: 1px solid var(--line); border-radius: var(--r-ctrl); padding: var(--e-3) var(--e-4) 0; margin: 0 0 var(--e-4); min-width: 0; }
+.cm-bloco legend { font-size: var(--t-14); font-weight: 650; padding: 0 var(--e-1); }
+.cm-bloco > .campo-dica { margin-bottom: var(--e-3); }
+.campo:has(.cm-sufixo) > label { grid-row: 1; }
+.campo:has(.cm-sufixo) > input { grid-row: 2; grid-column: 1; padding-right: var(--e-8); }
+.cm-sufixo { grid-row: 2; grid-column: 1; justify-self: end; align-self: center; margin-right: var(--e-3); color: var(--ink-2); font-size: var(--t-14); pointer-events: none; }
+.cm-parametros { display: grid; gap: var(--e-4); max-width: 760px; }
+.cm-alterado { align-self: center; }
+@media (max-width: 699.98px) {
+  .cm-total { font-size: var(--t-28); }
+  .cm-numeros .numero dd { font-size: var(--t-16); }
+  .cm-tabela td.principal { display: block; }
+  .cm-tabela td.num { flex-wrap: wrap; align-items: baseline; }
+  .cm-tabela td.num::before { flex: 1 0 auto; }
+  .cm-tabela td.num .cm-sub { flex-basis: 100%; text-align: right; }
+}
+.cm-parametros .painel-corpo > .campo-dica { margin-bottom: var(--e-3); }

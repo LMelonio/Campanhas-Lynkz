@@ -1,6 +1,6 @@
-// Worker do Cloudflare: /api/qlik/compras e /api/usuarios/convidar; o resto do site é estático.
+// Worker do Cloudflare: /api/qlik/compras, /api/qlik/comissoes (só administrador) e /api/usuarios/convidar; o resto do site é estático.
 // Segredos (wrangler secret put): QLIK_API_KEY, SUPABASE_SERVICE_ROLE_KEY. Demais variáveis em wrangler.jsonc.
-import { abrirEngine, consultarCompras, ErroQlik, CONFIG_PADRAO, codigoSeguro, padraoSeguro, serialQlik, MAX_PADROES, marcasSeguras } from './qlik-engine.js';
+import { abrirEngine, consultarCompras, consultarComissoes, codigoFornecedorSeguro, ErroQlik, CONFIG_PADRAO, codigoSeguro, padraoSeguro, serialQlik, MAX_PADROES, marcasSeguras } from './qlik-engine.js';
 
 // Cabeçalhos de segurança também nas respostas da API (o _headers só vale para arquivos estáticos).
 const CABECALHOS = {
@@ -65,11 +65,11 @@ async function usuarioAtivo(request, env) {
   const token = tokenDoPedido(request);
   if (!token) return null;
   const guardado = sessoes.get(token);
-  if (guardado && guardado.ate > Date.now()) return guardado.id;
+  if (guardado && guardado.ate > Date.now()) return guardado.perfil;
   const perfil = await perfilDoToken(token, env);
-  const id = perfil?.ativo ? perfil.id : null;
-  if (id) { if (sessoes.size > 2000) sessoes.clear(); sessoes.set(token, { id, ate: Date.now() + 60000 }); }
-  return id;
+  const ativo = perfil?.ativo ? { id: perfil.id, papel: perfil.papel } : null;
+  if (ativo) { if (sessoes.size > 2000) sessoes.clear(); sessoes.set(token, { perfil: ativo, ate: Date.now() + 60000 }); }
+  return ativo;
 }
 
 // { id, ativo, papel } de quem mandou o token, conferido no próprio Supabase (com RLS), ou null.
@@ -173,11 +173,44 @@ export async function tratarCompras(request, env, { conectar = conectarQlik } = 
   }
 }
 
+// ---------- comissões ----------
+// Pedido: { apuracao_inicio, apuracao_fim, contrato_inicio, contrato_fim, cod_farelo }.
+// O app calcula os períodos (26 a 25 e o mês anterior fechado); aqui só conferimos o formato.
+const MAX_DIAS_COMISSAO = 62;
+function periodoSeguro(inicio, fim, rotulo) {
+  const dias = serialQlik(fim) - serialQlik(inicio);
+  if (dias < 0) throw new ErroQlik(`${rotulo}: o fim está antes do início.`, { status: 400 });
+  if (dias > MAX_DIAS_COMISSAO) throw new ErroQlik(`${rotulo}: período longo demais (máximo ${MAX_DIAS_COMISSAO} dias).`, { status: 400 });
+  return { inicio, fim };
+}
+
+export async function tratarComissoes(request, env, { conectar = conectarQlik } = {}) {
+  const corpo = await lerCorpo(request);
+  if (!corpo || typeof corpo !== 'object' || Array.isArray(corpo)) return json({ erro: 'Pedido inválido.' }, 400);
+  const apuracao = periodoSeguro(corpo.apuracao_inicio, corpo.apuracao_fim, 'Apuração');
+  const contrato = periodoSeguro(corpo.contrato_inicio, corpo.contrato_fim, 'Contrato de Resultado');
+  const codFarelo = codigoFornecedorSeguro(corpo.cod_farelo);
+  const ws = await conectar(env);
+  const engine = abrirEngine(ws, { tempoMs: 40000 });
+  try {
+    const r = await consultarComissoes(engine, { appId: env.QLIK_APP_ID, config: configDoEnv(env), apuracao, contrato, codFarelo });
+    return json({ ...r, cod_farelo: codFarelo, consultado_em: new Date().toISOString() });
+  } finally {
+    engine.fechar();
+  }
+}
+
+// Rotas do Qlik. soAdmin: só administrador ativo (dados de remuneração).
+const ROTAS_QLIK = {
+  '/api/qlik/compras':   { tratar: tratarCompras },
+  '/api/qlik/comissoes': { tratar: tratarComissoes, soAdmin: true },
+};
+
 export default {
   async fetch(request, env, _ctx, { conectar = conectarQlik, conferir = usuarioAtivo } = {}) {
     const url = new URL(request.url);
-    const rotas = ['/api/qlik/compras', '/api/usuarios/convidar'];
-    if (!rotas.includes(url.pathname)) return json({ erro: 'Não encontrado.' }, 404);
+    const rota = ROTAS_QLIK[url.pathname];
+    if (!rota && url.pathname !== '/api/usuarios/convidar') return json({ erro: 'Não encontrado.' }, 404);
     if (request.method !== 'POST') return json({ erro: 'Use POST.' }, 405, { Allow: 'POST' });
     // Só o próprio app chama a API (o navegador manda Origin em todo POST).
     const origem = request.headers.get('Origin');
@@ -191,10 +224,13 @@ export default {
       }
     }
     try {
-      const id = await conferir(request, env);
+      // conferir devolve { id, papel } (ou só o id, em testes antigos).
+      const u = await conferir(request, env);
+      const id = typeof u === 'string' ? u : u?.id;
       if (!id) return json({ erro: 'Entre no app para consultar o Qlik.' }, 401);
+      if (rota.soAdmin && u?.papel !== 'aprovador') return json({ erro: 'Só administradores consultam as comissões.' }, 403);
       if (!(await dentroDoLimite(env, id))) return json({ erro: 'Muitas consultas seguidas. Aguarde um minuto.' }, 429, { 'Retry-After': '60' });
-      return await tratarCompras(request, env, { conectar });
+      return await rota.tratar(request, env, { conectar });
     } catch (e) {
       if (e instanceof ErroQlik && !e.interno && e.status < 500) return json({ erro: e.message }, e.status);
       console.error('Falha na consulta ao Qlik', e);

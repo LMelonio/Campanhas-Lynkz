@@ -13,7 +13,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { createRequire } from 'node:module';
-import { qlikSimulado, ROTA_QLIK } from '../../dev/qlik-simulado.mjs';
+import { qlikSimulado, ROTA_QLIK, qlikComissoesSimulado, ROTA_QLIK_COMISSOES } from '../../dev/qlik-simulado.mjs';
 
 const AQUI = path.dirname(fileURLToPath(import.meta.url));
 const PROJETO = path.resolve(AQUI, '../..');
@@ -40,6 +40,7 @@ const servidor = http.createServer((rq, rs) => {
   let p = decodeURIComponent(new URL(rq.url, 'http://x').pathname);
   if (p === '/') p = '/index.html';
   if (p === ROTA_QLIK && rq.method === 'POST') return qlikSimulado(rq, rs);
+  if (p === ROTA_QLIK_COMISSOES && rq.method === 'POST') return qlikComissoesSimulado(rq, rs);
   const f = p === '/js/lib/supabase.js' ? SIMULADO : path.join(RAIZ, p);
   if (!(f.startsWith(RAIZ) || f === SIMULADO) || !fs.existsSync(f) || fs.statSync(f).isDirectory()) { rs.writeHead(404); rs.end('404'); return; }
   rs.writeHead(200, { 'Content-Type': TIPOS[path.extname(f)] || 'application/octet-stream', 'Cache-Control': 'no-store' });
@@ -1698,7 +1699,7 @@ for (const largura of [390, 1440]) {
 // ============================================================
 //  10. TODAS AS TELAS × TAMANHOS: sem rolagem lateral, acessibilidade, capturas
 // ============================================================
-const TELAS = ['#/inicio', '#/campanhas', '#/campanhas/2', '#/nova', '#/historico', '#/gestao', '#/gestao/empresas/2', '#/perfil', '#/usuarios'];
+const TELAS = ['#/inicio', '#/campanhas', '#/campanhas/2', '#/nova', '#/historico', '#/gestao', '#/gestao/empresas/2', '#/perfil', '#/usuarios', '#/comissoes', '#/comissoes?aba=cadastro', '#/comissoes?aba=parametros'];
 for (const [largura, altura] of [[360, 740], [390, 844], [768, 1024], [1024, 768], [1280, 800], [1440, 900]]) {
   teste(`telas ${largura}px: sem rolagem lateral${[390, 1440].includes(largura) ? ', acessibilidade e capturas' : ''}`, async ({ page }) => {
     const problemas = [];
@@ -1715,7 +1716,7 @@ for (const [largura, altura] of [[360, 740], [390, 844], [768, 1024], [1024, 768
         await page.locator('#passo-atual', { hasText: '3 de 3' }).waitFor();
       } else if (rota === '#/nova') { await page.selectOption('#n-pagamento', 'Swile'); await escolherNoCombo(page, '#n-empresa', 'pet center', 'Pet Center Imperatriz'); await page.click('#n-campanha'); }
       await page.waitForTimeout(250);
-      const nome = `${rota.replace(/[#/]+/g, '-').replace(/^-/, '')}-${largura}`;
+      const nome = `${rota.replace(/[#/?=&]+/g, '-').replace(/^-/, '')}-${largura}`;
       if (!(await semOverflow(page, nome))) problemas.push('rolagem lateral em ' + nome);
       if ([390, 1440].includes(largura)) {
         await page.screenshot({ path: path.join(SAIDA, nome + '.png'), fullPage: true });
@@ -1934,7 +1935,7 @@ teste('v2.9: D5 nenhum texto de conteúdo abaixo de 13 px (390 px)', async ({ pa
   // 12 px só em selos, régua, contadores, botões pequenos, títulos de painel, cabeçalhos de tabela e atalhos.
   const PODE_12 = '.selo, .regua, .regua-legenda, .mini, .contador, .btn-pequeno, .painel-titulo, .tabela th, kbd, .atalho, .passo, .menu-marca, .acesso-marca, .bi-item, .campo-opcional, .campo-opc, .toast-acao, .manutencao-detalhes, .esqueleto';
   const pequenos = [];
-  for (const rota of ['#/inicio', '#/campanhas', '#/campanhas/2', '#/nova', '#/historico', '#/gestao', '#/gestao/empresas/1', '#/perfil', '#/usuarios']) {
+  for (const rota of ['#/inicio', '#/campanhas', '#/campanhas/2', '#/nova', '#/historico', '#/gestao', '#/gestao/empresas/1', '#/perfil', '#/usuarios', '#/comissoes?aba=cadastro', '#/comissoes?aba=parametros']) {
     await abrir(page, { rota });
     pequenos.push(...(await page.evaluate(([r, pode]) => {
       const fora = [];
@@ -2503,6 +2504,117 @@ teste('v3.1: sem pedidos a terceiros (fonte no próprio site) e Excel com a bibl
   }
   igual(csp.length, 0, 'sem bloqueio de CSP: ' + csp.join(' | '));
 }, { largura: 1440 });
+
+// ============================================================
+//  v3.2: comissões (cadastro, parâmetros e prévia do mês)
+// ============================================================
+async function previaOutubro(page) {
+  await abrir(page, { rota: '#/comissoes' });
+  await page.selectOption('#cm-mes', '2026-10');
+  await page.click('#cm-buscar');
+  await page.locator('.cm-destaque').waitFor();
+}
+
+teste('v3.2: comissões — só administrador vê o menu e a tela', async ({ page }) => {
+  await abrir(page, { papel: 'coordenador', rota: '#/comissoes' });
+  igual(await page.locator('[data-nav="comissoes"]').count(), 0, 'coordenador sem menu Comissões');
+  await page.locator('.vazio-titulo', { hasText: 'Só administradores' }).waitFor();
+});
+
+teste('v3.2: comissões — prévia separa Farelo, aplica acordo e contrato e lista quem não tem cadastro', async ({ page }) => {
+  await previaOutubro(page);
+  const texto = await page.locator('#cm-conteudo').innerText();
+  afirma(texto.includes('A pagar em outubro 2026'), 'destaque do mês');
+  afirma(texto.includes('Elielson Serpa Mendes') && texto.includes('R$ 26.336,69') && texto.includes('R$ 4.880,12'), 'CLT com Farelo e comissão (2,5% + 1%)');
+  afirma(/Nayra Juliana Lima Vale[\s\S]*Paga o acordo[\s\S]*R\$ 5\.000,00/.test(texto), 'acordo mínimo como piso');
+  afirma(texto.includes('Maria Amanda') && texto.includes('R$ 42.287,36'), 'dois nomes do Qlik somam na mesma pessoa');
+  afirma(/Seldiana[\s\S]*R\$ 3\.607,04[\s\S]*R\$ 2\.051,85[\s\S]*R\$ 5\.658,89/.test(texto), 'PJ: 3% + 2% e contrato 1,2%');
+  afirma(texto.includes('SEM CADASTRO LTDA') && !texto.includes('Alesandro'), 'sem cadastro listado; desativado fora');
+  afirma(texto.includes('Não comissionam: TERRAZOO'), 'TERRAZOO ignorado');
+  const vio = (await axe(page, 'Comissões prévia')).filter(x => ['critical', 'serious'].includes(x.impacto));
+  afirma(!vio.length, 'acessibilidade: ' + JSON.stringify(vio));
+  // Ligar o nome sem cadastro: soma na hora, sem consultar o Qlik de novo.
+  await page.click('[data-ligar="SEM CADASTRO LTDA"]');
+  await page.selectOption('#cl-pessoa', { label: 'Alex (PJ)' });
+  await page.click('dialog button[type="submit"]');
+  await page.locator('[data-ligar]').waitFor({ state: 'detached' });
+  afirma((await page.locator('#cm-conteudo').innerText()).includes('R$ 119.932,29'), 'venda do Alex soma o nome ligado');
+  igual((await db(page)).comissionados.find(c => c.id === 5).nomes_qlik.join('|'), 'ALEX REPRESENTAÇÕES|SEM CADASTRO LTDA', 'nome gravado no cadastro');
+});
+
+teste('v3.2: comissões — "não comissiona" tira o nome da lista e grava nos parâmetros', async ({ page }) => {
+  await previaOutubro(page);
+  await page.click('[data-ignorar="SEM CADASTRO LTDA"]');
+  await page.click('dialog button[type="submit"]');
+  await page.locator('.cm-sem').waitFor({ state: 'detached' });
+  afirma((await db(page)).comissao_parametros[0].nomes_ignorados.includes('SEM CADASTRO LTDA'), 'gravado nos parâmetros');
+});
+
+teste('v3.2: comissões — cadastro novo, nome do Qlik repetido recusado, meta com data de alteração', async ({ page }) => {
+  await abrir(page, { rota: '#/comissoes?aba=cadastro' });
+  await page.locator('.usuarios-lista').first().waitFor();
+  afirma((await page.locator('#cm-lista').innerText()).includes('alterada em 05/10/2026'), 'data da meta discreta na lista');
+  await page.fill('#cm-busca', 'domingos');
+  afirma((await page.locator('#cm-lista').innerText()).includes('Seldiana') && !(await page.locator('#cm-lista').innerText()).includes('Elielson'), 'busca pela razão social');
+  igual(await page.evaluate(() => document.activeElement.id), 'cm-busca', 'busca não perde o foco');
+  await page.fill('#cm-busca', '');
+  await page.click('#cm-novo');
+  await page.fill('#dc-nome', 'Representante Teste');
+  await page.selectOption('#dc-regime', 'PJ');
+  igual(await page.inputValue('#dc-pct-principal'), '5', '% principal do PJ');
+  igual(await page.inputValue('#dc-pct-farelo'), '2', '% Farelo do PJ');
+  await page.fill('#dc-nomes-qlik', 'seldiana araujo barros');
+  await page.click('dialog button[type="submit"]');
+  afirma((await page.locator('[data-campo="dc-nomes-qlik"] .campo-erro').innerText()).includes('já está ligado a Seldiana'), 'nome repetido recusado');
+  await page.fill('#dc-nomes-qlik', 'R TESTE REPRESENTACOES');
+  await page.fill('#dc-meta-faturamento', '100.000,00');
+  await page.fill('#dc-meta-positivacao', '30');
+  await page.fill('#dc-pj-documento', '12.345.678/0001-95');
+  await page.click('dialog button[type="submit"]');
+  await page.locator('dialog').waitFor({ state: 'detached' });
+  const novo = (await db(page)).comissionados.find(c => c.nome === 'Representante Teste');
+  afirma(novo && novo.regime === 'PJ' && novo.meta_faturamento === 100000 && novo.meta_atualizada_em && novo.pj_documento === '12345678000195', 'gravado: ' + JSON.stringify(novo));
+  const vio = (await axe(page, 'Comissões cadastro')).filter(x => ['critical', 'serious'].includes(x.impacto));
+  afirma(!vio.length, 'acessibilidade: ' + JSON.stringify(vio));
+});
+
+teste('v3.2: comissões — parâmetros validam, gravam e pedem nova consulta', async ({ page }) => {
+  await previaOutubro(page);
+  await page.click('[data-aba="parametros"]');
+  await page.locator('#cm-form-param').waitFor();
+  await page.fill('#cp-cod_farelo', '66a');
+  await page.fill('#cp-dia_corte', '31');
+  await page.click('#cm-form-param button[type="submit"]');
+  igual(await semErroVisivel(page), 2, 'dois erros na tela');
+  await page.fill('#cp-cod_farelo', '6611');
+  await page.fill('#cp-dia_corte', '20');
+  await page.click('#cm-form-param button[type="submit"]');
+  await page.locator('.cm-alterado').waitFor();
+  const p = (await db(page)).comissao_parametros[0];
+  afirma(p.cod_farelo === '6611' && p.dia_corte === 20, 'parâmetros gravados');
+  await page.click('[data-aba="previa"]');
+  const t = await page.locator('#cm-conteudo').innerText();
+  afirma(t.includes('fornecedor 6611') && t.includes('Vendas de 21/09/2026 a 20/10/2026') && !t.includes('A pagar em'), 'prévia usa o parâmetro novo e pede nova consulta');
+});
+
+teste('v3.2: comissões — erro do Qlik aparece com o que fazer', async ({ page }) => {
+  await abrir(page, { rota: '#/comissoes' });
+  await page.selectOption('#cm-mes', { index: 1 });
+  await page.route('**/api/qlik/comissoes', r => r.fulfill({ status: 502, contentType: 'application/json', body: '{"erro":"O Qlik demorou demais para responder."}' }));
+  await page.click('#cm-buscar');
+  await page.locator('.nota-alerta', { hasText: 'O Qlik demorou demais para responder.' }).waitFor();
+  igual(await page.locator('.cm-destaque').count(), 0, 'sem resultado antigo na tela');
+});
+
+teste('v3.2: comissões no celular (360 px) e no tema escuro — sem rolagem lateral e acessível', async ({ page }) => {
+  await previaOutubro(page);
+  afirma(await semOverflow(page, 'Comissões 360 px'), 'sem rolagem lateral');
+  const vio = (await axe(page, 'Comissões 360 escuro')).filter(x => ['critical', 'serious'].includes(x.impacto));
+  afirma(!vio.length, 'acessibilidade: ' + JSON.stringify(vio));
+  await page.click('[data-aba="cadastro"]');
+  await page.locator('.usuarios-lista').first().waitFor();
+  afirma(await semOverflow(page, 'Comissões cadastro 360 px'), 'cadastro sem rolagem lateral');
+}, { largura: 360, altura: 740, toque: true, escuro: true });
 
 // ============================================================
 //  execução

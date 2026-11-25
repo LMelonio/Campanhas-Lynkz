@@ -7,6 +7,7 @@ const NECESSARIAS = [
   { tabela: 'campanhas_app', migracao: '04-gestao-empresas-balconistas.sql' },
   { tabela: 'empresas',      migracao: '04-gestao-empresas-balconistas.sql' },
   { tabela: 'balconistas',   migracao: '04-gestao-empresas-balconistas.sql' },
+  { tabela: 'comissionados', migracao: '16-comissoes.sql' },
 ];
 
 // → { ok, falta: [{ tabela, migracao }], erro }

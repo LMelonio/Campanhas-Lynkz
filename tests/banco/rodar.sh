@@ -42,6 +42,9 @@ rodar -d campanhas_teste_novo -f testes-14.sql 2>&1 | sed -n 's/^psql.*NOTICE:  
 rodar -d campanhas_teste_novo -f $SQL/migracoes/15-validacao.sql -t -A -F' ' | tee /tmp/val15a.txt
 if grep -q '^[0-9]* f ' /tmp/val15a.txt; then echo "FALHOU: validação 15 com linha false"; exit 1; fi
 rodar -d campanhas_teste_novo -f testes-15.sql 2>&1 | sed -n 's/^psql.*NOTICE:  \(ok.*\)/\1/p; /PASSARAM/p; /ERROR/p; /FALHOU/p'
+rodar -d campanhas_teste_novo -f $SQL/migracoes/16-validacao.sql -t -A -F' ' | tee /tmp/val16a.txt
+if grep -q '^[0-9]* f ' /tmp/val16a.txt; then echo "FALHOU: validação 16 com linha false"; exit 1; fi
+rodar -d campanhas_teste_novo -f testes-16.sql 2>&1 | sed -n 's/^psql.*NOTICE:  \(ok.*\)/\1/p; /PASSARAM/p; /ERROR/p; /FALHOU/p'
 
 echo "== 2. Migração v1.3.1 → v2 (04 e 05 sobre o schema antigo)"
 banco campanhas_teste_mig
@@ -93,6 +96,10 @@ rodar -d campanhas_teste_mig -f $SQL/migracoes/15-excluir-campanha.sql >/dev/nul
 rodar -d campanhas_teste_mig -f $SQL/migracoes/15-validacao.sql -t -A -F' ' | tee /tmp/val15b.txt
 if grep -q '^[0-9]* f ' /tmp/val15b.txt; then echo "FALHOU: validação 15 com linha false"; exit 1; fi
 rodar -d campanhas_teste_mig -f testes-15.sql 2>&1 | sed -n 's/^psql.*NOTICE:  \(ok.*\)/\1/p; /PASSARAM/p; /ERROR/p; /FALHOU/p'
+rodar -d campanhas_teste_mig -f $SQL/migracoes/16-comissoes.sql >/dev/null
+rodar -d campanhas_teste_mig -f $SQL/migracoes/16-validacao.sql -t -A -F' ' | tee /tmp/val16b.txt
+if grep -q '^[0-9]* f ' /tmp/val16b.txt; then echo "FALHOU: validação 16 com linha false"; exit 1; fi
+rodar -d campanhas_teste_mig -f testes-16.sql 2>&1 | sed -n 's/^psql.*NOTICE:  \(ok.*\)/\1/p; /PASSARAM/p; /ERROR/p; /FALHOU/p'
 
 echo "== 2b. Migração a partir do banco de produção: v1 SEM a parte B (02) → só 04 + 05"
 banco campanhas_teste_semb
@@ -124,9 +131,14 @@ rodar -d campanhas_teste_mig -f $SQL/migracoes/12-usuarios-e-balconistas.sql >/d
 rodar -d campanhas_teste_mig -f $SQL/migracoes/13-devolucoes-da-consulta.sql >/dev/null
 rodar -d campanhas_teste_mig -f $SQL/migracoes/14-fornecedores.sql >/dev/null
 rodar -d campanhas_teste_mig -f $SQL/migracoes/15-excluir-campanha.sql >/dev/null
-echo "ok  04, 05, 07, 08, 09, 10, 11, 12, 13, 14 e 15 rodam duas vezes"
+rodar -d campanhas_teste_mig -f $SQL/migracoes/16-comissoes.sql >/dev/null
+test "$(rodar -d campanhas_teste_mig -t -A -c "select count(*) from comissao_parametros")" = 1
+echo "ok  04, 05, 07, 08, 09, 10, 11, 12, 13, 14, 15 e 16 rodam duas vezes"
 
-echo "== 4. Rollback (15, 14, 13, 12, 11, 10, 09, 08, 07, 05 e 04) volta ao formato da v1"
+echo "== 4. Rollback (16, 15, 14, 13, 12, 11, 10, 09, 08, 07, 05 e 04) volta ao formato da v1"
+rodar -d campanhas_teste_mig -f $SQL/migracoes/16-rollback.sql >/dev/null
+test "$(rodar -d campanhas_teste_mig -t -A -c "select to_regclass('public.comissionados') is null and to_regclass('public.comissao_parametros') is null and to_regprocedure('public.nome_qlik(text)') is null and exists (select 1 from campanhas)")" = t
+echo "ok  rollback da 16 tira as comissões e mantém as campanhas"
 rodar -d campanhas_teste_mig -f $SQL/migracoes/15-rollback.sql >/dev/null
 test "$(rodar -d campanhas_teste_mig -t -A -c "select to_regprocedure('public.excluir_campanha(bigint,text)') is null and to_regclass('public.campanhas_excluidas') is not null and exists (select 1 from campanhas)")" = t
 echo "ok  rollback da 15 tira a função e mantém o registro de exclusões e as campanhas"

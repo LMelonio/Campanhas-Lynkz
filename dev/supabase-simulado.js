@@ -62,8 +62,40 @@ function semente() {
   return { perfis, empresas, balconistas, campanhas, campanha_notas: [], seq: { empresas: 100 + muitas, balconistas: 3, campanhas: n, campanha_notas: 0 } };
 }
 
+// Comissões: cadastro e parâmetros com os nomes do Qlik simulado (dev/qlik-simulado.mjs).
+function sementeComissoes() {
+  const agoraIso = new Date().toISOString();
+  const c = (id, o) => ({ id, equipe: null, email: null, acordo_minimo: null, acordo_inicio: null, acordo_fim: null,
+    meta_faturamento: null, meta_positivacao: null, meta_atualizada_em: null, meta_atualizada_por: null,
+    pj_razao_social: null, pj_documento: null, pj_pix: null, pj_banco: null, adp_observacao: null,
+    ativo: true, criado_em: agoraIso, criado_por: 'u-aprov', atualizado_em: null, atualizado_por: null, ...o });
+  return {
+    comissionados: [
+      c(1, { nome: 'Elielson Serpa Mendes', regime: 'CLT', equipe: 'Equipe Capital · Equipe 01', pct_principal: 2.5, pct_farelo: 1, nomes_qlik: ['ELIELSON SERPA MENDES'] }),
+      c(2, { nome: 'Nayra Juliana Lima Vale', regime: 'CLT', equipe: 'Equipe Imperatriz', pct_principal: 2.5, pct_farelo: 1, nomes_qlik: ['NAYRA JULIANA LIMA VALE'],
+        acordo_minimo: 5000, acordo_inicio: '2026-10-01', acordo_fim: '2027-03-31' }),
+      c(3, { nome: 'Rayane Cunha dos Anjos', regime: 'TELEVENDAS', equipe: 'Equipe Capital · Televendas', pct_principal: 1, pct_farelo: 1, nomes_qlik: ['RAYANE CUNHA DOS ANJOS'] }),
+      c(4, { nome: 'Maria Amanda', regime: 'CLT', equipe: 'Equipe Tocantins', pct_principal: 2.5, pct_farelo: 1, nomes_qlik: ['MARIA AMANDA FARIAS DE SOUSA', 'M A F DE SOUSA'] }),
+      c(5, { nome: 'Alex', regime: 'PJ', equipe: 'Equipe Interior · Equipe 02', pct_principal: 5, pct_farelo: 2, nomes_qlik: ['ALEX REPRESENTAÇÕES'],
+        meta_faturamento: 199360.26, meta_positivacao: 40, meta_atualizada_em: '2026-10-05T13:00:00.000Z', meta_atualizada_por: 'u-aprov',
+        pj_razao_social: 'ALEX REPRESENTACOES', pj_documento: '11222333000181', pj_pix: '11.222.333/0001-81', pj_banco: 'NUBANK',
+        adp_observacao: 'Pagamento dos representantes comerciais da Lynkz do interior do Maranhão' }),
+      c(6, { nome: 'Seldiana', regime: 'PJ', equipe: 'Seldiana', pct_principal: 3, pct_farelo: 2, nomes_qlik: ['SELDIANA ARAUJO BARROS'],
+        meta_faturamento: 159704.82, meta_positivacao: 74, meta_atualizada_em: '2026-10-05T13:00:00.000Z', meta_atualizada_por: 'u-aprov',
+        pj_razao_social: 'DOMINGOS DAS MERCES ARAUJO JUNIOR', pj_documento: '12345678000195', pj_pix: '12.345.678/0001-95', pj_banco: 'CEF' }),
+      c(7, { nome: 'Alesandro', regime: 'PJ', pct_principal: 5, pct_farelo: 2, nomes_qlik: ['ALESANDRO SOARES DA SILVA'], ativo: false }),
+    ],
+    comissao_parametros: [{ id: 1, cod_farelo: '6610', dia_corte: 25,
+      pct_clt_principal: 2.5, pct_clt_farelo: 1, pct_televendas_principal: 1, pct_televendas_farelo: 1, pct_pj_principal: 5, pct_pj_farelo: 2,
+      contrato_gatilho_faturamento: 100, contrato_gatilho_positivacao: 80, contrato_limite_faixa: 105, contrato_pct_faixa1: 1, contrato_pct_faixa2: 1.2,
+      nomes_ignorados: ['TERRAZOO'], atualizado_em: null, atualizado_por: null }],
+  };
+}
+
 let db = (() => { try { return JSON.parse(sessionStorage.getItem(CHAVE)) || semente(); } catch { return semente(); } })();
 db.campanha_notas ||= []; db.seq.campanha_notas ||= 0;
+if (!db.comissionados) { Object.assign(db, sementeComissoes()); db.seq.comissionados = 7; }
+db.comissao_auditoria ||= [];
 db.perfis ||= JSON.parse(JSON.stringify(USUARIOS));
 const gravarDb = () => { try { sessionStorage.setItem(CHAVE, JSON.stringify(db)); } catch { /* cheio */ } };
 gravarDb();
@@ -89,9 +121,45 @@ function verView(c) {
   return r;
 }
 
+// ---------- comissões (migração 16) ----------
+const nomeQlikSim = t => String(t ?? '').replace(/\s+/g, ' ').trim().toUpperCase();
+const TABELAS_COMISSAO = ['comissionados', 'comissao_parametros', 'comissao_auditoria'];
+function prepararComissionado(r, antigo) {
+  const u = usuario();
+  r.nome = String(r.nome || '').replace(/\s+/g, ' ').trim();
+  r.nomes_qlik = [...new Set((r.nomes_qlik || []).map(nomeQlikSim).filter(Boolean))];
+  if (r.nome.length < 2 || r.nome.length > 80) return erro('new row violates check constraint "comissionados_nome_valido"', '23514');
+  if (!['CLT', 'TELEVENDAS', 'PJ'].includes(r.regime)) return erro('violates check constraint "comissionados_regime_valido"', '23514');
+  if (!(r.pct_principal >= 0 && r.pct_principal <= 20 && r.pct_farelo >= 0 && r.pct_farelo <= 20)) return erro('violates check constraint "comissionados_pct_valido"', '23514');
+  if (!r.nomes_qlik.length) return erro('violates check constraint "comissionados_nomes_qlik_valido"', '23514');
+  if (!r.acordo_minimo) { r.acordo_minimo = null; r.acordo_inicio = null; r.acordo_fim = null; }
+  if (r.acordo_minimo && (r.regime === 'PJ' || !r.acordo_inicio)) return erro('violates check constraint "comissionados_acordo_valido"', '23514');
+  if (r.ativo !== false) {
+    const outro = db.comissionados.find(c => c.ativo && c.id !== r.id && c.nomes_qlik.some(n => r.nomes_qlik.includes(n)));
+    if (outro) return erro(`"${outro.nomes_qlik.find(n => r.nomes_qlik.includes(n))}" já está ligado a ${outro.nome}. Cada nome do Qlik pode estar em uma pessoa só.`);
+  }
+  const agoraIso = new Date().toISOString();
+  const mudouMeta = antigo ? (r.meta_faturamento ?? null) !== (antigo.meta_faturamento ?? null) || (r.meta_positivacao ?? null) !== (antigo.meta_positivacao ?? null)
+    : r.meta_faturamento != null || r.meta_positivacao != null;
+  r.meta_atualizada_em = mudouMeta ? agoraIso : antigo?.meta_atualizada_em ?? null;
+  r.meta_atualizada_por = mudouMeta ? u.id : antigo?.meta_atualizada_por ?? null;
+  if (antigo) { r.criado_em = antigo.criado_em; r.criado_por = antigo.criado_por; r.atualizado_em = agoraIso; r.atualizado_por = u.id; }
+  else { r.criado_em = agoraIso; r.criado_por = u.id; r.atualizado_em = null; r.atualizado_por = null; }
+  return null;
+}
+
 function inserir(tabela, d) {
   const u = usuario();
   if (!u) return { error: erro('permission denied', '42501') };
+  if (tabela === 'comissionados') {
+    if (!ehAprovador()) return { error: erro('new row violates row-level security policy for table "comissionados"', '42501') };
+    const r = { equipe: null, email: null, acordo_minimo: null, acordo_inicio: null, acordo_fim: null, meta_faturamento: null, meta_positivacao: null,
+      pj_razao_social: null, pj_documento: null, pj_pix: null, pj_banco: null, adp_observacao: null, ativo: true, ...d, id: ++db.seq.comissionados };
+    const e = prepararComissionado(r, null);
+    if (e) { db.seq.comissionados--; return { error: e }; }
+    db.comissionados.push(r); return { row: r };
+  }
+  if (TABELAS_COMISSAO.includes(tabela)) return { error: erro('permission denied for table ' + tabela, '42501') };
   if (tabela === 'empresas') {
     if (String(d.nome || '').trim().length < 2) return { error: erro('violates check constraint "empresas_nome_valido"', '23514') };
     if (d.cnpj && db.empresas.some(e => e.cnpj === d.cnpj)) return { error: erro('duplicate key value violates unique constraint "empresas_cnpj_unico"', '23505') };
@@ -153,6 +221,25 @@ function inserir(tabela, d) {
 
 function atualizar(tabela, linhas, d) {
   const u = usuario();
+  if (TABELAS_COMISSAO.includes(tabela)) {
+    if (!ehAprovador() || tabela === 'comissao_auditoria') return { rows: [] };   // RLS: nada muda
+    if (tabela === 'comissao_parametros') {
+      if (d.cod_farelo != null && !/^\d{1,10}$/.test(d.cod_farelo)) return { error: erro('violates check constraint "comissao_parametros_farelo"', '23514') };
+      if (d.dia_corte != null && !(d.dia_corte >= 1 && d.dia_corte <= 28)) return { error: erro('violates check constraint "comissao_parametros_corte"', '23514') };
+      const ign = d.nomes_ignorados ? { nomes_ignorados: [...new Set(d.nomes_ignorados.map(nomeQlikSim).filter(Boolean))] } : {};
+      linhas.forEach(r => Object.assign(r, d, ign, { id: 1, atualizado_em: new Date().toISOString(), atualizado_por: u.id }));
+      return { rows: linhas };
+    }
+    const prontas = [];
+    for (const atual of linhas) {
+      const r = { ...atual, ...d, id: atual.id };
+      const e = prepararComissionado(r, atual);
+      if (e) return { error: e };
+      prontas.push([atual, r]);
+    }
+    prontas.forEach(([atual, r]) => Object.assign(atual, r));
+    return { rows: linhas };
+  }
   if (tabela === 'campanhas') {
     if (!ehAprovador()) return { rows: [] };       // RLS: nenhuma linha muda
     for (const c of linhas) {
@@ -288,6 +375,7 @@ class Consulta {
     }
     const tabela = db[nome];
     if (!tabela) return { data: null, error: erro(`relation "${this.tabela}" does not exist`, '42P01') };
+    if (TABELAS_COMISSAO.includes(nome) && !ehAprovador() && this.op === 'select') return this.fim([]);   // RLS
     const casa = r => this.filtros.every(([c, v]) => String(r[c]) === String(v));
 
     if (this.op === 'insert') {

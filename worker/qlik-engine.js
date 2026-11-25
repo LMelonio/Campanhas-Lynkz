@@ -13,12 +13,19 @@ export const CONFIG_PADRAO = {
     // No atacado "Nota Fiscal Origem" vem vazio; só a série da nota de origem vem preenchida.
     tipoVenda:   'Tipo de Venda',
     serieOrigem: 'Série Nota Fiscal Origem',
+    // Comissões: quem vendeu e de qual fornecedor (código), como na extração "Base Qlik 26 - 25".
+    vendedor:         'Vendedor B2B',
+    codigoFornecedor: 'Cód. Fornecedor',
   },
   devolucao: 'Devolução',   // valor de tipoVenda nas linhas de devolução
   // Filtros fixos das vendas da LYNKZ (os mesmos do Painel Vendedor).
   filtros: [
     { campo: 'Unidade de Negócio', valor: 'ATACADO' },
     { campo: 'Intercompany Geral', valor: 'REGULAR' },
+    // 'Data Venda' vem de um calendário As-Of (AsOf_Date_Link_vendas): cada venda também fica ligada às datas
+    // do mês seguinte (Mes_Anterior, Mes_Anterior_Fechado) e do ano seguinte (Ano_Anterior). Sem este filtro,
+    // o período soma vendas de outros meses (outubro/2026 vinha 3,9× maior). 'Atual' = a data da própria venda.
+    { campo: 'Tipo_Periodo_Mes_vendas', valor: 'Atual' },
   ],
   // {SET} vira o filtro (cliente, laboratório, período e filtros fixos). É o mesmo campo da medida
   // v_receita_sem_devolucao do app (a medida em si não aceita filtro extra).
@@ -323,4 +330,75 @@ export async function consultarCompras(engine, { appId, config = CONFIG_PADRAO, 
   }
 
   return { total, notas, devolucoes, fornecedores, marcas, cliente_total: clienteTotal };
+}
+
+// ============================================================
+//  COMISSÕES — vendas por vendedor no período de apuração e
+//  vendas por vendedor × cliente no mês anterior (Contrato de Resultado).
+//  Mesmo valor (receita menos devolução) e mesmos filtros fixos da consulta de compras.
+// ============================================================
+
+// Código do fornecedor do Farelo: só números (vai entre aspas simples no conjunto).
+export function codigoFornecedorSeguro(v) {
+  const s = String(v ?? '').trim();
+  if (!/^\d{1,10}$/.test(s)) throw new ErroQlik('Código do fornecedor do Farelo inválido.', { status: 400 });
+  return s;
+}
+
+// <[Data Venda]={"=…"}, filtros fixos, extras> — sem cliente nem fornecedor.
+export function conjuntoPeriodo({ config = CONFIG_PADRAO, inicio, fim, extras = [] }) {
+  const c = config.campos;
+  const dt = `Only({1} Num(${nomeCampo(c.data)}))`;
+  const partes = [
+    `${nomeCampo(c.data)}={"=${dt}>=${serialQlik(inicio)} and ${dt}<${serialQlik(fim) + 1}"}`,
+    ...(config.filtros || []).map(f => `${nomeCampo(f.campo)}={'${valorSeguro(f.valor, 'Filtro')}'}`),
+    ...extras,
+  ];
+  return `<${partes.join(', ')}>`;
+}
+
+/**
+ * @returns {{ apuracao: { inicio, fim, vendas: {vendedor,total,farelo}[], total, sem_vendedor },
+ *             contrato: { inicio, fim, linhas: {vendedor,cliente,valor}[] } }}
+ */
+export async function consultarComissoes(engine, { appId, config = CONFIG_PADRAO, apuracao, contrato, codFarelo }) {
+  const c = config.campos;
+  const farelo = codigoFornecedorSeguro(codFarelo);
+  const base = conjuntoPeriodo({ config, ...apuracao });
+  const soFarelo = conjuntoPeriodo({ config, ...apuracao, extras: [`${nomeCampo(c.codigoFornecedor)}={'${farelo}'}`] });
+
+  const doc = await engine.rpc(-1, 'OpenDoc', { qDocName: appId });
+  const hDoc = doc.qReturn.qHandle;
+
+  // 1) apuração: uma linha por vendedor, com o total e a parte do Farelo.
+  const v = await criarCubo(engine, hDoc, {
+    qDimensions: [{ qDef: { qFieldDefs: [c.vendedor] }, qNullSuppression: true }],
+    qMeasures: [{ qDef: { qDef: expressao(config, base) } }, { qDef: { qDef: expressao(config, soFarelo) } }],
+    qSuppressZero: true, qInitialDataFetch: [],
+  }, 'vendedor');
+  const vendas = (await lerLinhas(engine, v.h, v.cubo.qSize.qcy, 3))
+    .map(l => ({ vendedor: limpa(l[0].qText), total: arredonda(l[1].qNum), farelo: arredonda(l[2].qNum) }))
+    .filter(x => x.vendedor);
+  const total = arredonda(v.cubo.qGrandTotalRow?.[0]?.qNum);
+  // Vendas sem vendedor somem da lista (qNullSuppression): a diferença aparece na tela.
+  const somaLinhas = vendas.reduce((s, x) => s + centavos(x.total), 0);
+  const semVendedor = (centavos(total) - somaLinhas) / 100;
+
+  // 2) contrato: vendedor × cliente do mês anterior (a positivação conta cliente com valor > 0).
+  const k = await criarCubo(engine, hDoc, {
+    qDimensions: [
+      { qDef: { qFieldDefs: [c.vendedor] }, qNullSuppression: true },
+      { qDef: { qFieldDefs: [c.cliente] }, qNullSuppression: true },
+    ],
+    qMeasures: [{ qDef: { qDef: expressao(config, conjuntoPeriodo({ config, ...contrato })) } }],
+    qSuppressZero: true, qInitialDataFetch: [],
+  }, 'vendedor ou cliente');
+  const linhas = (await lerLinhas(engine, k.h, k.cubo.qSize.qcy, 3))
+    .map(l => ({ vendedor: limpa(l[0].qText), cliente: limpa(l[1].qText), valor: arredonda(l[2].qNum) }))
+    .filter(x => x.vendedor && x.cliente);
+
+  return {
+    apuracao: { ...apuracao, vendas, total, sem_vendedor: semVendedor },
+    contrato: { ...contrato, linhas },
+  };
 }

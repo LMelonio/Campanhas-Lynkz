@@ -52,3 +52,47 @@ export function qlikSimulado(rq, rs) {
     });
   }, 150));
 }
+
+// ---------- comissões ----------
+// Vendas fictícias por vendedor, com os nomes do cadastro simulado (dev/supabase-simulado.js).
+// "SEM CADASTRO LTDA" e "TERRAZOO" aparecem para testar a lista de quem não está no cadastro.
+// Apuração que termina em dezembro → erro do Qlik (testar a mensagem).
+export const ROTA_QLIK_COMISSOES = '/api/qlik/comissoes';
+
+export function qlikComissoesSimulado(rq, rs) {
+  let corpo = '';
+  rq.on('data', d => { corpo += d; });
+  rq.on('end', () => setTimeout(() => {
+    const responder = (status, obj) => { rs.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8' }); rs.end(JSON.stringify(obj)); };
+    if (!/^Bearer\s+\S+/.test(rq.headers.authorization || '')) return responder(401, { erro: 'Entre no app para consultar o Qlik.' });
+    let p; try { p = JSON.parse(corpo); } catch { return responder(400, { erro: 'Pedido inválido.' }); }
+    if (String(p.apuracao_fim).slice(5, 7) === '12') return responder(502, { erro: 'Não foi possível consultar o Qlik agora.' });
+    const vendas = [
+      { vendedor: 'ELIELSON SERPA MENDES', total: 211006.51, farelo: 26336.69 },
+      { vendedor: 'NAYRA JULIANA LIMA VALE', total: 124511.13, farelo: 0 },
+      { vendedor: 'RAYANE CUNHA DOS ANJOS', total: 71727.48, farelo: 799.8 },
+      { vendedor: 'ALEX REPRESENTAÇÕES', total: 118401.89, farelo: 0 },
+      { vendedor: 'SELDIANA ARAUJO BARROS', total: 125709.18, farelo: 16423.12 },
+      { vendedor: 'MARIA AMANDA FARIAS DE SOUSA', total: 32519.02, farelo: 0 },
+      { vendedor: 'M A F DE SOUSA', total: 9768.34, farelo: 0 },
+      { vendedor: 'SEM CADASTRO LTDA', total: 1530.4, farelo: 0 },
+      { vendedor: 'TERRAZOO', total: 40210.77, farelo: 0 },
+    ];
+    // Contrato: clientes fictícios do mês anterior. Alex: 211.223,09 em 37 clientes (meta 199.360,26 / 40).
+    const linhas = [];
+    const espalhar = (vendedor, total, n) => {
+      const parte = Math.round(total / n * 100) / 100;
+      for (let i = 0; i < n; i++) linhas.push({ vendedor, cliente: String(5000 + linhas.length), valor: i === n - 1 ? Math.round((total - parte * (n - 1)) * 100) / 100 : parte });
+    };
+    espalhar('ALEX REPRESENTAÇÕES', 211223.09, 37);
+    espalhar('SELDIANA ARAUJO BARROS', 170987.71, 76);
+    espalhar('M A F DE SOUSA', 44117.99, 22);
+    linhas.push({ vendedor: 'ALEX REPRESENTAÇÕES', cliente: '9001', valor: -150 });   // só devolução: não positiva
+    const total = Math.round(vendas.reduce((s, v) => s + v.total, 0) * 100) / 100 + 87.5;
+    responder(200, {
+      apuracao: { inicio: p.apuracao_inicio, fim: p.apuracao_fim, vendas, total, sem_vendedor: 87.5 },
+      contrato: { inicio: p.contrato_inicio, fim: p.contrato_fim, linhas },
+      cod_farelo: p.cod_farelo, consultado_em: new Date().toISOString(),
+    });
+  }, 300));
+}

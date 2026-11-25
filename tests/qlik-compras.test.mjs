@@ -83,7 +83,9 @@ test('filtro do Qlik: cliente, laboratório, período e filtros fixos', () => {
   assert.match(set, /\[Intercompany Geral\]=\{'REGULAR'\}/);
   // {1<…>}: ignora as seleções salvas no app do Qlik.
   assert.match(expressao(CONFIG_PADRAO, set), /^Sum\(\{1<.*>\} \[Valor Faturamento Bruto s\/ Devolução Vendas\]\)$/);
-  assert.ok(!set.includes('Tipo_Periodo_Mes_vendas'), 'sem filtro de período-tipo (não muda o total)');
+  // Data Venda vem de um calendário As-Of: sem 'Atual', a venda de setembro também cai em outubro (Mes_Anterior…).
+  // Conferido em 25/11/2026: outubro inteiro dava 3,9× o real; com o filtro, a comissão de outubro bate ao centavo.
+  assert.match(set, /\[Tipo_Periodo_Mes_vendas\]=\{'Atual'\}/);
 });
 
 test('marca escolhida filtra total e notas; a lista de marcas continua sem o filtro', async () => {

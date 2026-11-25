@@ -20,11 +20,11 @@ public/
   index.html  config.js (chaves públicas, VERSAO, listas, textos da ADP)  tema-inicial.js  sw.js  _headers (CSP)  manifest.json
   css/  tokens.css (único lugar com cor; temas claro/escuro/daltônico)  base.css  componentes.css  telas.css
   js/   app.js (casca, rotas, ctx)  acesso.js (login, senha, convite)  exportar.js (Excel)  adp.js (ADP em PDF)
-        lib/   regras.js (funções puras)  dom.js (html``)  supabase.js  url-auth.js
-        dados/ campanhas.js  cadastros.js  usuarios.js  qlik.js  erros.js  saude.js
+        lib/   regras.js (funções puras)  comissoes.js (cálculo das comissões, puro)  dom.js (html``)  supabase.js  url-auth.js
+        dados/ campanhas.js  cadastros.js  usuarios.js  qlik.js  comissoes.js  erros.js  saude.js
         ui/    avisos.js  campos.js  combo.js  pecas.js  decisao.js  tema.js  adp-dialogo.js  cadastro-dialogos.js  …
-        telas/ inicio  campanhas  detalhe  nova  historico  gestao  usuarios  perfil
-worker/   index.js (rotas /api/qlik/compras e /api/usuarios/convidar)  qlik-engine.js (Engine API, testável em Node)
+        telas/ inicio  campanhas  detalhe  nova  historico  gestao  usuarios  comissoes  perfil
+worker/   index.js (rotas /api/qlik/compras, /api/qlik/comissoes e /api/usuarios/convidar)  qlik-engine.js (Engine API, testável em Node)
 sql/      schema.sql (instalação nova)  migracoes/NN-*.sql (+ rollback e validação de cada uma)
 scripts/  cargas do Qlik e das planilhas antigas (rodam no computador ou no GitHub Actions, com .env)
 dev/      servidor.mjs  supabase-simulado.js  qlik-simulado.mjs
@@ -32,7 +32,7 @@ tests/    *.test.mjs (unidade, Worker)  banco/ (PostgreSQL)  e2e/rodar.mjs (nave
 ```
 
 Rotas: `#/inicio` `#/campanhas` `#/campanhas/:id` `#/nova` `#/nova/de/:id` `#/historico` `#/gestao`
-`#/gestao/empresas/:id` `#/usuarios` (administrador) `#/perfil`.
+`#/gestao/empresas/:id` `#/usuarios` e `#/comissoes?aba=previa|cadastro|parametros` (administrador) `#/perfil`.
 
 Tela: `export function montar(el, ctx, params) → desmontar`. `ctx`: `perfil`, `ehAprovador`, `campanhas`, `cadastros`,
 `toast`, `navegar`, `cabecalho`, `barraDeAcao`, `remontar`, `sair`.
@@ -69,12 +69,35 @@ Tela: `export function montar(el, ctx, params) → desmontar`. `ctx`: `perfil`, 
 - Convite: Administrador convida em Usuários; o Worker chama o invite do Supabase com a chave de serviço e define o perfil
   com o token de quem convidou. O link do e-mail (`type=invite`) abre "Crie sua senha" e entra direto.
 
+## Comissões (só administrador)
+
+- Cálculo puro em `lib/comissoes.js`; a interface que importa é `apurarMes()` (o resto é usado por ela e pelos testes).
+  Vendas do dia 26 ao 25 (`periodoApuracao`), receita menos devolução; Farelo = fornecedor do parâmetro (6610);
+  % do cadastro de cada pessoa; premiações manuais; Contrato de Resultado só PJ, do mês anterior fechado
+  (`mesAnteriorFechado`): faturamento ≥ 100% e positivação ≥ 80% da meta → 1,0% do realizado, 1,2% acima de 105%.
+  Positivado = cliente com receita líquida > 0 no mês. Acordo mínimo só CLT, na vigência: paga o maior entre a soma e o acordo.
+  Ajustes entram depois do piso. Parcelas podem ser negativas; o total pago nunca fica abaixo de zero; nada passa para o
+  mês seguinte. Dinheiro em centavos inteiros por dentro, cada parcela arredondada. Sem bônus de cliente novo.
+- `dados/comissoes.js` junta banco + Qlik + cálculo: a tela chama `carregar()`, `apurar(mes, { buscar })`, `salvar()`,
+  `salvarParametros()`, `ligarNome()`, `ignorarNome()`. `apurar(mes, { buscar: false })` recalcula com a última consulta do
+  mês (depois de mexer no cadastro) e devolve `null` se o Farelo ou o corte mudaram.
+- Banco (migração 16): `comissionados` (nomes do Qlik únicos entre os ativos; `meta_atualizada_em` carimbada pelo banco;
+  ninguém apaga, desativa), `comissao_parametros` (uma linha), `comissao_auditoria`. RLS `eh_aprovador()` nas três.
+- Worker: `/api/qlik/comissoes` só para `papel = 'aprovador'` (`ROTAS_QLIK[...].soAdmin`). Cubos `[Vendedor B2B]` (total e
+  Farelo) e `[Vendedor B2B] × [Cód. Cliente]` (contrato), com os mesmos `{1<…>}`, filtros e medida das compras.
+- O teste "outubro/2026" refaz a planilha real com `dados-privados/comissoes-outubro-2026.json` (fora do Git; sem ele, é pulado).
+  `npm run qlik:comissoes -- --mes AAAA-MM --planilha arquivo.xlsx` compara o Qlik com a planilha do mês.
+- Próximas entregas: fechamento do mês (premiações, ajustes com motivo, travar/reabrir, cópia dos % usados), Excel,
+  recibo PDF por PJ e ADP de comissões com número da nota obrigatório.
+
 ## Qlik
 
 - Toda expressão usa `{1<…>}` (e `Only({1} …)` no período): sem o `1`, as seleções salvas do app zeram os valores.
 - Tudo que vem do usuário passa por `codigoSeguro()`, `padraoSeguro()` ou `marcasSeguras()` antes de entrar na expressão.
 - Devoluções: o Worker manda `devolucoes` e marca `provavel_devolucao`; a nota fica riscada e fora da soma.
-- Diagnóstico de valores zerados: `npm run qlik:diagnosticar`.
+- `Data Venda` vem de um calendário As-Of (`AsOf_Date_Link_vendas`): o filtro fixo `Tipo_Periodo_Mes_vendas = 'Atual'`
+  é obrigatório. Sem ele, o período soma também vendas de outros meses (Mes_Anterior, Ano_Anterior…).
+- Diagnóstico de valores zerados: `npm run qlik:diagnosticar`. Comissões que não batem: `npm run qlik:comissoes:diagnosticar`.
 
 ## Segurança (não enfraquecer)
 
