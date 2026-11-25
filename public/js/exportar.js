@@ -1,9 +1,5 @@
-// ============================================================
-//  EXCEL — colunas definidas como lista [título, valor, formato].
-//  A letra de cada coluna é calculada (colunaExcel); incluir ou tirar
-//  coluna não desalinha a formatação. SheetJS só carrega ao exportar.
-// ============================================================
-import { calc, dias, dataExcel, maskCPF, maskCNPJ, maskTelefone, colunaExcel, hojeCivil } from './lib/regras.js';
+// Excel: colunas como [título, valor, formato]; a letra de cada coluna é calculada. SheetJS carrega só ao exportar.
+import { calc, dias, dataExcel, maskCPF, maskCNPJ, maskTelefone, colunaExcel, hojeCivil, partilha, brl, listaMarcas } from './lib/regras.js';
 import { ErroApp } from './dados/erros.js';
 
 // SheetJS no próprio site (public/vendor/), carregado só quando alguém baixa o Excel.
@@ -24,7 +20,7 @@ function colunas(cad) {
     ['CNPJ do Cliente', c => (empresa(c)?.cnpj ? maskCNPJ(empresa(c).cnpj) : '')],
     ['Cidade', c => empresa(c)?.cidade || ''],
     ['Vendedor', c => empresa(c)?.vendedor || ''],
-    ['Laboratório', c => c.laboratorio],
+    ['Fornecedores', c => c.laboratorio],
     ['Nome da Campanha', c => c.campanha],
     ['Tipo de Campanha', c => c.tipo || ''],
     ['Mecânica / Descrição', c => c.mecanica || ''],
@@ -36,6 +32,9 @@ function colunas(cad) {
     ['Duração (dias)', c => dias(c.data_inicio, c.data_fim) || ''],
     ['Tipo de Meta', c => c.tipo_meta || ''],
     ['Meta do Cliente (R$)', c => +c.meta || 0, 'moeda'],
+    // "Ouro Fino: meta R$ 20.000,00 · indústria R$ 1.000,00 · rebate R$ 400,00 | Avert: …"
+    ['Divisão por Fornecedor', c => (partilha(c) || []).map(p =>
+      `${p.nome}: meta R$ ${brl(p.meta)} · indústria R$ ${brl(p.investimento_industria)}${+c.rebate_pct > 0 ? ` · rebate R$ ${brl(p.rebate)}` : ''}`).join(' | ')],
     ['Tem Rebate', c => (k(c).reb > 0 ? 'Sim' : 'Não')],
     ['% Rebate', c => (+c.rebate_pct ? +c.rebate_pct / 100 : ''), 'pct'],
     ['Base do Rebate', c => c.rebate_base || ''],
@@ -51,7 +50,7 @@ function colunas(cad) {
     ['Origem', c => (c.importada ? 'Planilha antiga' : 'App')],
     ['Comprou no período (Qlik)', c => (c.compras_consultado_em ? +c.compras_periodo : ''), 'moeda'],
     ['Devoluções no período (Qlik)', c => (c.compras_consultado_em && c.compras_devolucoes != null ? +c.compras_devolucoes : ''), 'moeda'],
-    ['Marca consultada (Qlik)', c => c.compras_marca || ''],
+    ['Marcas consultadas (Qlik)', c => listaMarcas(c.compras_marca).join(', ')],
     ['Observações', c => c.observacoes || ''],
     ['Balconista (cadastro)', c => balc(c)?.nome_completo || ''],
     ['Nome do Recebedor Swile', c => c.swile_nome_completo || ''],

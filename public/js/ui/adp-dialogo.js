@@ -1,15 +1,11 @@
-// ============================================================
-//  DIÁLOGO "GERAR ADP" — escolhe o mês, confere as campanhas aprovadas
-//  com Swile, edita o que for preciso (valor, textos, dados de quem
-//  recebe) e baixa o PDF. Qualquer usuário pode gerar; nada é gravado:
-//  as edições valem só para o PDF.
-// ============================================================
+// Diálogo "Gerar ADP": mês, vencimento, campanhas aprovadas com Swile e edição de cada linha.
+// Nada é gravado: as edições valem só para o PDF.
 import { html, pintar, ao, $ } from '../lib/dom.js';
 import { brl, lerValor, valorCampo, hojeCivil, maskCPF, cpfValido, emailValido, nomeCompleto, soDigitos, LIMITES } from '../lib/regras.js';
 import { icone } from './icones.js';
 import { abrirDialogo, erroNoDialogo } from './avisos.js';
 import { ligarMascaras, aplicarErros, campo, areaTexto } from './campos.js';
-import { mesesAdp, mesSugerido, itensAdp, linhaAdp, rotuloMes, gerarAdp, totalAdp } from '../adp.js';
+import { mesesAdp, mesSugerido, itensAdp, linhaAdp, rotuloMes, gerarAdp, totalAdp, vencimentoPadrao, DIAS_UTEIS_VENCIMENTO } from '../adp.js';
 
 const rotuloBotao = (n, total) => (n ? `Gerar PDF (${n} · R$ ${brl(total)})` : 'Gerar PDF');
 const resumoRecebedor = l => `Recebe: ${l.favorecido || '—'}${l.cpf ? ` · CPF ${l.cpf}` : ''}`;
@@ -83,7 +79,8 @@ async function abrir(ctx) {
         </select>
         <p class="campo-dica" id="adp-mes-dica">Pelo mês em que a campanha terminou.</p>
       </div>
-      ${campo({ id: 'adp-venc', rotulo: 'Vencimento', tipo: 'date', valor: hojeCivil(), obrigatorio: true })}
+      ${campo({ id: 'adp-venc', rotulo: 'Vencimento', tipo: 'date', valor: vencimentoPadrao(), obrigatorio: true, atributos: { min: hojeCivil() },
+                dica: `Padrão: ${DIAS_UTEIS_VENCIMENTO} dias úteis após a emissão (sem fins de semana e feriados nacionais).` })}
     </div>
     <p class="adp-resumo" id="adp-resumo" role="status"></p>
     <ul class="adp-lista" id="adp-lista" aria-label="Campanhas da ADP"></ul>
@@ -170,6 +167,7 @@ async function abrir(ctx) {
       const { linhas, erros } = ler(d, { validar: true });
       const venc = $('#adp-venc', d).value;
       if (!venc) erros['adp-venc'] = 'Informe o vencimento.';
+      else if (venc < hojeCivil()) erros['adp-venc'] = 'O vencimento não pode ser antes da emissão.';
       // Erro dentro de "Editar dados desta linha": abre a linha antes de marcar.
       for (const id of Object.keys(erros)) {
         const det = $('#' + id, d)?.closest('details');

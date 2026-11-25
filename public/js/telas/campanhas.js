@@ -1,8 +1,4 @@
-// ============================================================
-//  CAMPANHAS — lista com busca, filtros e "Mostrar mais"; com
-//  #/campanhas/:id abre o detalhe (≥ 1200 px: lado a lado).
-//  Atualização ao vivo redesenha só a lista, preservando rolagem e foco.
-// ============================================================
+// Lista de campanhas com busca e filtros; #/campanhas/:id abre o detalhe (lado a lado a partir de 1200 px).
 import { mostrarFiltroAtivo, html, pintar, $, ao, debounce } from '../lib/dom.js';
 import { contem, calc, dataCivil, hojeCivil, STATUS, listaLaboratorios } from '../lib/regras.js';
 import { campoBusca, ligarBusca } from '../ui/campos.js';
@@ -38,7 +34,7 @@ function aplicarQuery(q = {}) {
   if (q.mes === 'atual') daUrl.mes = hojeCivil().slice(0, 7);
   else if (/^\d{4}-\d{2}$/.test(q.mes || '')) daUrl.mes = q.mes;
   if (q.rebate === '1') daUrl.rebate = true;
-  // A lista precisa bater com o número clicado: sem "Só as minhas", busca ou laboratório.
+  // A lista precisa bater com o número clicado: sem "Só as minhas", busca ou fornecedor.
   Object.assign(filtros, { minhas: false, busca: '', lab: '', limite: PASSO });
   return true;
 }
@@ -60,7 +56,7 @@ function aplicarFiltros(ctx, { ignorarStatus = false } = {}) {
   const eu = ctx.perfil.id;
   return ctx.campanhas.todas().filter(c =>
     (ignorarStatus || filtros.status === 'Todas' || c.status === filtros.status) &&
-    // Campanha com vários laboratórios ("Ouro Fino, Avert") aparece no filtro de cada um (v2.12).
+    // Campanha com vários fornecedores ("Ouro Fino, Avert") aparece no filtro de cada um.
     (!filtros.lab || listaLaboratorios(c.laboratorio).includes(filtros.lab)) &&
     (!filtros.minhas || c.solicitante_id === eu) &&
     (!filtros.busca || contem(filtros.busca, `${c.cliente} ${c.campanha} ${c.laboratorio} ${c.codigo} ${c.solicitante_nome || ''}`)) &&
@@ -128,7 +124,7 @@ function desenharLista() {
           : {
               icone: filtrando ? 'busca' : 'check',
               titulo: filtrando ? 'Nada encontrado' : 'Nada por aqui',
-              texto: filtrando ? 'Tente outro nome, código ou laboratório, ou limpe os filtros.' : 'Campanhas com este status aparecem aqui.',
+              texto: filtrando ? 'Tente outro nome, código ou fornecedor, ou limpe os filtros.' : 'Campanhas com este status aparecem aqui.',
             }),
       }));
   if (cartaoFoco) {
@@ -165,7 +161,7 @@ function mostrarDetalhe(id) {
 }
 
 // Abriu uma campanha (ex.: a que acabou de ser enviada) que os filtros guardados escondem:
-// tira o laboratório e a busca e, se ainda assim não aparecer, mostra todos os status.
+// tira o fornecedor e a busca e, se ainda assim não aparecer, mostra todos os status.
 function garantirNaLista(ctx, id) {
   if (!ctx.campanhas.porId(id)) return;
   const aparece = () => aplicarFiltros(ctx).some(c => String(c.id) === String(id));
@@ -187,13 +183,13 @@ export function montar(el, ctx, params) {
   pintar(el, html`<div class="mestre-detalhe" data-com-detalhe="false">
     <section class="md-lista" aria-label="Lista de campanhas">
       <div class="ferramentas">
-        ${campoBusca({ id: 'cp-busca', rotulo: 'Buscar campanhas', valor: filtros.busca, placeholder: 'Buscar campanha ou código', dica: 'Procura empresa, campanha, laboratório, código e quem enviou.' })}
+        ${campoBusca({ id: 'cp-busca', rotulo: 'Buscar campanhas', valor: filtros.busca, placeholder: 'Buscar campanha ou código', dica: 'Procura empresa, campanha, fornecedor, código e quem enviou.' })}
         <div class="filtros" id="cp-status" role="group" aria-label="Filtrar por status"></div>
         <div class="ferramentas-linha">
           <div class="campo">
-            <label class="so-leitor" for="cp-lab">Laboratório</label>
+            <label class="so-leitor" for="cp-lab">Fornecedor</label>
             <select id="cp-lab">
-              <option value="">Todos os laboratórios</option>
+              <option value="">Todos os fornecedores</option>
               ${labs.map(l => html`<option value="${l}"${l === filtros.lab ? html` selected` : ''}>${l}</option>`)}
             </select>
           </div>
@@ -256,7 +252,7 @@ export function montar(el, ctx, params) {
       $('#cp-itens', el).querySelectorAll('.cartao')[antes]?.focus();
     }),
     ctx.campanhas.assinar(redesenhar),
-    // Decidir pela lista (v2.9): o mesmo de ui/decisao.js que o detalhe usa.
+    // Decidir pela lista: o mesmo de ui/decisao.js que o detalhe usa.
     ao(el, 'click', '[data-lista-aprovar]', (e, b) => { const c = ctx.campanhas.porId(b.dataset.listaAprovar); if (c) aprovarComDesfazer(ctx, c); }),
     ao(el, 'click', '[data-lista-reprovar]', (e, b) => { const c = ctx.campanhas.porId(b.dataset.listaReprovar); if (c) reprovarComMotivo(ctx, c); }),
     ao(el, 'click', '[data-lista-desfazer]', () => desfazerAprovacao()),

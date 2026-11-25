@@ -1,8 +1,4 @@
-// ============================================================
-//  DOM — o único jeito de montar HTML no app.
-//  html`...` escapa TODA interpolação, exceto outro html`` ou bruto().
-//  Proibido montar HTML com concatenação de string.
-// ============================================================
+// Montagem de HTML: html`…` escapa toda interpolação, exceto outro html`` ou bruto(). Nunca concatene HTML.
 
 class Html {
   constructor(s) { this.s = s; }
@@ -38,7 +34,7 @@ export function atributos(obj = {}) {
   return new Html(s);
 }
 
-// Filtros segmentados que rolam de lado no celular: traz o ativo para a vista (só a rolagem do grupo, v2.9).
+// Filtros segmentados que rolam de lado no celular: traz o ativo para a vista.
 export function mostrarFiltroAtivo(grupo) {
   const b = grupo?.querySelector('[aria-pressed="true"]');
   if (!b || grupo.scrollWidth <= grupo.clientWidth) return;

@@ -199,7 +199,7 @@
 .cartao-valor { font-size: var(--t-16); font-weight: 700; }
 .cartao-quando { display: inline-flex; align-items: center; gap: 4px; font-size: var(--t-13); color: var(--ink-2); }
 .cartao-quando svg.ico { width: 14px; height: 14px; }
-/* cartão com Aprovar/Reprovar (administrador, lista de Campanhas — v2.9) */
+/* cartão com Aprovar/Reprovar */
 .cartao-com-acoes { margin-bottom: var(--e-2); }
 .cartao-com-acoes > .cartao { margin-bottom: 0; border-bottom-left-radius: 0; border-bottom-right-radius: 0; }
 .cartao-acoes {
@@ -222,7 +222,7 @@
   background: none; color: var(--ink-2); font-size: var(--t-14); font-weight: 600; white-space: nowrap;
 }
 .filtro[aria-pressed="true"] { background: var(--red); color: var(--on-red); }
-/* Celular estreito (v2.9): uma linha só; se não couber, rola de lado DENTRO do grupo (sem barra
+/* Celular estreito: uma linha só; se não couber, rola de lado DENTRO do grupo (sem barra
    visível) e a tela traz o filtro ativo para a vista (mostrarFiltroAtivo em lib/dom.js). */
 @media (max-width: 420px) {
   .filtro { padding: 0 8px; }
@@ -394,7 +394,7 @@ dialog.dialogo[open] { animation: sobe .22s ease; display: flex; flex-direction:
 
 /* chip de filtro vindo da URL (com ×) */
 .chips-filtro { margin: var(--e-3) 0 0; }
-/* Nova: laboratórios escolhidos, cada um com × para tirar (v2.12) */
+/* Nova: laboratórios escolhidos, cada um com × para tirar */
 .labs-escolhidos { margin: var(--e-2) 0 0; }
 .chip-filtro { display: inline-flex; align-items: center; gap: var(--e-1); min-height: var(--tap); border-color: var(--ink); background: var(--card-2); color: var(--ink); font-weight: 600; }
 .chip-filtro svg.ico { width: 16px; height: 16px; }
@@ -427,14 +427,14 @@ kbd {
 .notas-lista .pessoa .pessoa-nome { flex: 1 1 auto; min-width: 0; }
 .nota-linha { display: flex; justify-content: space-between; gap: var(--e-3); font-size: var(--t-14); padding: var(--e-2) 0; border-bottom: 1px solid var(--line); }
 .nota-linha small { color: var(--ink-2); margin-left: var(--e-1); }
-/* nota de provável devolução (v2.9): riscada, fora da soma, sem marcar */
+/* nota de provável devolução: riscada, fora da soma, sem marcar */
 .nota-devolvida strong, .nota-devolvida .valor { text-decoration: line-through; color: var(--ink-2); }
 .pessoa.nota-devolvida { cursor: default; background: var(--card-2); }
 .nota-devolvida .selo { text-decoration: none; margin-left: var(--e-1); }
 .compras-devolucoes { margin: calc(-1 * var(--e-1)) 0 var(--e-2) calc(18px + var(--e-2)); font-size: var(--t-14); color: var(--ink-2); }
 .nota-total { font-weight: 700; border-bottom: 0; }
 
-/* ---------- ADP (v2.10): diálogo mais largo no desktop, valor e edição por campanha ---------- */
+/* ---------- ADP: diálogo mais largo no desktop, valor e edição por campanha ---------- */
 .lista-acoes { display: flex; flex-wrap: wrap; gap: var(--e-1) var(--e-2); }
 @media (min-width: 600px) { dialog.dialogo.dialogo-largo { width: min(720px, calc(100vw - 48px)); } }
 .adp-resumo { font-size: var(--t-14); color: var(--ink-2); margin: var(--e-3) 0 var(--e-2); }
@@ -466,3 +466,59 @@ kbd {
   .adp-item .adp-valor { grid-column: 2; grid-row: 1 / span 2; align-self: center; }
   .adp-item .adp-editar { grid-row: 3; }
 }
+
+/* ---------- Nova: divisão por fornecedor ---------- */
+.divisao { margin: var(--e-3) 0 var(--e-4); display: grid; gap: var(--e-3); }
+.divisao-corpo { display: grid; gap: var(--e-2); }
+.div-linha {
+  border: 1px solid var(--line); border-left: 3px solid var(--red); border-radius: var(--r-ctrl);
+  padding: var(--e-2) var(--e-3) var(--e-3); margin: 0; min-width: 0; background: var(--card);
+}
+.div-nome { font-weight: 700; font-size: var(--t-16); padding: 0 var(--e-1); }
+.div-linha .grade-2 { margin-top: var(--e-1); }
+.div-parte { font-size: var(--t-13); color: var(--ink-2); margin: var(--e-1) 0 0; min-height: 1.2em; }
+.div-soma { font-size: var(--t-14); font-weight: 600; margin: 0; text-align: right; }
+.div-soma span { white-space: nowrap; }
+.campo-soma input { font-weight: 600; }
+
+/* Detalhe: meta, indústria e rebate de cada fornecedor, um por linha */
+.forn-valores { display: grid; justify-items: end; gap: 2px; font-weight: 400; }
+.forn-valores b { font-weight: 600; }
+
+/* ---------- Nova: marcas da consulta do Qlik, uma ou várias ---------- */
+.marcas-qlik { border: 0; padding: 0; margin: var(--e-2) 0 0; min-width: 0; }
+.marcas-qlik .campo-dica { margin: 0; }
+.marcas-lista { margin-top: var(--e-2); }
+.chip-marca { display: inline-flex; align-items: center; min-height: var(--tap); gap: var(--e-1); padding: 0 var(--e-2); }
+.chip-marca .ico { width: 16px; height: 16px; }
+.chip-marca[aria-pressed="true"] { border-color: var(--red); background: var(--red-soft); color: var(--red-ink); font-weight: 600; }
+.chip-marca[aria-pressed="true"] .chip-valor { color: var(--red-ink); }
+.chip-marca .chip-valor { font-weight: 400; color: var(--ink-2); font-size: var(--t-13); }
+.chip-marca:disabled { opacity: .55; cursor: not-allowed; }
+/* No celular as marcas ficam numa linha só, com rolagem lateral. */
+@media (max-width: 599px) {
+  .marcas-lista { flex-wrap: nowrap; overflow-x: auto; overscroll-behavior-x: contain; padding-bottom: var(--e-1); scrollbar-width: thin; }
+  .marcas-lista .chip-marca { flex: none; }
+}
+
+/* ---------- Temas: botão na barra lateral e escolha no Perfil ---------- */
+.menu-acoes { display: flex; align-items: center; gap: var(--e-2); }
+.menu-acoes .btn { flex: 1 1 auto; }
+.menu-tema { flex: none; color: var(--ink-2); border: 1px solid var(--line-2); }
+.temas { display: grid; gap: var(--e-2); grid-template-columns: 1fr; }
+@media (min-width: 600px) { .temas { grid-template-columns: 1fr 1fr; } }
+.tema-opcao {
+  display: flex; align-items: center; gap: var(--e-3); min-height: var(--tap); padding: var(--e-3);
+  border: 1px solid var(--line-2); border-radius: var(--r-ctrl); cursor: pointer; background: var(--card);
+}
+.tema-opcao:has(input:checked) { border-color: var(--ink); box-shadow: inset 0 0 0 1px var(--ink); }
+.tema-opcao:has(input:focus-visible) { outline: 3px solid var(--foco); outline-offset: 2px; }
+.tema-opcao input { width: 20px; height: 20px; flex: none; accent-color: var(--red); }
+.tema-amostra { display: grid; place-items: center; width: 36px; height: 36px; flex: none; border-radius: 50%; border: 1px solid var(--line-2); }
+.tema-amostra .ico { width: 18px; height: 18px; }
+.tema-amostra-claro { background: var(--amostra-claro); color: var(--amostra-escuro); }
+.tema-amostra-escuro { background: var(--amostra-escuro); color: var(--amostra-claro); }
+.tema-amostra-daltonico { background: linear-gradient(90deg, var(--amostra-azul) 50%, var(--amostra-laranja) 50%); color: var(--amostra-claro); }
+.tema-amostra-auto { background: linear-gradient(90deg, var(--amostra-claro) 50%, var(--amostra-escuro) 50%); color: var(--amostra-meio); }
+.tema-texto { display: grid; gap: 2px; min-width: 0; }
+.tema-texto small { color: var(--ink-2); font-size: var(--t-13); }

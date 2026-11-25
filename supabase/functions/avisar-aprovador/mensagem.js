@@ -2,7 +2,7 @@
 //  Texto do e-mail "campanha nova esperando você" (C3, v2.9 — NÃO publicado).
 //  Puro, sem Deno nem rede: testado em tests/aviso.test.mjs.
 //  NUNCA põe os dados Swile (swile_*) no e-mail: o webhook manda a linha
-//  inteira da tabela, mas aqui só entram código, empresa, laboratório,
+//  inteira da tabela, mas aqui só entram código, empresa, fornecedores,
 //  campanha, quem pediu e o custo.
 // ============================================================
 
@@ -30,7 +30,7 @@ export function montarAviso(c, appUrl) {
   const link = `${String(appUrl).replace(/\/+$/, '')}/#/campanhas/${encodeURIComponent(c.id)}`;
   const custo = `R$ ${brl(total)}${pctMeta == null ? '' : ` (${pct(pctMeta)} da meta)`}`;
   const linhas = [
-    ['Código', c.codigo], ['Empresa', c.cliente], ['Laboratório', c.laboratorio],
+    ['Código', c.codigo], ['Empresa', c.cliente], ['Fornecedores', c.laboratorio],
     ['Campanha', c.campanha], ['Enviada por', c.solicitante_nome], ['Custo total', custo],
   ].filter(([, v]) => v != null && v !== '');
   const assunto = `Campanha nova esperando você: ${c.cliente} · R$ ${brl(total)}`;

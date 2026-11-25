@@ -1,7 +1,5 @@
-# Avisa (com pull request) quando sai versão nova com correção de segurança
-# das ferramentas de publicação, dos scripts de carga, dos testes e das Actions.
-# O app em public/ não tem dependência de npm: supabase-js e SheetJS ficam em
-# public/vendor/ e são trocados à mão (ver SEGURANCA.md).
+# Atualizações de segurança das ferramentas, scripts, testes e Actions.
+# As bibliotecas de public/vendor/ são trocadas à mão (versão no nome do arquivo).
 version: 2
 updates:
   - package-ecosystem: npm

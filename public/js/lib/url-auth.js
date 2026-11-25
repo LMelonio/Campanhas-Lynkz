@@ -1,10 +1,7 @@
-// Parâmetros de autenticação que o Supabase coloca na URL ao voltar de um
-// link de e-mail. Este módulo é importado ANTES de o cliente Supabase ser
-// criado (ver supabase.js), porque o cliente consome o trecho depois do #.
-//   #access_token=…&type=recovery    → link de recuperação válido
-//   #error=…&error_code=otp_expired  → link expirado, já usado ou inválido
-//   ?token_hash=…&type=recovery      → modelo de e-mail à prova de antivírus
-//                                      (ver COMECE-AQUI.md)
+// Parâmetros que o Supabase põe na URL ao voltar de um link de e-mail (lidos antes de o cliente consumi-los):
+//   #access_token=…&type=recovery|invite   link válido
+//   #error=…&error_code=otp_expired        link expirado, já usado ou inválido
+//   ?token_hash=…&type=recovery|invite     modelo de e-mail à prova de antivírus (o código só é gasto no clique)
 const hash = location.hash.startsWith('#/') ? '' : location.hash.replace(/^#/, '');
 const h = new URLSearchParams(hash);
 const q = new URLSearchParams(location.search);

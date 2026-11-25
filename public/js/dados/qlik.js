@@ -1,11 +1,6 @@
-// ============================================================
-//  COMPRAS NO QLIK — quanto o cliente comprou do laboratório no período
-//  e quais notas fiscais compõem isso.
-//  Quem fala com o Qlik é o Worker (/api/qlik/compras): a chave dele nunca
-//  chega ao navegador. Aqui só pedimos e tratamos a resposta.
-// ============================================================
+// Compras do cliente no Qlik pelo Worker (/api/qlik/compras); a chave do Qlik nunca chega ao navegador.
 import { sb } from '../lib/supabase.js';
-import { normaliza, listaLaboratorios } from '../lib/regras.js';
+import { normaliza, listaLaboratorios, listaMarcas, MAX_MARCAS } from '../lib/regras.js';
 import { ErroApp } from './erros.js';
 
 const C = window.CONFIG;
@@ -35,13 +30,16 @@ export const laboratoriosConsultaveis = labs =>
 export const MAX_LABORATORIOS_CONSULTA = 5;
 
 // Devolve { total, notas:[{numero, serie, data, valor}], fornecedores:[], marcas:[{nome, valor}], consultado_em }.
-// laboratorio: um nome, o texto da campanha ("Ouro Fino, Avert") ou uma lista; o total soma todos (v2.12).
-// "marca" (opcional) restringe total e notas a uma marca; "marcas" lista todas as do período.
+// laboratorio: um nome, o texto da campanha ("Ouro Fino, Avert") ou uma lista; o total soma todos.
+// "marca" (opcional): uma marca, a lista ou o texto gravado; restringe total e
+// notas a essas marcas. "marcas" na resposta lista todas as do período (sem o filtro).
 // Lança ErroApp com mensagem pronta para mostrar na tela.
 export async function consultarCompras({ codigoCliente, laboratorio, marca = null, inicio, fim, sinal }) {
   const padroes = [...new Set(laboratoriosConsultaveis(laboratorio).map(padraoFornecedor))];
-  if (!padroes.length) throw new ErroApp('Nenhum dos laboratórios é fornecedor do Qlik.');
-  if (padroes.length > MAX_LABORATORIOS_CONSULTA) throw new ErroApp(`Consulte no máximo ${MAX_LABORATORIOS_CONSULTA} laboratórios de uma vez.`);
+  if (!padroes.length) throw new ErroApp('Nenhum dos fornecedores está no Qlik.');
+  if (padroes.length > MAX_LABORATORIOS_CONSULTA) throw new ErroApp(`Consulte no máximo ${MAX_LABORATORIOS_CONSULTA} fornecedores de uma vez.`);
+  const marcas = listaMarcas(marca || []);
+  if (marcas.length > MAX_MARCAS) throw new ErroApp(`Escolha no máximo ${MAX_MARCAS} marcas.`);
   const { data } = await sb.auth.getSession();
   const token = data?.session?.access_token;
   if (!token) throw new ErroApp('Entre de novo no app para consultar o Qlik.');
@@ -50,7 +48,7 @@ export async function consultarCompras({ codigoCliente, laboratorio, marca = nul
     resp = await fetch('/api/qlik/compras', {
       method: 'POST', signal: sinal,
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ codigo_cliente: codigoCliente, fornecedor_padrao: padroes.length === 1 ? padroes[0] : padroes, marca: marca || undefined, inicio, fim }),
+      body: JSON.stringify({ codigo_cliente: codigoCliente, fornecedor_padrao: padroes.length === 1 ? padroes[0] : padroes, marca: !marcas.length ? undefined : marcas.length === 1 ? marcas[0] : marcas, inicio, fim }),
     });
   } catch (e) {
     if (e.name === 'AbortError') throw e;

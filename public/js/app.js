@@ -1,13 +1,7 @@
-// ============================================================
-//  APP — casca, rotas por hash e contexto das telas.
-//
-//  Rotas:  #/inicio  #/campanhas  #/campanhas/:id  #/nova  #/nova/de/:id
-//          #/historico  #/gestao  #/gestao/empresas/:id  #/perfil  #/usuarios (só administrador)
-//
-//  Cada tela exporta montar(el, ctx, params) → desmontar e, se fizer
-//  sentido, atualizar(params) (troca de parâmetro sem remontar a tela).
-// ============================================================
+// Casca do app: rotas por hash, menu, tema e o contexto (ctx) entregue às telas.
+// Tela: montar(el, ctx, params) → desmontar; opcional atualizar(params) para trocar parâmetro sem remontar.
 import { iniciarAcesso, sair as sairDaConta } from './acesso.js';
+import { escolherTema, proximoTema, temaAplicado, rotuloTema, aoMudarTema } from './ui/tema.js';
 import { campanhas } from './dados/campanhas.js';
 import { cadastros } from './dados/cadastros.js';
 import { conferirBanco } from './dados/saude.js';
@@ -28,10 +22,8 @@ import * as telaUsuarios from './telas/usuarios.js';
 
 const C = window.CONFIG;
 
-// Versão destes módulos. Igual à VERSAO de config.js e sw.js (o teste do lote S confere).
-// Logo depois de publicar, o config.js já chega novo pela rede, mas os módulos podem vir
-// da cópia guardada da versão anterior: a tela ficava misturada até a segunda recarga (v2.9).
-export const VERSAO_APP = '2.12.0';
+// Igual à VERSAO de config.js e sw.js. Se o config.js chegar mais novo que os módulos em cache, recarrega uma vez.
+export const VERSAO_APP = '3.0.0';
 const CHAVE_RECARGA = 'lynkz-recarregou-para';
 
 const TELAS = {
@@ -191,7 +183,10 @@ function montarCasca() {
     </ul>
     <div class="menu-rodape">
       <p class="menu-usuario">${p.nome}<small>${rotuloPapel(p.papel)} · ${p.email}</small></p>
-      <button class="btn btn-fantasma btn-pequeno" type="button" id="menu-sair">${icone('sair')} Sair</button>
+      <div class="menu-acoes">
+        <button class="btn btn-fantasma btn-pequeno" type="button" id="menu-sair">${icone('sair')} Sair</button>
+        <button type="button" class="btn-icone menu-tema" id="menu-tema"></button>
+      </div>
       <p class="versao">Versão ${C.VERSAO}</p>
     </div>`);
 
@@ -233,6 +228,15 @@ function montarCasca() {
   $('#abrir-menu').addEventListener('click', abrirMenu);
   $('#menu-fundo').addEventListener('click', fecharMenu);
   $('#menu-sair').addEventListener('click', sair);
+  const botaoTema = () => {
+    const b = $('#menu-tema'), ico = { claro: 'sol', escuro: 'lua', daltonico: 'olho' }[temaAplicado()] || 'sol';
+    pintar(b, icone(ico));
+    b.setAttribute('aria-label', `Tema: ${rotuloTema(temaAplicado())}. Trocar para ${rotuloTema(proximoTema())}`);
+    b.title = b.getAttribute('aria-label');
+  };
+  $('#menu-tema').addEventListener('click', () => escolherTema(proximoTema()));
+  aoMudarTema(botaoTema);
+  botaoTema();
   document.addEventListener('keydown', e => { if (e.key === 'Escape' && document.body.classList.contains('menu-aberto')) fecharMenu(); });
 
   window.addEventListener('popstate', () => { indiceHistorico = history.state?.i ?? 0; aplicarRota(); });
@@ -274,9 +278,9 @@ function fecharMenu() {
 // O menu fica fora do "inert" no desktop; ao virar desktop com ele aberto, fecha.
 matchMedia('(min-width: 900px)').addEventListener('change', fecharMenu);
 
-// ---------- contas esperando liberação (só administrador, v2.9) ----------
+// ---------- contas esperando liberação ----------
 function contarSemAcesso(n = usuarios.semAcesso()) {
-  // Celular: o menu só abre pelo ☰ do topo (v2.9.1); um ponto nele avisa que há contas esperando.
+  // Celular: o menu só abre pelo ☰ do topo; um ponto nele avisa que há contas esperando.
   const botao = $('#abrir-menu');
   if (botao) {
     botao.classList.toggle('com-aviso', !!n);

@@ -1,11 +1,7 @@
-/* ============================================================
-   TOKENS — o único lugar com cor literal no app.
-   Todo texto tem contraste de pelo menos 4,5:1 com o fundo em que aparece
-   (inclusive no modo escuro). Elementos gráficos (faixas da régua,
-   composição do custo) têm pelo menos 3:1.
-   ============================================================ */
+/* Tokens: único lugar com cor literal. Texto com contraste mínimo de 4,5:1 e gráficos de 3:1
+   nos três temas (data-tema="claro" | "escuro" | "daltonico", definido por js/tema-inicial.js). */
 :root {
-  color-scheme: light dark;
+  color-scheme: light;
 
   /* marca — vermelho é cor de AÇÃO (botão primário, item ativo) */
   --red: #E11F1C;
@@ -46,6 +42,13 @@
   --cost-industria: #2F64A8;
   --cost-rebate: #B86E00;
 
+  /* amostras da escolha de tema (fixas em todos os temas) */
+  --amostra-claro: #FFFFFF;
+  --amostra-escuro: #1A1D21;
+  --amostra-azul: #0072B2;
+  --amostra-laranja: #E69F00;
+  --amostra-meio: #8A9099;
+
   /* camadas */
   --veu: rgba(17, 19, 22, .48);
   --sombra: 0 1px 2px rgba(16, 24, 40, .06), 0 1px 3px rgba(16, 24, 40, .05);
@@ -60,7 +63,7 @@
   /* tipo — escala 12/14/16/20/28/40 */
   --font: 'Instrument Sans', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
   --t-12: .75rem;   /* só selos, legendas da régua, contadores e rótulos curtos */
-  --t-13: .8125rem; /* menor texto de leitura (v2.9): datas, dicas, "Balconistas: 1 de 2" */
+  --t-13: .8125rem; /* menor texto de leitura: datas, dicas, contadores */
   --t-14: .875rem;
   --t-16: 1rem;
   --t-20: 1.25rem;
@@ -84,39 +87,57 @@
   --conteudo-max: 1120px;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --red-soft: #3B1715;
-    --red-ink: #FF8F8A;
-    --bg: #111315;
-    --card: #1A1D21;
-    --card-2: #22262B;
-    --line: #2E343A;
-    --line-2: #59626C;
-    --ink: #ECEEF0;
-    --ink-2: #BAC1C9;
-    --ink-3: #A3ABB4;
-    --green: #5CCF8F;
-    --green-soft: #133022;
-    --amber: #F0B357;
-    --amber-soft: #352610;
-    --erro: #FFA463;
-    --erro-soft: #3A2412;
-    --foco: #7FB0F0;
-    --faixa-verde: #3FB872;
-    --faixa-ambar: #E3A23A;
-    --faixa-vermelha: #EE5A52;
-    --marcador: #ECEEF0;
-    --cost-industria: #5B8FD6;
-    --cost-rebate: #E09A2E;
-    --veu: rgba(0, 0, 0, .62);
-    --sombra: 0 1px 2px rgba(0, 0, 0, .4);
-    --sombra-alta: 0 12px 32px rgba(0, 0, 0, .55);
-    --sombra-acao: 0 6px 18px rgba(0, 0, 0, .45);
-    --esqueleto-1: #23272C;
-    --esqueleto-2: #2C3137;
-    --toast-bg: #ECEEF0;
-    --toast-ink: #111315;
-    --toast-acao: #B0120F;
-  }
+[data-tema="escuro"] {
+  color-scheme: dark;
+  --red-soft: #3B1715;
+  --red-ink: #FF8F8A;
+  --bg: #111315;
+  --card: #1A1D21;
+  --card-2: #22262B;
+  --line: #2E343A;
+  --line-2: #59626C;
+  --ink: #ECEEF0;
+  --ink-2: #BAC1C9;
+  --ink-3: #A3ABB4;
+  --green: #5CCF8F;
+  --green-soft: #133022;
+  --amber: #F0B357;
+  --amber-soft: #352610;
+  --erro: #FFA463;
+  --erro-soft: #3A2412;
+  --foco: #7FB0F0;
+  --faixa-verde: #3FB872;
+  --faixa-ambar: #E3A23A;
+  --faixa-vermelha: #EE5A52;
+  --marcador: #ECEEF0;
+  --cost-industria: #5B8FD6;
+  --cost-rebate: #E09A2E;
+  --veu: rgba(0, 0, 0, .62);
+  --sombra: 0 1px 2px rgba(0, 0, 0, .4);
+  --sombra-alta: 0 12px 32px rgba(0, 0, 0, .55);
+  --sombra-acao: 0 6px 18px rgba(0, 0, 0, .45);
+  --esqueleto-1: #23272C;
+  --esqueleto-2: #2C3137;
+  --toast-bg: #ECEEF0;
+  --toast-ink: #111315;
+  --toast-acao: #B0120F;
+}
+
+/* Daltônico: fundo claro e pares azul/laranja (Okabe-Ito) no lugar de verde/vermelho.
+   Os status também trazem ícone e texto, então a cor nunca é a única pista. */
+[data-tema="daltonico"] {
+  --red-soft: #FCE9DA;
+  --red-ink: #A33C00;
+  --green: #005A9E;
+  --green-soft: #E1EEF9;
+  --amber: #6B5200;
+  --amber-soft: #F6EDC9;
+  --erro: #A33C00;
+  --erro-soft: #FCE9DA;
+  --faixa-verde: #0072B2;
+  --faixa-ambar: #B07A00;
+  --faixa-vermelha: #C24E00;
+  --cost-lynkz: #8E2C73;
+  --cost-industria: #0072B2;
+  --cost-rebate: #B07A00;
 }

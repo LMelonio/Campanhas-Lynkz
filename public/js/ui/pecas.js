@@ -1,6 +1,4 @@
-// ============================================================
-//  PEÇAS — selo, régua de custo, cartão, vazio, carregando.
-// ============================================================
+// Peças visuais: selo de status, régua de custo, cartão, vazio e carregando.
 import { html, bruto } from '../lib/dom.js';
 import { calc, banda, posRegua, brl, pct, dataBR, ESCALA_REGUA, STATUS } from '../lib/regras.js';
 import { icone } from './icones.js';
@@ -88,7 +86,7 @@ function miniRegua(c) {
   </div>`;
 }
 
-// rodape: ações fora do link do cartão (ex.: Aprovar/Reprovar na lista, v2.9).
+// rodape: ações fora do link do cartão.
 export function cartao(c, { ativo = false, rodape = '' } = {}) {
   const k = calc(c);
   const link = html`<a class="cartao" href="#/campanhas/${c.id}" data-id="${c.id}"${ativo ? bruto(' aria-current="true"') : ''}>

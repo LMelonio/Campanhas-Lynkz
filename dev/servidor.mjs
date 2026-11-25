@@ -1,14 +1,5 @@
-// ============================================================
-//  Servidor local de desenvolvimento (sem dependências).
-//
-//    node dev/servidor.mjs              → app com o Supabase SIMULADO
-//    node dev/servidor.mjs --real       → app com o Supabase de verdade (config.js)
-//    PORTA=9000 node dev/servidor.mjs
-//
-//  Abra http://localhost:8000/?papel=aprovador  (ou ?papel=coordenador).
-//  No modo simulado, js/lib/supabase.js é trocado por dev/supabase-simulado.js
-//  só na resposta do servidor — nenhum arquivo do app é alterado.
-// ============================================================
+// Servidor local: node dev/servidor.mjs (Supabase simulado) ou --real (config.js). PORTA=9000 muda a porta.
+// No modo simulado, js/lib/supabase.js é trocado por dev/supabase-simulado.js só na resposta.
 import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';

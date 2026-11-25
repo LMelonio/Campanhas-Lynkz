@@ -36,6 +36,9 @@ rodar -d campanhas_teste_novo -f testes-12.sql 2>&1 | sed -n 's/^psql.*NOTICE:  
 rodar -d campanhas_teste_novo -f $SQL/migracoes/13-validacao.sql -t -A -F' ' | tee /tmp/val13a.txt
 if grep -q '^[0-9]* f ' /tmp/val13a.txt; then echo "FALHOU: validação 13 com linha false"; exit 1; fi
 rodar -d campanhas_teste_novo -f testes-13.sql 2>&1 | sed -n 's/^psql.*NOTICE:  \(ok.*\)/\1/p; /PASSARAM/p; /ERROR/p; /FALHOU/p'
+rodar -d campanhas_teste_novo -f $SQL/migracoes/14-validacao.sql -t -A -F' ' | tee /tmp/val14a.txt
+if grep -q '^[0-9]* f ' /tmp/val14a.txt; then echo "FALHOU: validação 14 com linha false"; exit 1; fi
+rodar -d campanhas_teste_novo -f testes-14.sql 2>&1 | sed -n 's/^psql.*NOTICE:  \(ok.*\)/\1/p; /PASSARAM/p; /ERROR/p; /FALHOU/p'
 
 echo "== 2. Migração v1.3.1 → v2 (04 e 05 sobre o schema antigo)"
 banco campanhas_teste_mig
@@ -52,6 +55,7 @@ rodar -d campanhas_teste_mig -f $SQL/migracoes/10-seguranca.sql >/dev/null
 rodar -d campanhas_teste_mig -f $SQL/migracoes/11-enviar-campanha.sql >/dev/null
 rodar -d campanhas_teste_mig -f $SQL/migracoes/12-usuarios-e-balconistas.sql >/dev/null
 rodar -d campanhas_teste_mig -f $SQL/migracoes/13-devolucoes-da-consulta.sql >/dev/null
+rodar -d campanhas_teste_mig -f $SQL/migracoes/14-fornecedores.sql >/dev/null
 rodar -d campanhas_teste_mig -f $SQL/migracoes/06-validacao-v2.sql -t -A -F' ' | tee /tmp/val2.txt
 # Cada linha sai como "12 f Nome do teste": o f/t é a 2ª coluna. Um "! grep" não
 # para o script com set -e (o bash ignora comandos com !), por isso o if explícito.
@@ -79,6 +83,9 @@ rodar -d campanhas_teste_mig -f testes-12.sql 2>&1 | sed -n 's/^psql.*NOTICE:  \
 rodar -d campanhas_teste_mig -f $SQL/migracoes/13-validacao.sql -t -A -F' ' | tee /tmp/val13b.txt
 if grep -q '^[0-9]* f ' /tmp/val13b.txt; then echo "FALHOU: validação 13 com linha false"; exit 1; fi
 rodar -d campanhas_teste_mig -f testes-13.sql 2>&1 | sed -n 's/^psql.*NOTICE:  \(ok.*\)/\1/p; /PASSARAM/p; /ERROR/p; /FALHOU/p'
+rodar -d campanhas_teste_mig -f $SQL/migracoes/14-validacao.sql -t -A -F' ' | tee /tmp/val14b.txt
+if grep -q '^[0-9]* f ' /tmp/val14b.txt; then echo "FALHOU: validação 14 com linha false"; exit 1; fi
+rodar -d campanhas_teste_mig -f testes-14.sql 2>&1 | sed -n 's/^psql.*NOTICE:  \(ok.*\)/\1/p; /PASSARAM/p; /ERROR/p; /FALHOU/p'
 
 echo "== 2b. Migração a partir do banco de produção: v1 SEM a parte B (02) → só 04 + 05"
 banco campanhas_teste_semb
@@ -108,9 +115,13 @@ rodar -d campanhas_teste_mig -f $SQL/migracoes/10-seguranca.sql >/dev/null
 rodar -d campanhas_teste_mig -f $SQL/migracoes/11-enviar-campanha.sql >/dev/null
 rodar -d campanhas_teste_mig -f $SQL/migracoes/12-usuarios-e-balconistas.sql >/dev/null
 rodar -d campanhas_teste_mig -f $SQL/migracoes/13-devolucoes-da-consulta.sql >/dev/null
-echo "ok  04, 05, 07, 08, 09, 10, 11, 12 e 13 rodam duas vezes"
+rodar -d campanhas_teste_mig -f $SQL/migracoes/14-fornecedores.sql >/dev/null
+echo "ok  04, 05, 07, 08, 09, 10, 11, 12, 13 e 14 rodam duas vezes"
 
-echo "== 4. Rollback (13, 12, 11, 10, 09, 08, 07, 05 e 04) volta ao formato da v1"
+echo "== 4. Rollback (14, 13, 12, 11, 10, 09, 08, 07, 05 e 04) volta ao formato da v1"
+rodar -d campanhas_teste_mig -f $SQL/migracoes/14-rollback.sql >/dev/null
+test "$(rodar -d campanhas_teste_mig -t -A -c "select not exists (select 1 from information_schema.columns where table_name = 'campanhas' and column_name = 'fornecedores') and to_regprocedure('public.fornecedores_validos(jsonb,text,numeric,numeric)') is null and position('fornecedores' in pg_get_functiondef('public.enviar_campanha(jsonb,jsonb,jsonb)'::regprocedure)) = 0 and position('compras_devolvidas' in pg_get_functiondef('public.enviar_campanha(jsonb,jsonb,jsonb)'::regprocedure)) > 0 and exists (select 1 from campanhas where meta = 30000)")" = t
+echo "ok  rollback da 14 tira a divisão, volta enviar_campanha da 13 e mantém as campanhas (com a soma)"
 rodar -d campanhas_teste_mig -f $SQL/migracoes/13-rollback.sql >/dev/null
 test "$(rodar -d campanhas_teste_mig -t -A -c "select not exists (select 1 from information_schema.columns where table_name = 'campanhas' and column_name like 'compras_devol%') and position('compras_devolvidas' in pg_get_functiondef('public.enviar_campanha(jsonb,jsonb,jsonb)'::regprocedure)) = 0 and exists (select 1 from campanhas)")" = t
 echo "ok  rollback da 13 tira as colunas de devolução, volta enviar_campanha da 11 e mantém as campanhas"

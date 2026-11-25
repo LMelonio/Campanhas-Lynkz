@@ -1,16 +1,7 @@
-// ============================================================
-//  ADP — AUTORIZAÇÃO DE PAGAMENTO das campanhas pagas pela Swile (PDF).
-//  Uma página A4 deitada (mais páginas se a lista for grande):
-//  cabeçalho com as logos, faixa com os dados fixos (empresa pagadora,
-//  loja, departamento, forma, vencimento, total), tabela das campanhas,
-//  tabela dos recebedores (com CPF, nascimento e e-mail) e o quadro da
-//  assinatura, com margem livre em cima e embaixo para o carimbo do SignZoo.
-//
-//  A parte pura (quem entra, de quem são os dados, linhas) não toca no
-//  navegador e tem teste em tests/adp.test.mjs. O PDF usa o pdf-lib
-//  (public/vendor/, módulo ES), carregado só quando alguém gera a ADP.
-// ============================================================
-import { calc, dataCivil, dataBR, maskCPF, soDigitos, hojeCivil } from './lib/regras.js';
+// ADP (autorização de pagamento) das campanhas pagas pela Swile, em PDF A4 deitado.
+// A parte pura (quem entra, recebedor, linhas, vencimento) é testada em tests/adp.test.mjs;
+// o PDF usa o pdf-lib, carregado só ao gerar.
+import { calc, dataCivil, dataBR, maskCPF, soDigitos, hojeCivil, somaDiasUteis } from './lib/regras.js';
 import { ErroApp } from './dados/erros.js';
 
 // Textos fixos da ADP. Mudam no config.js (ADP: { ... }) sem mexer aqui.
@@ -97,6 +88,10 @@ export function linhaAdp({ c, recebedor, valor }) {
     valor: Math.round((+valor || 0) * 100) / 100,
   };
 }
+
+// Vencimento padrão: 7 dias úteis após a emissão.
+export const DIAS_UTEIS_VENCIMENTO = 7;
+export const vencimentoPadrao = (emissao = hojeCivil()) => somaDiasUteis(emissao, DIAS_UTEIS_VENCIMENTO);
 
 export const nomeArquivoAdp = mes => `ADP - CAMPANHAS - ${rotuloMes(mes)}.pdf`;
 export const totalAdp = linhas => Math.round(linhas.reduce((s, l) => s + (+l.valor || 0), 0) * 100) / 100;

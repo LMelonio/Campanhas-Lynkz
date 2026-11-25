@@ -1,8 +1,4 @@
-// ============================================================
-//  HISTÓRICO — campanhas decididas, pela data da decisão.
-//  Tabela a partir de 700 px; no celular, os mesmos cartões da lista de
-//  Campanhas, com a data da decisão e quem decidiu no rodapé (v2.9).
-// ============================================================
+// Histórico das campanhas decididas: tabela a partir de 700 px, cartões no celular.
 import { mostrarFiltroAtivo, html, pintar, $, ao, debounce } from '../lib/dom.js';
 import { calc, brl, dataBR, contem, STATUS } from '../lib/regras.js';
 import { icone } from '../ui/icones.js';
@@ -45,12 +41,12 @@ function desenhar(el, ctx) {
   pintar($('#hs-resumo', el), `${lista.length} ${lista.length === 1 ? 'decisão registrada' : 'decisões registradas'}`);
   pintar($('#hs-itens', el), lista.length ? html`
     <div class="tabela-caixa"><table class="tabela">
-      <thead><tr><th scope="col">Decisão</th><th scope="col">Empresa</th><th scope="col">Campanha</th><th scope="col">Laboratório</th><th scope="col" class="num">Custo</th><th scope="col">Status</th><th scope="col">Decidida por</th></tr></thead>
+      <thead><tr><th scope="col">Decisão</th><th scope="col">Empresa</th><th scope="col">Campanha</th><th scope="col">Fornecedor</th><th scope="col" class="num">Custo</th><th scope="col">Status</th><th scope="col">Decidida por</th></tr></thead>
       <tbody>${vis.map(c => html`<tr data-id="${c.id}">
         <td data-rotulo="Decisão" class="tabular">${dataBR(c.data_decisao)}</td>
         <td data-rotulo="Empresa" class="principal"><a href="#/campanhas/${c.id}">${c.cliente}</a></td>
         <td data-rotulo="Campanha">${c.campanha}${c.importada ? html` <small class="campo-dica">(importada)</small>` : ''}</td>
-        <td data-rotulo="Laboratório">${c.laboratorio}</td>
+        <td data-rotulo="Fornecedor">${c.laboratorio}</td>
         <td data-rotulo="Custo" class="num"><span class="valor">R$ ${brl(calc(c).total)}</span></td>
         <td data-rotulo="Status">${selo(c.status)}</td>
         <td data-rotulo="Decidida por">${c.aprovador_nome || '—'}</td>

@@ -1,12 +1,5 @@
-// ============================================================
-//  ACESSO — login, recuperação de senha e checagem do perfil.
-//  Mesma lógica da v1 (token_hash, sessão de recuperação que nunca vira
-//  login comum), agora com <form>.
-//
-//  Quem garante que a senha muda só na conta certa é o Supabase: o link do
-//  e-mail abre uma sessão daquela conta e updateUser() altera só ela. O
-//  papel (coordenador/aprovador) fica em perfis, protegido por RLS.
-// ============================================================
+// Login, recuperação de senha, convite e checagem do perfil. A sessão aberta por link de e-mail
+// (recuperação ou convite) serve só para criar a senha; o papel fica em perfis, protegido por RLS.
 import { sb } from './lib/supabase.js';
 import { urlAuth, limparUrl } from './lib/url-auth.js';
 import { html, pintar, $, armazenamento } from './lib/dom.js';
@@ -18,9 +11,10 @@ import { campoSenha, ligarSenha } from './ui/senha.js';
 const C = window.CONFIG;
 const el = () => document.getElementById('acesso');
 
-// Enquanto true, a sessão aberta pelo link de recuperação só serve para
-// definir a senha nova — nunca entra no app.
-let modoRecuperacao = urlAuth.tipo === 'recovery' && !urlAuth.erro;
+// Enquanto modoRecuperacao for true, a sessão aberta por link de recuperação ou convite só serve para criar a senha.
+const LINK_DE_SENHA = ['recovery', 'invite'];
+const convite = urlAuth.tipo === 'invite';
+let modoRecuperacao = LINK_DE_SENHA.includes(urlAuth.tipo) && !urlAuth.erro;
 let pronto = false;
 let entrou = false;
 let aoEntrarCb = () => {};
@@ -196,23 +190,24 @@ function mostrarPedirLink(titulo, texto, email = '') {
 async function mostrarLinkInvalido() {
   // Sessão que sobrou de um link de recuperação não pode seguir valendo.
   if (modoRecuperacao || recuperacaoPendente()) await encerrarRecuperacao();
-  mostrarPedirLink('Link expirado ou já usado',
-    'Links de redefinição valem por tempo limitado e funcionam uma vez só. Peça um novo abaixo.');
+  mostrarPedirLink(convite ? 'Convite expirado ou já usado' : 'Link expirado ou já usado',
+    convite ? 'O link do convite vale por tempo limitado e funciona uma vez só. Peça abaixo um link para criar sua senha.'
+      : 'Links de redefinição valem por tempo limitado e funcionam uma vez só. Peça um novo abaixo.');
 }
 
 // Modelo de e-mail com token_hash: o código só é gasto quando a pessoa toca
 // no botão. Antivírus que "visitam" o link antes dela não o queimam.
 function mostrarConfirmarLink() {
   mostrar(html`
-    <h1 tabindex="-1">Redefinir senha</h1>
-    <p class="acesso-sub">Toque em continuar para criar sua nova senha.</p>
+    <h1 tabindex="-1">${convite ? 'Bem-vindo' : 'Redefinir senha'}</h1>
+    <p class="acesso-sub">Toque em continuar para criar sua ${convite ? '' : 'nova '}senha.</p>
     <form id="f-confirmar"><button class="btn btn-primario btn-largo" id="c-ok" type="submit" autofocus>Continuar</button></form>
     <p id="c-msg" class="acesso-msg" role="status"></p>`);
   $('#f-confirmar').addEventListener('submit', async ev => {
     ev.preventDefault();
     ocupar($('#c-ok'), 'Verificando…');
     modoRecuperacao = true; marcarRecuperacao();
-    const { error } = await sb.auth.verifyOtp({ token_hash: urlAuth.tokenHash, type: 'recovery' });
+    const { error } = await sb.auth.verifyOtp({ token_hash: urlAuth.tokenHash, type: urlAuth.tipo });
     limparUrl();  // só agora: o código já foi usado (ou recusado)
     if (error) { mostrarLinkInvalido(); return; }
     mostrarNovaSenha();
@@ -228,14 +223,14 @@ async function mostrarNovaSenha() {
   // E-mail somente leitura: mostra de qual conta é a senha e ajuda o
   // gerenciador de senhas a salvar no login certo.
   mostrar(html`
-    <h1 tabindex="-1">Crie sua nova senha</h1>
-    <p class="acesso-sub">Mínimo de 8 caracteres. Depois de salvar, entre com a senha nova.</p>
+    <h1 tabindex="-1">${convite ? 'Crie sua senha' : 'Crie sua nova senha'}</h1>
+    <p class="acesso-sub">${convite ? 'Mínimo de 8 caracteres. Depois de salvar, você já entra no app.' : 'Mínimo de 8 caracteres. Depois de salvar, entre com a senha nova.'}</p>
     <form id="f-senha" novalidate>
       <div class="campo"><label for="n-email">Conta</label>
         <input id="n-email" type="email" autocomplete="username" value="${user.email || ''}" readonly></div>
       ${campoSenha({ id: 'n-senha', rotulo: 'Nova senha', novo: true })}
       ${campoSenha({ id: 'n-senha2', rotulo: 'Confirme a nova senha', autocomplete: 'new-password' })}
-      <button class="btn btn-primario btn-largo" id="n-ok" type="submit">Salvar nova senha</button>
+      <button class="btn btn-primario btn-largo" id="n-ok" type="submit">${convite ? 'Salvar e entrar' : 'Salvar nova senha'}</button>
     </form>
     <button class="btn btn-texto" id="n-cancelar" type="button">Cancelar</button>
     <p id="n-msg" class="acesso-msg" role="status" aria-live="polite"></p>`);
@@ -258,8 +253,14 @@ async function mostrarNovaSenha() {
       else msg('n-msg', 'Não foi possível salvar: ' + e2.message, 'erro');
       return;
     }
-    // Encerra a sessão do link (em todos os aparelhos) e pede login com a
-    // senha nova — assim fica provado que ela funciona.
+    // Convite: a conta já está liberada, então entra direto.
+    if (convite) {
+      modoRecuperacao = false;
+      armazenamento.remover(CHAVE_RECUPERACAO);
+      await verificar();
+      return;
+    }
+    // Recuperação: encerra a sessão do link em todos os aparelhos e pede login com a senha nova.
     const email = user.email;
     await encerrarRecuperacao();
     mostrarLogin('Senha alterada. Entre com a nova senha.', email);
@@ -306,11 +307,10 @@ export async function sair() {
   location.reload();
 }
 
-// Abertura: espera o Supabase ler o link do e-mail (se houver), limpa a URL
-// e decide qual tela mostrar. aoEntrar(perfil) é chamado uma vez.
-// Sessão do projeto Supabase anterior: não serve mais e não deve ficar guardada no aparelho.
+// Sessão do projeto Supabase anterior, removida do aparelho.
 const CHAVES_ANTIGAS = ['sb-kdznytksxtjmuqwrqxka-auth-token'];
 
+// Espera o Supabase ler o link do e-mail (se houver), limpa a URL e decide a tela. aoEntrar(perfil) roda uma vez.
 export async function iniciarAcesso({ aoEntrar }) {
   aoEntrarCb = aoEntrar;
   for (const k of CHAVES_ANTIGAS) { try { localStorage.removeItem(k); } catch { /* sem armazenamento */ } }
@@ -326,7 +326,7 @@ export async function iniciarAcesso({ aoEntrar }) {
   });
 
   await sb.auth.getSession();
-  const linkTokenHash = !!urlAuth.tokenHash && urlAuth.tipo === 'recovery' && !urlAuth.erro;
+  const linkTokenHash = !!urlAuth.tokenHash && LINK_DE_SENHA.includes(urlAuth.tipo) && !urlAuth.erro;
   if (!linkTokenHash) limparUrl();          // o token_hash só sai depois de usado
   if (!modoRecuperacao && recuperacaoPendente()) await encerrarRecuperacao();
   pronto = true;

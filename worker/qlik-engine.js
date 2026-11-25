@@ -1,15 +1,5 @@
-// ============================================================
-//  QLIK — compras de um cliente num laboratório (fornecedor) e período.
-//  Usado pelo Worker do Cloudflare (worker/index.js) e testado no Node.
-//
-//  Não conhece WebSocket de nenhuma plataforma: recebe um objeto "soquete"
-//  com send(texto), addEventListener('message'|'close'|'error', fn) e close().
-//
-//  Tudo que depende do app do Qlik (nomes de campos, filtros fixos e a
-//  expressão do valor) vem de "config" e pode ser trocado por variável do
-//  Worker, sem mexer no código. Para descobrir os nomes certos:
-//  node scripts/descobrir-campos-qlik.mjs
-// ============================================================
+// Consulta de compras no Qlik (Engine API). Independe de plataforma: recebe um "soquete" com send,
+// addEventListener e close, e é testado em Node. Campos, filtros e expressão vêm de config (variáveis do Worker).
 
 export const CONFIG_PADRAO = {
   campos: {
@@ -19,7 +9,7 @@ export const CONFIG_PADRAO = {
     data:       'Data Venda',         // conferido no app: tem vendas até o dia; 'Data Emissão' não serve
     nota:       'Núm. Nota Fiscal Vendas',
     serie:      'Série Nota Fiscal Vendas',
-    // Devoluções (v2.9): linhas com Tipo de Venda = "Devolução", sem número de nota.
+    // Devoluções: linhas com Tipo de Venda = "Devolução", sem número de nota.
     // No atacado "Nota Fiscal Origem" vem vazio; só a série da nota de origem vem preenchida.
     tipoVenda:   'Tipo de Venda',
     serieOrigem: 'Série Nota Fiscal Origem',
@@ -87,8 +77,16 @@ export function alvoLaboratorio(config, padrao) {
   return m ? { campo: config.campos.marca, padrao: m[1].trim() } : { campo: config.campos.fornecedor, padrao: seguro };
 }
 
-// Vários laboratórios (v2.12): agrupa os padrões pelo campo do Qlik (fornecedor ou marca do produto).
+// Vários laboratórios: agrupa os padrões pelo campo do Qlik (fornecedor ou marca do produto).
 export const MAX_PADROES = 5;
+// Marcas escolhidas na consulta: uma (texto) ou várias (lista), no máximo MAX_MARCAS.
+export const MAX_MARCAS = 10;
+export function marcasSeguras(marca) {
+  if (marca == null || marca === '' || (Array.isArray(marca) && !marca.length)) return [];
+  const lista = Array.isArray(marca) ? marca : [marca];
+  if (lista.length > MAX_MARCAS) throw new ErroQlik('Marca inválido.', { status: 400 });
+  return [...new Set(lista.map(m => padraoSeguro(m, 'Marca')))];
+}
 export function alvosLaboratorios(config, padroes) {
   const lista = (Array.isArray(padroes) ? padroes : [padroes]);
   if (!lista.length || lista.length > MAX_PADROES) throw new ErroQlik('Laboratório inválido.', { status: 400 });
@@ -104,7 +102,7 @@ export function alvosLaboratorios(config, padroes) {
 
 // Modificador de conjunto (vai dentro de {1…}, ver expressao()): <[Cód. Cliente]={'123'}, [Fornecedor]={"OURO*"}, [Data Venda]={"=Num(..)>=A and Num(..)<=B"}, …>
 // A data usa expressão: a busca numérica (">=46000<=46030") não casa neste app do Qlik.
-// padraoFornecedor: um padrão ou uma lista (vários laboratórios, v2.12). Os do mesmo campo vão juntos
+// padraoFornecedor: um padrão ou uma lista. Os do mesmo campo vão juntos
 // ([Fornecedor]={"OURO FINO*","*Avert*"}); fornecedor + marca do produto viram a união de dois conjuntos
 // ("<…>+1<…>", que expressao() embrulha em {1…}).
 // semLaboratorio: o mesmo filtro sem fornecedor nem marca (tudo o que o cliente comprou no período).
@@ -112,21 +110,21 @@ export function alvosLaboratorios(config, padroes) {
 export function montarConjunto({ config = CONFIG_PADRAO, codigoCliente, padraoFornecedor, marca = null, inicio, fim, semLaboratorio = false, extras = [] }) {
   const c = config.campos;
   const alvos = alvosLaboratorios(config, padraoFornecedor);
-  const marcaSegura = marca && !semLaboratorio ? padraoSeguro(marca, 'Marca') : null;
+  const marcasEsc = semLaboratorio ? [] : marcasSeguras(marca);
   // Only({1} …): a busca por expressão é avaliada nas seleções salvas do app; sem o {1},
-  // só as datas do mês selecionado (ex.: jul/2026) passavam no filtro (conferido no Qlik real, v2.8.1).
+  // só as datas do mês selecionado (ex.: jul/2026) passavam no filtro.
   const dt = `Only({1} Num(${nomeCampo(c.data)}))`;
   const lista = ps => ps.map(p => `"${p}"`).join(',');
   const parte = alvo => {
-    // Laboratório que no Qlik é marca + marca escolhida: interseção no mesmo campo ({"CATLIFE"}*{"X"}).
-    const marcaNoAlvo = marcaSegura && alvo && alvo.campo === c.marca;
+    // Laboratório que no Qlik é marca + marcas escolhidas: interseção no mesmo campo ({"CATLIFE"}*{"X","Y"}).
+    const marcaNoAlvo = marcasEsc.length > 0 && alvo && alvo.campo === c.marca;
     const partes = [
       `${nomeCampo(c.cliente)}={'${codigoSeguro(codigoCliente)}'}`,
-      ...(alvo ? [`${nomeCampo(alvo.campo)}={${lista(alvo.padroes)}}${marcaNoAlvo ? `*{"${marcaSegura}"}` : ''}`] : []),
+      ...(alvo ? [`${nomeCampo(alvo.campo)}={${lista(alvo.padroes)}}${marcaNoAlvo ? `*{${lista(marcasEsc)}}` : ''}`] : []),
       // "< fim + 1": inclui o último dia inteiro, mesmo se a data vier com hora.
       `${nomeCampo(c.data)}={"=${dt}>=${serialQlik(inicio)} and ${dt}<${serialQlik(fim) + 1}"}`,
-      // Marca (opcional): uma linha de produtos do laboratório, ex.: WELLPET dentro da Ouro Fino.
-      ...(marcaSegura && !marcaNoAlvo ? [`${nomeCampo(c.marca)}={"${marcaSegura}"}`] : []),
+      // Marcas (opcional): linhas de produtos dos fornecedores, ex.: WELLPET dentro da Ouro Fino.
+      ...(marcasEsc.length && !marcaNoAlvo ? [`${nomeCampo(c.marca)}={${lista(marcasEsc)}}`] : []),
       ...(config.filtros || []).map(f => `${nomeCampo(f.campo)}={'${valorSeguro(f.valor, 'Filtro')}'}`),
       ...extras,
     ];
@@ -135,9 +133,8 @@ export function montarConjunto({ config = CONFIG_PADRAO, codigoCliente, padraoFo
   if (semLaboratorio) return parte(null);
   return alvos.map(parte).join('+1');
 }
-// "{1<…>}" e não "{<…>}": o app do Qlik abre com as seleções salvas de quem usou por último
-// (ex.: jul/2026 + PLANTAS NATURAIS), e "{<…>}" partiria delas — tudo dava R$ 0,00 (v2.8.1).
-// O "1" parte do app inteiro e aplica só os nossos filtros.
+// "{1<…>}": parte do app inteiro e aplica só os nossos filtros. "{<…>}" partiria das seleções salvas
+// de quem usou o app por último e os valores sairiam zerados.
 export const conjuntoSemSelecoes = conjunto => `{1${conjunto}}`;
 export const expressao = (config, conjunto) => config.expressaoValor.replaceAll('{SET}', conjuntoSemSelecoes(conjunto));
 
@@ -204,7 +201,7 @@ const centavos = n => Math.round(n * 100);
  * Quais notas provavelmente foram devolvidas. O Qlik não diz (no atacado "Nota Fiscal Origem" vem
  * vazio), só quanto foi devolvido em cada série. Para cada série, procura 1, 2 ou 3 notas cuja soma seja
  * EXATAMENTE o valor devolvido (das mais recentes para as mais antigas). Sem combinação exata, nenhuma.
- * As notas continuam na lista: a tela as mostra riscadas, fora da soma (v2.9).
+ * As notas continuam na lista: a tela as mostra riscadas, fora da soma.
  * @param {{numero,serie,data,valor}[]} notas
  * @param {Map<string, number>} devolvidoPorSerie  série → valor devolvido (positivo)
  * @returns {Set<number>} índices das notas na lista recebida
@@ -271,7 +268,7 @@ export async function consultarCompras(engine, { appId, config = CONFIG_PADRAO, 
   })).filter(x => x.numero)
      .sort((a, b) => String(a.data).localeCompare(String(b.data)) || a.numero.localeCompare(b.numero, 'pt-BR', { numeric: true }));
 
-  // 2b) devoluções (v2.9): o total já desconta, mas a nota devolvida vem com o valor cheio.
+  // 2b) devoluções: o total já desconta, mas a nota devolvida vem com o valor cheio.
   // devolucoes = soma das notas − total, para a conta fechar sempre: soma das notas − devoluções = total.
   // Só quando há diferença: quanto foi devolvido em cada série → marca as notas de provável devolução.
   let devolucoes = 0;

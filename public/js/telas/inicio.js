@@ -1,7 +1,4 @@
-// ============================================================
-//  INÍCIO — fila do aprovador (ou as campanhas do coordenador em
-//  análise), números do mês e as enviadas por último.
-// ============================================================
+// Início: fila de decisão (administrador) ou campanhas em análise (usuário), números do mês e últimas enviadas.
 import { html, pintar } from '../lib/dom.js';
 import { calc, brl, brl0, dataCivil, hojeCivil, STATUS } from '../lib/regras.js';
 import { icone } from '../ui/icones.js';

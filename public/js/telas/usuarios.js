@@ -1,11 +1,7 @@
-// ============================================================
-//  USUÁRIOS — #/usuarios (só administrador).
-//  Quem pediu acesso aparece primeiro, com "Liberar" de um toque.
-//  Os demais: nome, e-mail e papel; "Editar" abre nome, papel e acesso.
-//  O banco confere tudo (definir_perfil): a tela só organiza.
-// ============================================================
+// Usuários (#/usuarios, só administrador): convite por e-mail, liberação de acesso e edição de nome e papel.
+// As regras ficam no banco (definir_perfil); a tela só organiza.
 import { html, pintar, $, ao } from '../lib/dom.js';
-import { PAPEL, rotuloPapel, dataBR } from '../lib/regras.js';
+import { PAPEL, rotuloPapel, dataBR, emailValido } from '../lib/regras.js';
 import { icone } from '../ui/icones.js';
 import { seloNeutro, vazio, carregando } from '../ui/pecas.js';
 import { abrirDialogo, erroNoDialogo, confirmar } from '../ui/avisos.js';
@@ -57,11 +53,14 @@ function desenhar() {
   const nAdm = ativos.filter(u => u.papel === PAPEL.APROVADOR).length;
 
   pintar(el, html`<div class="usuarios">
-    <p class="secao-nota usuarios-guia">${PAPEIS.map(p => html`<span><strong>${p.rotulo}:</strong> ${p.texto}</span>`)}</p>
+    <div class="usuarios-topo">
+      <p class="secao-nota usuarios-guia">${PAPEIS.map(p => html`<span><strong>${p.rotulo}:</strong> ${p.texto}</span>`)}</p>
+      <button type="button" class="btn btn-primario" id="us-convidar">${icone('mais')} Convidar usuário</button>
+    </div>
 
     ${aguardando.length ? html`<section class="painel" aria-labelledby="us-t-aguardando">
       <h2 class="painel-titulo" id="us-t-aguardando">Sem acesso <span class="contador-texto">${aguardando.length}</span></h2>
-      <p class="painel-corpo campo-dica">Contas novas entram sem acesso. Libere quem é da equipe; quem saiu fica aqui, desativado.</p>
+      <p class="painel-corpo campo-dica">Contas criadas sem convite entram sem acesso. Libere quem é da equipe; quem saiu fica aqui, desativado.</p>
       <ul class="usuarios-lista">${aguardando.map(u => linha(u, u.id === eu))}</ul>
     </section>` : ''}
 
@@ -71,6 +70,49 @@ function desenhar() {
       <ul class="usuarios-lista">${ativos.map(u => linha(u, u.id === eu))}</ul>
     </section>
   </div>`);
+}
+
+async function convidar() {
+  let enviado = null;
+  const corpo = html`
+    ${campo({ id: 'cv-nome', rotulo: 'Nome', obrigatorio: true, dica: 'Como aparece nas campanhas e no menu.', atributos: { autocomplete: 'off', maxlength: 80, autofocus: true } })}
+    ${campo({ id: 'cv-email', rotulo: 'E-mail', tipo: 'email', obrigatorio: true, dica: 'O convite chega neste e-mail, com o link para criar a senha.', atributos: { autocomplete: 'off', maxlength: 254, inputmode: 'email' } })}
+    <fieldset class="campo pessoas" data-campo="cv-papel">
+      <legend>Perfil</legend>
+      ${PAPEIS.map(p => html`<label class="pessoa"><input type="radio" name="cv-papel" value="${p.valor}"${p.valor === PAPEL.COORDENADOR ? html` checked` : ''}>
+        <span class="pessoa-nome">${p.rotulo}<small>${p.texto}</small></span></label>`)}
+    </fieldset>`;
+  await abrirDialogo({
+    titulo: 'Convidar usuário',
+    descricao: 'A pessoa recebe um e-mail para criar a senha e já entra com o acesso liberado.',
+    corpo,
+    acoes: [
+      { rotulo: 'Cancelar', valor: null, tipo: 'fantasma' },
+      { rotulo: 'Enviar convite', valor: 'enviar', tipo: 'primario', principal: true },
+    ],
+    antesDeFechar: async (_v, d) => {
+      erroNoDialogo(d, '');
+      const nome = $('#cv-nome', d).value.trim().replace(/\s+/g, ' ');
+      const email = $('#cv-email', d).value.trim().toLowerCase();
+      const papel = d.querySelector('input[name="cv-papel"]:checked')?.value;
+      const erros = {};
+      if (nome.length < 2) erros['cv-nome'] = 'Informe o nome (pelo menos 2 letras).';
+      if (!emailValido(email)) erros['cv-email'] = 'Digite um e-mail válido.';
+      else if (s.lista?.some(u => u.email === email)) erros['cv-email'] = 'Já existe uma conta com este e-mail.';
+      if (aplicarErros(d, erros)) return false;
+      try {
+        enviado = { ...(await usuarios.convidar({ nome, email, papel })), nome };
+        return true;
+      } catch (err) {
+        if (/e-mail/i.test(err.message)) aplicarErros(d, { 'cv-email': err.message });
+        else erroNoDialogo(d, err.message);
+        return false;
+      }
+    },
+  });
+  if (!enviado) return;
+  s.ctx.toast(enviado.aviso || `Convite enviado para ${enviado.email}.`, { tom: enviado.aviso ? '' : 'sucesso', duracao: 6000 });
+  carregar();
 }
 
 async function carregar() {
@@ -157,6 +199,7 @@ export function montar(el, ctx) {
     ao(el, 'click', '[data-liberar]', (e, b) => { const u = porId(b.dataset.liberar); if (u) { b.disabled = true; liberar(u); } }),
     ao(el, 'click', '[data-editar-usuario]', (e, b) => { const u = porId(b.dataset.editarUsuario); if (u) editar(u); }),
     ao(el, 'click', '#us-tentar', () => { s.lista = null; desenhar(); carregar(); }),
+    ao(el, 'click', '#us-convidar', () => convidar()),
   );
   desenhar();
   if (ctx.ehAprovador) carregar();

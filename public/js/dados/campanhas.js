@@ -1,8 +1,4 @@
-// ============================================================
-//  CAMPANHAS — leitura, tempo real, criação e decisão.
-//  Lê sempre da view campanhas_app (os dados Swile só chegam a quem pode
-//  vê-los). Grava na tabela campanhas.
-// ============================================================
+// Campanhas: leitura pela view campanhas_app (dados Swile só para quem pode ver), tempo real, envio e decisão.
 import { sb } from '../lib/supabase.js';
 import { STATUS } from '../lib/regras.js';
 import { exigir, ErroApp } from './erros.js';
@@ -145,7 +141,7 @@ export const campanhas = {
       if (linha && linha.status !== STATUS.PENDENTE) {
         throw new ErroApp(`Esta campanha já foi ${linha.status.toLowerCase()} por ${linha.aprovador_nome || 'outra pessoa'}.`);
       }
-      throw new ErroApp('Não foi possível registrar a decisão. Só o aprovador decide campanhas.');
+      throw new ErroApp('Não foi possível registrar a decisão. Só administradores decidem campanhas.');
     }
     return linha;
   },

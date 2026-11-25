@@ -88,7 +88,7 @@ async function escolherNoCombo(page, seletor, termo, opcao) {
   await page.type(seletor, termo, { delay: 15 });
   await page.locator(`${seletor} ~ .combo-lista [role=option]`, { hasText: opcao }).first().click();
 }
-// Laboratórios escolhidos na Nova (v2.12): botões com × abaixo do campo.
+// Laboratórios escolhidos na Nova: botões com × abaixo do campo.
 const labsEscolhidos = page => page.locator('#n-labs [data-tirar-lab]').evaluateAll(bs => bs.map(b => b.dataset.tirarLab));
 const erroDo = (page, id) => page.locator(`#${id}-erro`);
 async function semErroVisivel(page) { return page.locator('.campo.tem-erro').count(); }
@@ -331,7 +331,7 @@ teste('detalhe: aprovar → desfazer mantém pendente; aprovar de novo grava e a
   await toastCom(page, 'Aprovada');
 });
 
-// v2.9 (C1): decidir direto na lista, com o mesmo módulo (ui/decisao.js) do detalhe.
+// decidir direto na lista, com o mesmo módulo (ui/decisao.js) do detalhe.
 teste('lista: aprovar pelo cartão grava o mesmo que pelo detalhe; desfazer volta; reprovar pede motivo', async ({ page }) => {
   await abrir(page, { rota: '#/campanhas' });
   const pend = (await db(page)).campanhas.filter(c => c.status === 'Pendente').map(c => c.id);
@@ -607,7 +607,7 @@ teste('gestão: lista, busca por balconista e desativadas', async ({ page }) => 
   const linhas = () => page.locator('#gs-itens a[href^="#/gestao/empresas/"]').count();
   igual(await linhas(), 3, '3 empresas ativas');
   await page.click('label[for="gs-inativas"]');
-  // v2.9 (E1): as desativadas são lidas só agora, sob demanda.
+  // as desativadas são lidas só agora, sob demanda.
   await page.waitForFunction(() => document.querySelectorAll('#gs-itens a[href^="#/gestao/empresas/"]').length === 4, null, { timeout: 5000 }).catch(() => {});
   igual(await linhas(), 4, 'com desativadas: 4');
   await page.fill('#gs-busca', 'joao'); await page.waitForTimeout(400);
@@ -717,7 +717,7 @@ teste('usuários: administrador libera conta, muda papel com confirmação e nã
   await d.locator('button', { hasText: 'Cancelar' }).click();
 });
 
-// v2.9 (C2): contas esperando liberação no menu e no Início do administrador.
+// contas esperando liberação no menu e no Início do administrador.
 teste('usuários: menu mostra quantas contas esperam liberação; o Início avisa; liberar zera', async ({ page }) => {
   await abrir(page, { rota: '#/inicio' });
   const cont = page.locator('#menu [data-contador-usuarios]');
@@ -1198,7 +1198,7 @@ teste('lote S: aprovador confere no Qlik o total enviado e vê a diferença', as
   igual(await page.locator('[data-conferir-qlik]').count(), 0, 'coordenador não vê o botão de conferência');
 });
 
-// v2.9: a conferência do aprovador compara também as devoluções (Qlik simulado: código 4817 → total 1.300,49, devoluções 300).
+// a conferência do aprovador compara também as devoluções (Qlik simulado: código 4817 → total 1.300,49, devoluções 300).
 teste('lote S: conferência no Qlik compara também as devoluções', async ({ page }) => {
   await abrir(page, { rota: '#/inicio' });
   const preparar = (devolucoes) => page.evaluate(dv => {
@@ -1250,7 +1250,7 @@ teste('lote S: sem CDN de terceiros, CSP fechada no Supabase do config e service
   afirma(await page.evaluate(() => typeof window.supabase?.createClient === 'function'), 'supabase-js local carregado');
 });
 
-// v2.9 (A2): config.js novo com módulos antigos → recarrega uma vez e abre; sem loop.
+// config.js novo com módulos antigos → recarrega uma vez e abre; sem loop.
 async function contarCargas(page) { let n = 0; page.on('load', () => n++); return () => n; }
 teste('lote S: versão misturada recarrega uma vez e abre já na versão certa', async ({ page }) => {
   let primeira = true;
@@ -1276,6 +1276,7 @@ teste('lote S: versão que continua misturada não entra em loop de recarga', as
   page.on('console', m => { if (m.type() === 'warning') avisos.push(m.text()); });
   const cargas = await contarCargas(page);
   await abrir(page);
+  for (let i = 0; i < 50 && cargas() < 2; i++) await page.waitForTimeout(100);   // máquina lenta: espera a recarga
   await page.waitForTimeout(800);
   igual(cargas(), 2, 'recarregou uma vez e parou');
   afirma(avisos.some(a => /Versão misturada/.test(a)), 'registra no console');
@@ -1410,7 +1411,7 @@ teste('lote R: empresa sem código do Qlik e "Recurso próprio" não consultam n
   await escolherNoCombo(page, '#n-laboratorio', 'recurso', 'Recurso próprio');
   await page.locator('#compras-corpo', { hasText: 'Recurso próprio não entra na consulta' }).waitFor();
   await page.click('[data-tirar-lab="Ouro Fino"]');
-  await page.locator('#compras-corpo', { hasText: 'não é um fornecedor do Qlik' }).waitFor();
+  await page.locator('#compras-corpo', { hasText: 'não está no Qlik' }).waitFor();
 });
 
 teste('v2.12: Nova com dois laboratórios — consulta os dois juntos, grava "A, B" e o filtro acha por qualquer um', async ({ page }) => {
@@ -1430,7 +1431,7 @@ teste('v2.12: Nova com dois laboratórios — consulta os dois juntos, grava "A,
   await page.locator('#compras-corpo .compras-total').waitFor();
   const ultimo = pedidos[pedidos.length - 1];
   igual(JSON.stringify(ultimo.fornecedor_padrao), '["OURO FINO*","*Avert*"]', 'o Qlik recebe os dois laboratórios');
-  afirma((await page.locator('#compras-corpo').innerText()).includes('somando os laboratórios escolhidos'), 'avisa que é a soma');
+  afirma((await page.locator('#compras-corpo').innerText()).includes('somando os fornecedores escolhidos'), 'avisa que é a soma');
   // Tirar e pôr de novo: a consulta segue a lista.
   await page.click('[data-tirar-lab="Avert"]');
   igual(JSON.stringify(await labsEscolhidos(page)), '["Ouro Fino"]', 'tirou o Avert');
@@ -1454,7 +1455,7 @@ teste('v2.12: Nova com dois laboratórios — consulta os dois juntos, grava "A,
 teste('lote R: cliente sem compras no período avisa', async ({ page }) => {
   await abrir(page, { rota: '#/nova' });
   await trocarCodigo(page, '4820');
-  await page.locator('#compras-corpo', { hasText: 'de outros laboratórios' }).waitFor();   // comprou R$ 850 de outros
+  await page.locator('#compras-corpo', { hasText: 'de outros fornecedores' }).waitFor();   // comprou R$ 850 de outros
   const t = await page.locator('#compras-corpo').innerText();
   afirma(/R\$\s?850,00/.test(t) && /nada de Ouro Fino/.test(t), 'diz quanto comprou de outros e que nada deste laboratório');
   afirma(!/LABORATORIO_QLIK|config\.js| de o /.test(t), 'sem texto técnico nem "de o laboratório"');
@@ -1463,7 +1464,7 @@ teste('lote R: cliente sem compras no período avisa', async ({ page }) => {
 teste('lote R: Qlik sem nenhuma compra do cliente avisa para chamar o TI', async ({ page }) => {
   await abrir(page, { rota: '#/nova' });
   await trocarCodigo(page, '4800');
-  await page.locator('#compras-corpo .nota-alerta', { hasText: 'de nenhum laboratório' }).waitFor();
+  await page.locator('#compras-corpo .nota-alerta', { hasText: 'de nenhum fornecedor' }).waitFor();
   afirma(/avise o TI/.test(await page.locator('#compras-corpo').innerText()), 'orienta o que fazer');
 });
 
@@ -1522,7 +1523,7 @@ teste('lote R: com 12 notas mostra 5, "Ver todas" abre as 12 e "Marcar todas" so
   igual(await page.locator('#det-notas .nota-linha:not(.nota-total):visible').count(), 12, 'detalhe abre as 12');
 });
 
-// v2.9 (A1): devolução no período. A nota de provável devolução fica riscada, fora da soma e sem marcar;
+// devolução no período. A nota de provável devolução fica riscada, fora da soma e sem marcar;
 // a linha "Devoluções no período" fecha a conta: soma das notas − devoluções = total.
 teste('lote R: devolução que fecha com uma nota — nota riscada, fora da soma; o detalhe mostra igual', async ({ page }) => {
   await abrir(page, { rota: '#/nova' });
@@ -1582,43 +1583,88 @@ teste('lote R: mudar o período consulta de novo e zera a marcação', async ({ 
   igual(await page.locator('input[data-nota]:checked').count(), 0, 'marcação vem zerada na nova consulta');
 });
 
-teste('lote R: marca do laboratório é opcional, filtra total e notas, é gravada e some ao trocar o laboratório', async ({ page }) => {
+const chipMarca = (page, nome) => page.locator(`[data-marca="${nome}"]`);
+teste('lote R: marcas são opcionais, uma ou várias filtram total e notas, são gravadas e zeram ao trocar o período', async ({ page }) => {
+  const pedidos = [];
+  page.on('request', r => { if (r.url().includes('/api/qlik/compras')) pedidos.push(JSON.parse(r.postData() || '{}')); });
   await prepararCompras(page);
-  await page.locator('#n-marca').waitFor();
-  const ops = await page.locator('#n-marca option').allInnerTexts();
-  igual(ops[0], 'Todas as marcas', 'começa em "Todas as marcas"');
-  afirma(/WELLPET · R\$\s*1\.200,50/.test(ops[1]) && /PROTEÇÃO · R\$\s*399,99/.test(ops[2]), 'marcas com o valor comprado, da maior para a menor');
+  await chipMarca(page, 'WELLPET').waitFor();
+  const chips = await page.locator('[data-marca]').allInnerTexts();
+  afirma(/WELLPET\s*R\$\s*1\.200,50/.test(chips[0]) && /PROTEÇÃO\s*R\$\s*399,99/.test(chips[1]), 'marcas com o valor comprado, da maior para a menor: ' + chips.join(' | '));
+  igual(await page.locator('[data-marca][aria-pressed="true"]').count(), 0, 'começa sem marca (todas)');
   igual(await page.locator('input[data-nota]').count(), 3, 'sem marca: três notas');
 
-  await page.selectOption('#n-marca', 'WELLPET');
+  // Uma marca
+  await chipMarca(page, 'WELLPET').click();
   await page.locator('.compras-total', { hasText: 'marca WELLPET' }).waitFor();
   afirma(/R\$\s*1\.200,50/.test(await page.locator('.compras-total').innerText()), 'total só da marca');
   igual(await page.locator('input[data-nota]').count(), 1, 'só a nota da marca');
-  igual(await page.locator('#n-marca').inputValue(), 'WELLPET', 'a marca continua escolhida');
-  igual(await page.locator('#n-marca option').count(), 3, 'a lista de marcas continua completa');
+  igual(await chipMarca(page, 'WELLPET').getAttribute('aria-pressed'), 'true', 'a marca fica marcada');
+  igual(await page.locator('[data-marca]').count(), 2, 'a lista de marcas continua completa');
+  igual(await page.evaluate(() => document.activeElement?.dataset.marca), 'WELLPET', 'o foco volta ao botão da marca');
+  igual(pedidos.at(-1).marca, 'WELLPET', 'uma marca vai como texto');
 
-  await page.check('input[data-nota="0"]');
-  await page.fill('#n-campanha', 'WellPet outubro'); await page.fill('#n-inv-lynkz', '100'); await page.fill('#n-meta', '5.000');
+  // Duas marcas
+  await chipMarca(page, 'PROTEÇÃO').click();
+  await page.locator('.compras-total', { hasText: 'marcas WELLPET e PROTEÇÃO' }).waitFor();
+  igual(JSON.stringify(pedidos.at(-1).marca), '["WELLPET","PROTEÇÃO"]', 'duas marcas vão como lista');
+  igual(await page.locator('input[data-nota]').count(), 3, 'notas das duas marcas');
+  afirma(/R\$\s*1\.600,49/.test(await page.locator('.compras-total').innerText()), 'total das duas marcas');
+
+  await page.check('input[data-nota="1"]');
+  await page.fill('#n-campanha', 'WellPet e Proteção outubro'); await page.fill('#n-inv-lynkz', '100'); await page.fill('#n-meta', '5.000');
   await page.selectOption('#n-pagamento', 'Desconto em nota');
   await page.locator('[data-enviar]:visible').first().click();
   await page.waitForFunction(() => /#\/campanhas\/\d+$/.test(location.hash));
   const d = await db(page);
   const c = d.campanhas.at(-1);
-  igual(c.compras_marca, 'WELLPET', 'marca gravada'); igual(c.compras_periodo, 1200.5, 'total da marca gravado');
-  igual(d.campanha_notas.filter(n => n.campanha_id === c.id).map(n => n.numero).join(','), '210818', 'só a nota da marca');
-  await page.locator('#det-notas', { hasText: 'marca WELLPET' }).waitFor();
+  igual(c.compras_marca, 'WELLPET; PROTEÇÃO', 'as duas marcas gravadas'); igual(c.compras_periodo, 1600.49, 'total das marcas gravado');
+  await page.locator('#det-notas', { hasText: 'marcas WELLPET e PROTEÇÃO' }).waitFor();
 
-  // trocar o laboratório zera a marca escolhida
+  // "Ver todas as marcas" desmarca; trocar o período zera as marcas.
   await abrir(page, { rota: '#/nova' });
   await escolherNoCombo(page, '#n-empresa', '4821', 'Casa do Criador');
   await escolherNoCombo(page, '#n-laboratorio', 'ouro', 'Ouro Fino');
   await page.fill('#n-inicio', '2026-10-01'); await page.fill('#n-fim', '2026-10-31'); await page.dispatchEvent('#n-fim', 'change');
-  await page.locator('#n-marca').waitFor();
-  await page.selectOption('#n-marca', 'PROTEÇÃO');
+  await chipMarca(page, 'PROTEÇÃO').click();
+  await page.locator('.compras-total', { hasText: 'marca PROTEÇÃO' }).waitFor();
+  await page.click('[data-marcas-todas]');
+  await page.locator('.compras-total', { hasNotText: 'marca' }).waitFor();
+  igual(await page.locator('[data-marca][aria-pressed="true"]').count(), 0, '"Ver todas as marcas" desmarca');
+  await chipMarca(page, 'PROTEÇÃO').click();
   await page.locator('.compras-total', { hasText: 'marca PROTEÇÃO' }).waitFor();
   await page.fill('#n-fim', '2026-11-15'); await page.dispatchEvent('#n-fim', 'change');
   await page.locator('.compras-total', { hasText: '15/11/2026' }).waitFor();
-  igual(await page.locator('#n-marca').inputValue(), '', 'mudar o período volta para "Todas as marcas"');
+  igual(await page.locator('[data-marca][aria-pressed="true"]').count(), 0, 'mudar o período volta para todas as marcas');
+});
+
+teste('v2.14: várias marcas com vários fornecedores; detalhe confere no Qlik com as mesmas marcas', async ({ page }) => {
+  const pedidos = [];
+  page.on('request', r => { if (r.url().includes('/api/qlik/compras')) pedidos.push(JSON.parse(r.postData() || '{}')); });
+  await abrir(page, { rota: '#/nova' });
+  await escolherNoCombo(page, '#n-empresa', '4821', 'Casa do Criador');
+  await escolherNoCombo(page, '#n-laboratorio', 'ouro', 'Ouro Fino');
+  await escolherNoCombo(page, '#n-laboratorio', 'avert', 'Avert');
+  await page.fill('#n-inicio', '2026-10-01'); await page.fill('#n-fim', '2026-10-31'); await page.dispatchEvent('#n-fim', 'change');
+  await chipMarca(page, 'WELLPET').click();
+  await page.locator('.compras-total', { hasText: 'marca WELLPET' }).waitFor();
+  await chipMarca(page, 'PROTEÇÃO').click();
+  await page.locator('.compras-total', { hasText: 'marcas WELLPET e PROTEÇÃO' }).waitFor();
+  const ult = pedidos.at(-1);
+  igual(JSON.stringify(ult.fornecedor_padrao), '["OURO FINO*","*Avert*"]', 'os dois fornecedores');
+  igual(JSON.stringify(ult.marca), '["WELLPET","PROTEÇÃO"]', 'as duas marcas');
+  const vio = (await axe(page, 'Nova marcas')).filter(x => ['critical', 'serious'].includes(x.impacto));
+  afirma(!vio.length, 'acessibilidade das marcas: ' + JSON.stringify(vio));
+  await page.fill('#n-campanha', 'Duas marcas, dois fornecedores'); await page.fill('#n-meta', '5000');
+  await page.locator('[data-enviar]:visible').first().click();
+  await page.waitForFunction(() => /#\/campanhas\/\d+$/.test(location.hash));
+  const id = await page.evaluate(() => +location.hash.match(/\d+$/)[0]);
+  // Aprovador confere no Qlik: mesmas marcas e fornecedores.
+  await page.goto(`${BASE}/?papel=aprovador#/campanhas/${id}`); await page.reload();
+  await page.locator('[data-conferir-qlik]').click();
+  await page.locator('#det-notas .nota', { hasText: 'Qlik agora' }).waitFor();
+  igual(JSON.stringify(pedidos.at(-1).marca), '["WELLPET","PROTEÇÃO"]', 'conferência usa as marcas gravadas');
+  afirma((await page.locator('#det-notas').innerText()).includes('marcas WELLPET e PROTEÇÃO'), 'detalhe mostra as marcas');
 });
 
 // ============================================================
@@ -1659,7 +1705,7 @@ for (const [largura, altura] of [[360, 740], [390, 844], [768, 1024], [1024, 768
     for (const rota of TELAS) {
       await abrir(page, { rota });
       if (rota === '#/nova' && largura < 900) {
-        // v2.9: no celular a Nova tem passos; vai até o 3, onde aparece "Quem recebe" (Swile).
+        // no celular a Nova tem passos; vai até o 3, onde aparece "Quem recebe" (Swile).
         await escolherNoCombo(page, '#n-empresa', 'pet center', 'Pet Center Imperatriz');
         await escolherNoCombo(page, '#n-laboratorio', 'ouro', 'Ouro Fino');
         await page.fill('#n-campanha', 'Captura');
@@ -1770,7 +1816,7 @@ for (const largura of [390, 1440]) {
   }, { largura, altura: 900 });
 }
 
-// v2.9 (B1): no celular a Nova tem 3 passos; no computador continua uma página só.
+// no celular a Nova tem 3 passos; no computador continua uma página só.
 teste('v2.9: Nova em 3 passos no celular — erro no passo 1, Voltar mantém os dados, envio igual', async ({ page }) => {
   await abrir(page, { rota: '#/nova' });
   const altura = async () => page.evaluate(() => document.documentElement.scrollHeight / innerHeight);
@@ -1800,7 +1846,7 @@ teste('v2.9: Nova em 3 passos no celular — erro no passo 1, Voltar mantém os 
   await page.click('[data-passo-voltar]');
   igual(await page.inputValue('#n-campanha'), 'Passos 390', 'Voltar mantém os dados');
   await page.click('[data-passo-continuar]'); await page.click('[data-passo-continuar]');
-  igual((await page.locator('#passo-atual').innerText()).trim(), '3 de 3 · Quem recebe e revisão', 'passo 3');
+  igual((await page.locator('#passo-atual').innerText()).trim(), '3 de 3 · Revisão', 'passo 3');
   const resumo = await page.locator('#resumo-passos').innerText();
   afirma(/Casa do Criador/.test(resumo) && /R\$\s?200,00/.test(resumo) && /2,5%/.test(resumo), 'revisão mostra empresa, custo e % da meta: ' + resumo);
   alturas.push(await altura());
@@ -1826,7 +1872,7 @@ teste('v2.9: com erro em outro passo, "Enviar" leva até ele; o passo fica no ra
   await erroDo(page, 'n-inv-lynkz').waitFor();
   await page.fill('#n-inv-lynkz', '100');
   await page.click('[data-passo-continuar]');
-  igual((await page.locator('#passo-atual').innerText()).trim(), '3 de 3 · Quem recebe e revisão', 'chegou ao passo 3');
+  igual((await page.locator('#passo-atual').innerText()).trim(), '3 de 3 · Revisão', 'chegou ao passo 3');
   await page.click('[data-ir-passo="2"]');
   await page.fill('#n-inv-lynkz', '');
   await page.click('[data-ir-passo="3"]');
@@ -2004,9 +2050,18 @@ teste('v2.10: ADP — aprovador edita e gera o PDF no modelo, com CSP de produç
   await page.fill('#adp-obs-0', 'R$ 10,00 por prescrição Avert, totalizando 15 prescrições');
   await page.fill('#adp-fav-0', 'Beatriz Sousa Barros');
   afirma((await d.locator('[data-adp-resumo="0"]').innerText()).includes('Beatriz Sousa Barros'), 'resumo segue o nome editado');
-  await page.fill('#adp-venc', '2026-11-06');
+  // Vencimento: padrão de 7 dias úteis após hoje, editável, nunca antes da emissão.
+  const padrao = await page.evaluate(async () => {
+    const { somaDiasUteis, hojeCivil } = await import('/js/lib/regras.js');
+    return somaDiasUteis(hojeCivil(), 7);
+  });
+  igual(await page.inputValue('#adp-venc'), padrao, 'vencimento padrão = 7 dias úteis');
+  afirma((await page.locator('#adp-venc-dica').innerText()).includes('7 dias úteis'), 'dica explica a regra');
+  await page.fill('#adp-venc', '2020-01-02');
   await d.locator('[type=submit]').click();
+  afirma((await erroDo(page, 'adp-venc').innerText()).includes('antes da emissão'), 'vencimento no passado é recusado');
   afirma((await erroDo(page, 'adp-nasc-0').innerText()).includes('nascimento'), 'nascimento é obrigatório');
+  await page.fill('#adp-venc', '2030-01-15');
   await page.fill('#adp-nasc-0', '1999-03-21');
   const [dl] = await Promise.all([page.waitForEvent('download'), d.locator('[type=submit]').click()]);
   igual(dl.suggestedFilename(), 'ADP - CAMPANHAS - OUTUBRO 2026.pdf', 'nome do arquivo');
@@ -2017,7 +2072,7 @@ teste('v2.10: ADP — aprovador edita e gera o PDF no modelo, com CSP de produç
   const { texto: t, bruto } = abrirPdf(bytes);
   igual(paginasPdf(bruto), 1, 'uma página');
   igual((bruto.match(/\/Subtype\s*\/Image/g) || []).length, 2, 'as duas logos');
-  for (const esperado of ['AUTORIZAÇÃO DE PAGAMENTO', 'OUTUBRO 2026', 'LYNKZ DIST S.A - MATRIZ', '06/11/2026', 'R$ 750,00', 'CASA DO CRIADOR',
+  for (const esperado of ['AUTORIZAÇÃO DE PAGAMENTO', 'OUTUBRO 2026', 'LYNKZ DIST S.A - MATRIZ', '15/01/2030', 'R$ 750,00', 'CASA DO CRIADOR',
     'PREMIAÇÃO CAMPANHA', 'R$ 10,00 por prescrição Avert, totalizando 15 prescrições', 'R$ 150,00', 'PET CENTER IMPERATRIZ', 'R$ 600,00',
     'Beatriz Sousa Barros', '529.982.247-25', '21/03/1999', 'bia.vet@exemplo.com', 'João Pedro Lima', '30/09/1988', 'NASCIMENTO',
     'ASSINATURA DO AUTORIZANTE DO PAGAMENTO', `Emitido em ${new Date().toLocaleDateString('pt-BR', { timeZone: 'America/Fortaleza' })}`]) {
@@ -2089,6 +2144,254 @@ teste('v2.10: ADP — usuário regular gera; quem recebe de campanha de outro se
   await d.waitFor({ state: 'detached' });
   afirma(await page.evaluate(() => document.activeElement?.id) === 'hs-adp', 'foco volta ao botão');
 }, { largura: 360, altura: 740, toque: true });
+
+// ============================================================
+//  v2.13 — FORNECEDORES: até 5, divisão da meta e da indústria, rebate proporcional
+// ============================================================
+const clicarInterruptor = (page, id) => page.locator(`label[for="${id}"]`).click();
+
+teste('v2.13: no máximo 5 fornecedores; o 6º não entra e tirar um libera', async ({ page }) => {
+  await abrir(page, { rota: '#/nova' });
+  afirma((await page.locator('label[for="n-laboratorio"]').innerText()).includes('Fornecedores'), 'campo chama "Fornecedores"');
+  for (const [t, o] of [['ouro', 'Ouro Fino'], ['avert', 'Avert'], ['vansil', 'Vansil'], ['premier', 'Premier'], ['farm', 'Farmina']]) {
+    await escolherNoCombo(page, '#n-laboratorio', t, o);
+  }
+  igual((await labsEscolhidos(page)).length, 5, '5 escolhidos');
+  await page.fill('#n-laboratorio', ''); await page.type('#n-laboratorio', 'kel', { delay: 15 });
+  igual(await page.locator('#n-laboratorio ~ .combo-lista [role=option]').count(), 0, 'nenhuma opção com 5 escolhidos');
+  afirma((await page.locator('#n-laboratorio ~ .combo-lista').innerText()).includes('Limite de 5 fornecedores'), 'explica o limite');
+  await page.keyboard.press('Escape');
+  await page.click('[data-tirar-lab="Farmina"]');
+  await escolherNoCombo(page, '#n-laboratorio', 'kel', 'Kelco');
+  igual(JSON.stringify(await labsEscolhidos(page)), '["Ouro Fino","Avert","Vansil","Premier","Kelco"]', 'tirando um, entra outro');
+  // Rascunho com 6 (de outra versão, por exemplo): só os 5 primeiros entram.
+  await page.waitForFunction(() => localStorage.getItem('lynkz_rascunho_campanha_v2'));
+  await page.evaluate(() => {
+    const r = JSON.parse(localStorage.getItem('lynkz_rascunho_campanha_v2'));
+    r.laboratorio = 'Ouro Fino, Avert, Vansil, Premier, Farmina, Kelco';
+    localStorage.setItem('lynkz_rascunho_campanha_v2', JSON.stringify(r));
+  });
+  await page.reload(); await page.waitForSelector('#n-labs');
+  igual((await labsEscolhidos(page)).length, 5, 'rascunho com 6 abre com 5');
+});
+
+teste('v2.13: dividir por fornecedor — meta e indústria por fornecedor, rebate proporcional, grava e mostra no detalhe', async ({ page }) => {
+  await abrir(page, { rota: '#/nova', papel: 'coordenador' });
+  await escolherNoCombo(page, '#n-empresa', 'casa', 'Casa do Criador');
+  await escolherNoCombo(page, '#n-laboratorio', 'ouro', 'Ouro Fino');
+  afirma(await page.locator('#bloco-divisao').isHidden(), 'com um fornecedor não há divisão');
+  await escolherNoCombo(page, '#n-laboratorio', 'avert', 'Avert');
+  afirma(await page.locator('#bloco-divisao').isVisible(), 'com dois aparece "Dividir por fornecedor"');
+  await page.fill('#n-campanha', 'Meta dividida');
+  await page.fill('#n-inicio', '2026-10-01'); await page.fill('#n-fim', '2026-10-31');
+  // Meta e indústria já digitadas: ao ligar, são repartidas em partes iguais.
+  await page.fill('#n-meta', '30000'); await page.fill('#n-inv-industria', '1500,01');
+  await clicarInterruptor(page, 'n-dividir');
+  igual(await page.inputValue('#n-div-meta-0'), '15.000,00', 'meta repartida (1)');
+  igual(await page.inputValue('#n-div-meta-1'), '15.000,00', 'meta repartida (2)');
+  igual(await page.inputValue('#n-div-ind-0'), '750,00', 'indústria repartida (1)');
+  igual(await page.inputValue('#n-div-ind-1'), '750,01', 'centavo que sobra vai para o último');
+  afirma(await page.locator('#n-meta').evaluate(i => i.readOnly) && await page.locator('#n-inv-industria').evaluate(i => i.readOnly), 'totais ficam só leitura');
+  await page.fill('#n-div-meta-0', '20000'); await page.fill('#n-div-meta-1', '10000');
+  await page.fill('#n-div-ind-0', '1000'); await page.fill('#n-div-ind-1', '500');
+  igual(await page.inputValue('#n-meta'), '30.000,00', 'meta total = soma');
+  igual(await page.inputValue('#n-inv-industria'), '1.500,00', 'indústria total = soma');
+  await clicarInterruptor(page, 'n-rebate');
+  await page.fill('#n-rebate-pct', '2'); await page.fill('#n-rebate-teto', '500');
+  await page.selectOption('#n-rebate-base', { index: 1 }); await page.selectOption('#n-rebate-gatilho', { index: 1 });
+  igual(await page.locator('#n-div-parte-0').innerText(), '66,7% da meta · rebate estimado R$ 333,33', 'parte do 1º (teto repartido)');
+  igual(await page.locator('#n-div-parte-1').innerText(), '33,3% da meta · rebate estimado R$ 166,67', 'parte do 2º');
+  afirma((await page.locator('#div-soma').innerText()).includes('meta R$ 30.000,00'), 'soma visível');
+  // Valor inválido num fornecedor: erro no campo dele.
+  await page.fill('#n-div-meta-1', '1,2,3');
+  await page.locator('[data-enviar]:visible').first().click();
+  afirma((await erroDo(page, 'n-div-meta-1').innerText()).includes('Valor inválido'), 'erro no campo do fornecedor');
+  await page.fill('#n-div-meta-1', '10000');
+  // Rascunho guarda a divisão.
+  await page.waitForTimeout(600);
+  await page.reload(); await page.waitForSelector('#n-labs');
+  igual(await page.inputValue('#n-div-meta-0'), '20.000,00', 'rascunho volta com a divisão');
+  igual(await page.inputValue('#n-div-ind-1'), '500,00', 'rascunho volta com a indústria');
+  await page.locator('[data-enviar]:visible').first().click();
+  await page.waitForFunction(() => /^#\/campanhas\/\d+/.test(location.hash));
+  const c = (await db(page)).campanhas.find(x => x.campanha === 'Meta dividida');
+  igual(c.meta, 30000, 'meta total gravada');
+  igual(c.investimento_industria, 1500, 'indústria total gravada');
+  igual(JSON.stringify(c.fornecedores), '[{"nome":"Ouro Fino","meta":20000,"investimento_industria":1000},{"nome":"Avert","meta":10000,"investimento_industria":500}]', 'divisão gravada');
+  const painel = page.locator('.painel', { has: page.locator('.painel-titulo', { hasText: 'Por fornecedor' }) });
+  await painel.waitFor();
+  const t = await painel.innerText();
+  afirma(/Ouro Fino[\s\S]*20\.000,00[\s\S]*66,7%[\s\S]*1\.000,00[\s\S]*333,33/.test(t), 'detalhe: Ouro Fino com meta, %, indústria e rebate: ' + t);
+  afirma(/Avert[\s\S]*10\.000,00[\s\S]*166,67/.test(t), 'detalhe: Avert');
+  // Usar como modelo traz a divisão.
+  await page.click('[data-modelo]');
+  await page.waitForSelector('#n-div-meta-0');
+  igual(await page.inputValue('#n-div-meta-0'), '20.000,00', 'modelo copia a divisão');
+  afirma(await page.locator('#n-dividir').isChecked(), 'modelo já vem dividindo');
+});
+
+teste('v2.13: tirar fornecedor até ficar um desfaz a divisão e grava sem ela; Excel tem a coluna da divisão', async ({ page }) => {
+  await abrir(page, { rota: '#/nova', papel: 'coordenador' });
+  await escolherNoCombo(page, '#n-empresa', 'casa', 'Casa do Criador');
+  await escolherNoCombo(page, '#n-laboratorio', 'ouro', 'Ouro Fino');
+  await escolherNoCombo(page, '#n-laboratorio', 'avert', 'Avert');
+  await escolherNoCombo(page, '#n-laboratorio', 'vansil', 'Vansil');
+  await clicarInterruptor(page, 'n-dividir');
+  await page.fill('#n-div-meta-0', '1000'); await page.fill('#n-div-meta-1', '2000'); await page.fill('#n-div-meta-2', '3000');
+  igual(await page.inputValue('#n-meta'), '6.000,00', 'soma de três');
+  await page.click('[data-tirar-lab="Avert"]');
+  igual(await page.locator('.div-linha').count(), 2, 'a linha do Avert sai');
+  igual(await page.inputValue('#n-div-meta-1'), '3.000,00', 'Vansil mantém o que foi digitado');
+  igual(await page.inputValue('#n-meta'), '4.000,00', 'soma acompanha');
+  await page.click('[data-tirar-lab="Vansil"]');
+  afirma(await page.locator('#bloco-divisao').isHidden(), 'com um, a divisão some');
+  afirma(!(await page.locator('#n-meta').evaluate(i => i.readOnly)), 'meta volta a ser editável');
+  await page.fill('#n-campanha', 'Volta a um');
+  await page.fill('#n-inicio', '2026-10-01'); await page.fill('#n-fim', '2026-10-31');
+  await page.locator('[data-enviar]:visible').first().click();
+  await page.waitForFunction(() => /^#\/campanhas\/\d+/.test(location.hash));
+  const c = (await db(page)).campanhas.find(x => x.campanha === 'Volta a um');
+  igual(c.fornecedores, null, 'sem divisão');
+  igual(c.meta, 4000, 'meta que estava na tela');
+  igual(await page.locator('.painel-titulo', { hasText: 'Por fornecedor' }).count(), 0, 'detalhe sem o painel');
+  // Excel: coluna "Fornecedores" e "Divisão por Fornecedor".
+  if (!XLSX_MJS) return;
+  await page.evaluate(() => {
+    const d = JSON.parse(sessionStorage.getItem('simulado-db-v3'));
+    const c = d.campanhas.find(x => x.campanha === 'Volta a um');
+    Object.assign(c, { laboratorio: 'Ouro Fino, Avert', meta: 3000, investimento_industria: 0, rebate_pct: 1, rebate_teto: 0,
+      fornecedores: [{ nome: 'Ouro Fino', meta: 1000, investimento_industria: 0 }, { nome: 'Avert', meta: 2000, investimento_industria: 0 }] });
+    sessionStorage.setItem('simulado-db-v3', JSON.stringify(d));
+  });
+  await page.goto(`${BASE}/?papel=coordenador#/campanhas?status=Todas`); await page.reload();
+  await page.fill('#cp-busca', 'Volta a um'); await page.waitForTimeout(400);
+  const { linhas } = await lerExcelBaixado(page, () => page.click('#cp-excel'));
+  igual(linhas.length, 1, 'uma linha');
+  igual(linhas[0].Fornecedores, 'Ouro Fino, Avert', 'coluna Fornecedores');
+  igual(linhas[0]['Divisão por Fornecedor'], 'Ouro Fino: meta R$ 1.000,00 · indústria R$ 0,00 · rebate R$ 10,00 | Avert: meta R$ 2.000,00 · indústria R$ 0,00 · rebate R$ 20,00', 'coluna da divisão');
+});
+
+teste('v2.13: banco recusa divisão que não confere (mensagem em português)', async ({ page }) => {
+  await abrir(page, { rota: '#/inicio', papel: 'coordenador' });
+  const r = await page.evaluate(async () => {
+    const { sb } = await import('/js/lib/supabase.js');
+    const a = await sb.rpc('enviar_campanha', { p_campanha: { cliente: 'x', empresa_id: 3, laboratorio: 'Ouro Fino, Avert', campanha: 'Não confere', meta: 10,
+      fornecedores: [{ nome: 'Ouro Fino', meta: 1, investimento_industria: 0 }, { nome: 'Avert', meta: 1, investimento_industria: 0 }] } });
+    const b = await sb.rpc('enviar_campanha', { p_campanha: { cliente: 'x', empresa_id: 3, laboratorio: 'Ouro Fino, Avert, Vansil, Premier, Farmina, Kelco', campanha: 'Seis' } });
+    const { detalhar } = await import('/js/dados/erros.js');
+    return [detalhar(a.error).mensagem, detalhar(b.error).mensagem];
+  });
+  afirma(r[0].includes('divisão por fornecedor não confere'), 'mensagem da divisão: ' + r[0]);
+  afirma(r[1].includes('No máximo 5 fornecedores'), 'mensagem do limite: ' + r[1]);
+});
+
+teste('v2.13: divisão no celular (390 px) — sem rolagem lateral e acessível', async ({ page }) => {
+  await abrir(page, { rota: '#/nova', papel: 'coordenador' });
+  await escolherNoCombo(page, '#n-empresa', 'casa', 'Casa do Criador');
+  await escolherNoCombo(page, '#n-laboratorio', 'biog', 'Biogénesis Bagó Pet');
+  await escolherNoCombo(page, '#n-laboratorio', 'pet nut', 'Pet Nutrition');
+  await page.fill('#n-campanha', 'Celular');
+  await page.locator('[data-passo-continuar]:visible').first().click();
+  await clicarInterruptor(page, 'n-dividir');
+  await page.fill('#n-div-meta-0', '123456789'); await page.fill('#n-div-ind-1', '9999999');
+  await page.locator('#bloco-divisao').scrollIntoViewIfNeeded();
+  afirma(await semOverflow(page, 'Nova divisão 390 px'), 'sem rolagem lateral');
+  const vio = (await axe(page, 'Nova divisão 390 px')).filter(x => ['critical', 'serious'].includes(x.impacto));
+  afirma(!vio.length, 'acessibilidade: ' + JSON.stringify(vio));
+  // A revisão (passo 3) mostra a divisão.
+  await page.locator('[data-passo-continuar]:visible').first().click();
+  const rev = await page.locator('#resumo-passos').innerText();
+  afirma(rev.includes('Biogénesis Bagó Pet') && rev.includes('meta R$ 123.456.789,00'), 'revisão mostra a divisão: ' + rev);
+}, { largura: 390, altura: 844, toque: true });
+
+// ============================================================
+//  v3.0 — temas, convite de usuário
+// ============================================================
+teste('v3.0: tema — botão da barra lateral alterna claro, escuro e daltônico; o Perfil mostra e troca; fica salvo', async ({ page }) => {
+  await abrir(page, { rota: '#/perfil' });
+  const tema = () => page.evaluate(() => document.documentElement.dataset.tema);
+  igual(await tema(), 'claro', 'aparelho claro → tema claro');
+  igual(await page.locator('input[name="pf-tema"]:checked').inputValue(), 'auto', 'começa em Automático');
+  const b = page.locator('#menu-tema');
+  afirma((await b.getAttribute('aria-label')).includes('Trocar para Escuro'), 'botão diz para onde vai: ' + await b.getAttribute('aria-label'));
+  await b.click(); igual(await tema(), 'escuro', '1º toque: escuro');
+  igual(await page.locator('input[name="pf-tema"]:checked').inputValue(), 'escuro', 'Perfil acompanha o botão');
+  await b.click(); igual(await tema(), 'daltonico', '2º toque: daltônico');
+  await b.click(); igual(await tema(), 'claro', '3º toque: volta ao claro');
+  await page.locator('label.tema-opcao', { hasText: 'Daltônico' }).click();
+  igual(await tema(), 'daltonico', 'Perfil troca o tema');
+  const cor = await page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--faixa-verde').trim());
+  igual(cor.toUpperCase(), '#0072B2', 'daltônico usa azul no lugar do verde');
+  await page.reload(); await page.waitForSelector('#app:not([hidden])');
+  igual(await tema(), 'daltonico', 'escolha fica salva no aparelho');
+  await page.locator('label.tema-opcao', { hasText: 'Automático' }).click();
+  igual(await tema(), 'claro', 'Automático volta a seguir o aparelho');
+});
+
+for (const t of ['escuro', 'daltonico']) {
+  teste(`v3.0: tema ${t} — telas principais passam no axe (contraste) no celular e no computador`, async ({ page }) => {
+    const problemas = [];
+    for (const [w, h] of [[390, 844], [1440, 900]]) {
+      await page.setViewportSize({ width: w, height: h });
+      await abrir(page, { rota: '#/inicio' });
+      await page.evaluate(v => localStorage.setItem('lynkz_tema', JSON.stringify(v)), t);
+      for (const rota of ['#/inicio', '#/campanhas/1', '#/historico', '#/perfil']) {
+        await page.goto(`${BASE}/?papel=aprovador${rota}`); await page.reload();
+        await page.waitForSelector('#app:not([hidden])'); await page.waitForTimeout(400);
+        igual(await page.evaluate(() => document.documentElement.dataset.tema), t, 'tema aplicado');
+        const v = (await axe(page, `${t} ${w}px ${rota}`)).filter(x => ['critical', 'serious'].includes(x.impacto));
+        problemas.push(...v.map(x => `${w}px ${rota}: ${x.id} ${x.alvos.join(' | ')}`));
+      }
+    }
+    afirma(!problemas.length, 'acessibilidade: ' + problemas.join('\n      '));
+  });
+}
+
+teste('v3.0: convidar usuário — valida, envia, a pessoa aparece com acesso e o e-mail repetido é recusado', async ({ page }) => {
+  await abrir(page, { rota: '#/usuarios' });
+  await page.click('#us-convidar');
+  const d = page.locator('dialog.dialogo'); await d.waitFor();
+  await d.locator('[type=submit]').click();
+  afirma((await erroDo(page, 'cv-nome').innerText()).includes('nome'), 'nome obrigatório');
+  afirma((await erroDo(page, 'cv-email').innerText()).includes('e-mail'), 'e-mail obrigatório');
+  await page.fill('#cv-nome', '  Maria   Lima ');
+  await page.fill('#cv-email', 'bia@lynkz.com.br');
+  await d.locator('[type=submit]').click();
+  afirma((await erroDo(page, 'cv-email').innerText()).includes('Já existe'), 'e-mail de quem já tem conta é recusado sem ir ao servidor');
+  await page.fill('#cv-email', 'Maria.Lima@LYNKZ.com.br');
+  await d.locator('label.pessoa', { hasText: 'Administrador' }).click();
+  await d.locator('[type=submit]').click();
+  await toastCom(page, 'Convite enviado para maria.lima@lynkz.com.br');
+  const novo = Object.values((await db(page)).perfis).find(u => u.email === 'maria.lima@lynkz.com.br');
+  afirma(novo && novo.nome === 'Maria Lima' && novo.papel === 'aprovador' && novo.ativo, 'conta criada com nome, perfil e acesso: ' + JSON.stringify(novo));
+  const lista = page.locator('#us-t-ativos').locator('..');
+  await lista.locator('li', { hasText: 'Maria Lima' }).waitFor();
+  afirma((await lista.locator('li', { hasText: 'Maria Lima' }).innerText()).includes('Administrador'), 'entra com o perfil escolhido e acesso');
+  const vio = (await axe(page, 'Usuários com convite')).filter(x => ['critical', 'serious'].includes(x.impacto));
+  afirma(!vio.length, 'acessibilidade: ' + JSON.stringify(vio));
+});
+
+teste('v3.0: convite sem a chave no servidor mostra a causa no diálogo; usuário comum não vê o botão', async ({ page }) => {
+  await abrir(page, { rota: '#/usuarios', extra: '&convite=sem-chave' });
+  await page.click('#us-convidar');
+  const d = page.locator('dialog.dialogo'); await d.waitFor();
+  await page.fill('#cv-nome', 'Teste'); await page.fill('#cv-email', 'teste@lynkz.com.br');
+  await d.locator('[type=submit]').click();
+  await d.locator('.dialogo-erro', { hasText: 'falta configurar a chave' }).waitFor();
+  await d.locator('[data-fechar]').click();
+  await abrir(page, { rota: '#/usuarios', papel: 'coordenador' });
+  igual(await page.locator('#us-convidar').count(), 0, 'sem botão para quem não é administrador');
+}, { largura: 390, altura: 844, toque: true });
+
+teste('v3.0: link de convite abre "Crie sua senha" e, salvando, entra direto no app', async ({ page }) => {
+  await page.goto(`${BASE}/?zerar=1#access_token=t&refresh_token=r&type=invite`);
+  await page.locator('#acesso h1', { hasText: 'Crie sua senha' }).waitFor();
+  afirma(!page.url().includes('access_token'), 'token fora da URL');
+  await page.fill('#n-senha', '12345678'); await page.fill('#n-senha2', '12345678');
+  await page.click('#n-ok');
+  await page.waitForSelector('#app:not([hidden])');
+  igual(await page.evaluate(() => localStorage.getItem('lynkz_recuperacao_pendente')), null, 'marca removida');
+});
 
 // ============================================================
 //  execução

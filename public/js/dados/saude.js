@@ -1,12 +1,5 @@
-// ============================================================
-//  SAÚDE DO BANCO — confere na abertura se o banco tem o que esta versão
-//  do app precisa. Se faltar, o app mostra "Sistema em atualização" em vez
-//  de quebrar com erro técnico.
-//
-//  Atenção: select com { head: true } NÃO devolve erro para tabela
-//  inexistente; por isso a checagem usa select('id').limit(1) e olha o
-//  código PGRST205 (tabela fora do cache do PostgREST) ou 42P01.
-// ============================================================
+// Confere na abertura se o banco tem as tabelas desta versão; se faltar, o app mostra "Sistema em atualização".
+// select com { head: true } não acusa tabela inexistente, por isso a checagem usa select('id').limit(1).
 import { sb } from '../lib/supabase.js';
 
 // A 04 inclui as funções da parte B (02): aplicá-la resolve as três.

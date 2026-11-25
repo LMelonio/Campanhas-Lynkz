@@ -1,6 +1,4 @@
-// ============================================================
-//  AVISOS — toast (com ação opcional) e diálogo nativo <dialog>.
-// ============================================================
+// Toast (com ação opcional) e diálogo nativo <dialog>.
 import { html, pintar, $ } from '../lib/dom.js';
 import { icone } from './icones.js';
 

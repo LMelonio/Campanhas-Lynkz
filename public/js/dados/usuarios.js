@@ -1,15 +1,7 @@
-// ============================================================
-//  USUÁRIOS — contas do app (tabela perfis), só para o administrador.
-//  Administrador = papel "aprovador" no banco: aprova e recusa campanhas e
-//  libera acessos. Usuário = papel "coordenador": envia campanhas e cadastra
-//  balconistas. A troca só passa pela função definir_perfil (migração 12),
-//  que confere no banco quem pode o quê.
-//
-//  v2.9: guarda quantas contas estão sem acesso (contador do menu "Usuários"
-//  e aviso no Início do administrador). Quem desenha assina com assinar().
-// ============================================================
+// Contas do app (perfis), só para administrador. Mudanças passam por definir_perfil (regra no banco);
+// convite pelo Worker. Guarda quantas contas estão sem acesso para o menu e o Início.
 import { sb } from '../lib/supabase.js';
-import { exigir } from './erros.js';
+import { exigir, ErroApp } from './erros.js';
 
 const ouvintes = new Set();
 let semAcesso = null;   // null = ainda não contou
@@ -32,6 +24,25 @@ export const usuarios = {
     const r = exigir(await sb.rpc('definir_perfil', { p_id: id, p_papel: papel, p_ativo: ativo, p_nome: nome }));
     if (ativo != null) this.contarSemAcesso();   // liberou ou tirou acesso: o contador muda
     return r;
+  },
+
+  // Convite por e-mail (Worker /api/usuarios/convidar): a conta já nasce com nome, papel e acesso.
+  async convidar({ nome, email, papel }) {
+    const { data } = await sb.auth.getSession();
+    const token = data?.session?.access_token;
+    if (!token) throw new ErroApp('Entre de novo no app para convidar.');
+    let resp;
+    try {
+      resp = await fetch('/api/usuarios/convidar', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ nome, email, papel }),
+      });
+    } catch { throw new ErroApp('Sem conexão. Confira a internet e tente de novo.'); }
+    const corpo = await resp.json().catch(() => ({}));
+    if (!resp.ok) throw new ErroApp(corpo.erro || 'Não foi possível enviar o convite agora.');
+    await this.contarSemAcesso();
+    return corpo;
   },
 
   // Contas esperando liberação (perfis desativados). Falha de rede não atrapalha: fica o último número.

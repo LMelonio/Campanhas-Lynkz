@@ -1,9 +1,6 @@
-// Cliente do Supabase. Único arquivo trocado para rodar sem banco:
-// copie dev/supabase-simulado.js por cima deste (ver dev/LEIA-ME no topo dele).
-// url-auth.js vem primeiro: lê os tokens da URL antes de o cliente consumi-los.
+// Cliente do Supabase (supabase-js vem de public/vendor/, carregado no index.html). O servidor de desenvolvimento
+// troca este arquivo pelo simulado. url-auth.js vem antes: lê os tokens da URL antes de o cliente consumi-los.
 import './url-auth.js';
-// supabase-js fica no próprio site (public/vendor/, carregado no index.html antes
-// dos módulos): nenhum código de CDN de terceiros roda no app.
 const { createClient } = window.supabase;
 
 const C = window.CONFIG;

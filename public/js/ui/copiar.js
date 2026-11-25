@@ -1,7 +1,4 @@
-// ============================================================
-//  COPIAR — botão de ícone (44 px) que copia um texto e confirma com toast.
-//  botaoCopiar(texto, rotulo, aviso) · ligarCopiar(raiz, toast) → desligar
-// ============================================================
+// Botão de copiar (44 px) com confirmação por toast.
 import { html, ao } from '../lib/dom.js';
 import { icone } from './icones.js';
 

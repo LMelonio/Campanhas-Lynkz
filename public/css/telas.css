@@ -58,7 +58,7 @@
   .numeros-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 }
 .numeros-3 { margin-bottom: var(--e-4); }
-/* Ficha da empresa no celular (v2.9): os 3 números numa linha só, compactos — sem cartão sozinho embaixo. */
+/* Ficha da empresa no celular: os 3 números numa linha só, compactos — sem cartão sozinho embaixo. */
 @media (max-width: 699.98px) {
   .numeros-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--e-1); }
   .numeros-3 .numero { padding: var(--e-2) var(--e-3); }
@@ -71,6 +71,7 @@
 .ferramentas-linha { display: flex; gap: var(--e-3); align-items: center; flex-wrap: wrap; }
 .ferramentas-linha .campo { flex: 1 1 200px; }
 .ferramentas-linha .interruptor { margin: 0; }
+@media (max-width: 599px) { .ferramentas-linha .campo { flex-basis: 100%; } }
 @media (min-width: 900px) {
   .ferramentas-linha-larga { grid-template-columns: minmax(0, 1fr) auto; align-items: center; }
   .ferramentas-linha-larga .interruptor { margin: 0; }
@@ -250,7 +251,7 @@ a.det-empresa:hover { text-decoration-color: currentColor; }
 .lista-cabeca .btn-texto { min-height: var(--tap); }
 .perfil-acesso { font-size: var(--t-13); color: var(--ink-2); margin: calc(-1 * var(--e-1)) 0 var(--e-2); }
 
-/* ---------- usuários (v2.8) ---------- */
+/* ---------- usuários ---------- */
 .usuarios { max-width: 760px; display: grid; gap: var(--e-4); }
 .usuarios-guia { display: grid; gap: var(--e-1); }
 .usuarios-lista { display: grid; }
@@ -267,13 +268,13 @@ a.det-empresa:hover { text-decoration-color: currentColor; }
 .selo-admin svg { width: 12px; height: 12px; }
 .contador-texto { font-weight: 600; color: var(--ink-2); margin-left: var(--e-1); }
 
-/* ---------- vagas de balconista (v2.8) ---------- */
+/* ---------- vagas de balconista ---------- */
 .vagas { font-weight: 600; color: var(--ink-2); text-transform: none; letter-spacing: 0; margin-left: var(--e-1); }
 .cadastro-passo { font-size: var(--t-13); font-weight: 700; color: var(--ink-2); margin: 0 0 var(--e-2); }
 .cadastro-dados[disabled] { opacity: .55; }
 .cadastro-dados { border: 0; padding: 0; margin: 0; min-width: 0; }
 
-/* ---------- nova em 3 passos no celular (v2.9) ---------- */
+/* ---------- nova em 3 passos no celular ---------- */
 .passos, .resumo-passos, .acrescentar, .nova [data-passo-voltar], .nova [data-passo-continuar] { display: none; }
 @media (max-width: 899.98px) {
   .passos { display: grid; gap: var(--e-2); margin: 0 0 var(--e-3); }
@@ -320,9 +321,14 @@ a.det-empresa:hover { text-decoration-color: currentColor; }
   .recolhivel.recolhido > .campo { display: none; }
 }
 
-/* ---------- histórico no celular: cartões em vez da tabela (v2.9) ---------- */
+/* ---------- histórico no celular: cartões em vez da tabela ---------- */
 .hs-cartoes { display: none; }
 @media (max-width: 699.98px) {
   #hs-itens .tabela-caixa { display: none; }
   .hs-cartoes { display: block; }
 }
+
+/* Usuários: guia dos perfis e botão de convite na mesma faixa */
+.usuarios-topo { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: var(--e-3); margin-bottom: var(--e-4); }
+.usuarios-topo .usuarios-guia { margin: 0; flex: 1 1 280px; }
+@media (max-width: 599px) { .usuarios-topo .btn { width: 100%; } }

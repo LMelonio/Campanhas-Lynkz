@@ -81,7 +81,7 @@ test('filtro do Qlik: cliente, laboratório, período e filtros fixos', () => {
   assert.ok(set.includes(`[Data Venda]={"=Only({1} Num([Data Venda]))>=${a} and Only({1} Num([Data Venda]))<${b + 1}"}`), set);
   assert.match(set, /\[Unidade de Negócio\]=\{'ATACADO'\}/);
   assert.match(set, /\[Intercompany Geral\]=\{'REGULAR'\}/);
-  // {1<…>}: ignora as seleções salvas no app do Qlik (com elas, tudo dava R$ 0,00 — v2.8.1).
+  // {1<…>}: ignora as seleções salvas no app do Qlik.
   assert.match(expressao(CONFIG_PADRAO, set), /^Sum\(\{1<.*>\} \[Valor Faturamento Bruto s\/ Devolução Vendas\]\)$/);
   assert.ok(!set.includes('Tipo_Periodo_Mes_vendas'), 'sem filtro de período-tipo (não muda o total)');
 });
@@ -195,12 +195,14 @@ test('rota: valida o pedido antes de falar com o Qlik e devolve o resultado', as
     { codigo_cliente: '4821', fornecedor_padrao: '>=0', inicio: '2026-10-01', fim: '2026-10-31' },        // busca numérica
     { codigo_cliente: '4821', fornecedor_padrao: '*Ouro*', marca: '=Sum(1)', inicio: '2026-10-01', fim: '2026-10-31' },
     { codigo_cliente: '*', fornecedor_padrao: '*Ouro*', inicio: '2026-10-01', fim: '2026-10-31' },
-    // Vários laboratórios (v2.12): lista vazia, longa demais ou com um item ruim
+    // Vários laboratórios: lista vazia, longa demais ou com um item ruim
     { codigo_cliente: '4821', fornecedor_padrao: [], inicio: '2026-10-01', fim: '2026-10-31' },
     { codigo_cliente: '4821', fornecedor_padrao: ['AAA*', 'BBB*', 'CCC*', 'DDD*', 'EEE*', 'FFF*'], inicio: '2026-10-01', fim: '2026-10-31' },
     { codigo_cliente: '4821', fornecedor_padrao: ['*Ouro*', '*'], inicio: '2026-10-01', fim: '2026-10-31' },
     { codigo_cliente: '4821', fornecedor_padrao: ['*Ouro*', '=1=1'], inicio: '2026-10-01', fim: '2026-10-31' },
     { codigo_cliente: '4821', fornecedor_padrao: ['*Ouro*', 42], inicio: '2026-10-01', fim: '2026-10-31' },
+    { codigo_cliente: '4821', fornecedor_padrao: '*Ouro*', marca: ['WELLPET', '=Sum(1)'], inicio: '2026-10-01', fim: '2026-10-31' },
+    { codigo_cliente: '4821', fornecedor_padrao: '*Ouro*', marca: Array.from({ length: 11 }, (_, i) => 'MARCA' + i), inicio: '2026-10-01', fim: '2026-10-31' },
   ]) await assert.rejects(tratarCompras(pedido(ruim), env, { conectar }), e => e.status === 400);
   assert.equal(conexoes, 0, 'pedido inválido nem chega ao Qlik');
 
@@ -212,6 +214,8 @@ test('rota: valida o pedido antes de falar com o Qlik e devolve o resultado', as
   assert.ok(corpo.consultado_em);
   const varios = await tratarCompras(pedido({ codigo_cliente: '4821', fornecedor_padrao: ['OURO FINO*', '*Avert*'], inicio: '2026-10-01', fim: '2026-10-31' }), env, { conectar });
   assert.equal(varios.status, 200, 'lista de laboratórios é aceita');
+  const marcas = await tratarCompras(pedido({ codigo_cliente: '4821', fornecedor_padrao: '*Ouro*', marca: ['WELLPET', 'PROTEÇÃO'], inicio: '2026-10-01', fim: '2026-10-31' }), env, { conectar });
+  assert.equal(marcas.status, 200, 'lista de marcas é aceita (v2.14)');
 });
 
 test('configuração do Worker: padrão da LYNKZ e troca por variável', () => {
@@ -223,7 +227,7 @@ test('configuração do Worker: padrão da LYNKZ e troca por variável', () => {
   assert.throws(() => configDoEnv({ QLIK_CAMPOS: '{quebrado' }), /JSON inválido/);
 });
 
-// ---------- segurança da rota (v2.6) ----------
+// ---------- segurança da rota ----------
 const BASE = 'https://campanhas.exemplo/api/qlik/compras';
 const OK = { codigo_cliente: '4821', fornecedor_padrao: 'OURO FINO*', inicio: '2026-10-01', fim: '2026-10-31' };
 const req = (corpo, cab = {}) => new Request(BASE, { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer a.b.c', ...cab }, body: typeof corpo === 'string' ? corpo : JSON.stringify(corpo) });
@@ -335,4 +339,20 @@ test('devoluções: sem diferença, devolucoes = 0 e não faz a consulta extra',
   const r = await consultarCompras(abrirEngine(semDev.soquete), PEDIDO);
   assert.equal(r.devolucoes, 0);
   assert.ok(!semDev.enviados.some(e => JSON.stringify(e).includes('Série Nota Fiscal Origem')), 'sem diferença, não faz a consulta extra');
+});
+
+test('várias marcas (v2.14): vão juntas no campo de marca, com um ou vários fornecedores', () => {
+  const um = montarConjunto({ ...PEDIDO, marca: ['WELLPET', 'PROTEÇÃO'] });
+  assert.match(um, /\[Marca do Produto\]=\{"WELLPET","PROTEÇÃO"\}/);
+  assert.equal(montarConjunto({ ...PEDIDO, marca: ['WELLPET'] }), montarConjunto({ ...PEDIDO, marca: 'WELLPET' }), 'lista com uma = texto');
+  assert.equal(montarConjunto({ ...PEDIDO, marca: ['WELLPET', 'WELLPET'] }), montarConjunto({ ...PEDIDO, marca: 'WELLPET' }), 'repetida conta uma vez');
+  const varios = montarConjunto({ ...PEDIDO, padraoFornecedor: ['OURO FINO*', '*Avert*'], marca: ['WELLPET', 'AVERT PET'] });
+  assert.match(varios, /\[Nome Fantasia Fornecedor\]=\{"OURO FINO\*","\*Avert\*"\}/);
+  assert.match(varios, /\[Marca do Produto\]=\{"WELLPET","AVERT PET"\}/);
+  // Fornecedor que é marca no Qlik + marcas escolhidas: interseção com a lista.
+  assert.match(montarConjunto({ ...PEDIDO, padraoFornecedor: ['OURO FINO*', 'marca:CATLIFE'], marca: ['WELLPET', 'CATLIFE GATO'] }).split('+1')[1],
+    /\[Marca do Produto\]=\{"CATLIFE"\}\*\{"WELLPET","CATLIFE GATO"\}/);
+  assert.ok(!montarConjunto({ ...PEDIDO, marca: [] }).includes('Marca do Produto'), 'lista vazia = sem filtro de marca');
+  assert.throws(() => montarConjunto({ ...PEDIDO, marca: Array.from({ length: 11 }, (_, i) => 'MARCA' + i) }), /Marca inválido/);
+  assert.throws(() => montarConjunto({ ...PEDIDO, marca: ['WELLPET', 'a"b'] }), /Marca inválido/);
 });

@@ -1,11 +1,5 @@
-// ============================================================
-//  GESTÃO — empresas e balconistas.
-//  #/gestao               lista de empresas
-//  #/gestao/empresas/:id  ficha da empresa
-//  Empresas vêm do Qlik: aqui não se cadastra empresa, só balconistas
-//  (até LIMITES.balconistas_por_empresa por empresa, contando desativados).
-//  Todo usuário ativo cadastra e edita. Nada é apagado, só desativado.
-// ============================================================
+// Gestão: lista de empresas (#/gestao) e ficha da empresa (#/gestao/empresas/:id) com seus balconistas.
+// Empresas vêm do Qlik; aqui só se cadastram balconistas (limite por empresa, contando desativados).
 import { html, pintar, $, ao, debounce } from '../lib/dom.js';
 import { calc, brl, dataBR, contem, maskCNPJ, maskCPF, maskTelefone, STATUS, LIMITES } from '../lib/regras.js';
 import { icone } from '../ui/icones.js';
@@ -191,7 +185,7 @@ function desenharFicha() {
       ${e.ativo ? html`<a class="btn btn-fantasma btn-pequeno" href="#/nova" data-nova-empresa="${e.id}">${icone('mais')} Nova campanha</a>` : ''}
     </div>
     ${camps.length ? html`<div class="grade-cartoes">${camps.map(c => cartao(c))}</div>`
-      : vazio({ icone: 'campanhas', titulo: 'Nenhuma campanha ligada a esta empresa', texto: 'Campanhas da v1, sem cadastro de empresa, não aparecem aqui.' })}
+      : vazio({ icone: 'campanhas', titulo: 'Nenhuma campanha ligada a esta empresa', texto: 'Campanhas antigas, registradas sem o cadastro da empresa, não aparecem aqui.' })}
   </div>`);
   window.scrollTo(0, rolagem);
 }

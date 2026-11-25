@@ -1,8 +1,4 @@
-// ============================================================
-//  CADASTROS — empresas e balconistas.
-//  Todo usuário ativo lê, cadastra e edita. Nada é apagado: desativar é
-//  gravar ativo = false. CPF, CNPJ e telefone saem só com dígitos.
-// ============================================================
+// Empresas e balconistas. Todo usuário ativo lê e edita; nada é apagado (desativar = ativo false).
 import { sb } from '../lib/supabase.js';
 import { soDigitos, maskCNPJ } from '../lib/regras.js';
 import { exigir } from './erros.js';
@@ -30,7 +26,7 @@ function avisar(evento) {
 // O Supabase devolve no máximo 1.000 linhas por consulta. Com os clientes do
 // Qlik passam disso: lê em blocos até acabar.
 const BLOCO = 1000;
-// v2.9 (E1): só as colunas que as telas usam (sem criado_por, atualizado_em, atualizado_por).
+// só as colunas que as telas usam (sem criado_por, atualizado_em, atualizado_por).
 // Coluna nova que a tela precise mostrar: acrescente aqui.
 const COLUNAS = {
   empresas: 'id,nome,nome_fantasia,cnpj,cidade,uf,telefone,observacoes,ativo,codigo_cliente,vendedor,origem,sincronizado_em,criado_em',

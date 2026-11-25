@@ -21,7 +21,7 @@ export function lerEnv(arquivo = join(RAIZ, '.env')) {
 export function exigirEnv(env, nomes) {
   const faltam = nomes.filter(n => !env[n]);
   if (faltam.length) {
-    console.error(`Faltam no .env: ${faltam.join(', ')}.\nCopie .env.exemplo para .env e preencha. Passo a passo em QLIK-E-HISTORICO.md.`);
+    console.error(`Faltam no .env: ${faltam.join(', ')}.\nCopie .env.exemplo para .env e preencha.`);
     process.exit(2);
   }
 }

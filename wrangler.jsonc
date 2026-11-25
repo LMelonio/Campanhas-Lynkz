@@ -1,12 +1,12 @@
-// Cloudflare Workers — só arquivos estáticos (sem código no servidor).
-// Publica a pasta public/. Os cabeçalhos de segurança vêm de public/_headers.
-// Documentação: PUBLICAR.md
+// Cloudflare Worker: publica public/ (cabeçalhos em public/_headers) e responde /api/* (worker/index.js).
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "campanhas-lynkz",   // TEM de ser igual ao nome do Worker no Cloudflare (senão publica em outro Worker)
   "compatibility_date": "2025-11-01",
   "main": "worker/index.js",
-  // Segredo (não vai neste arquivo):  npx wrangler secret put QLIK_API_KEY
+  // Segredos (não vão neste arquivo):
+  //   npx wrangler secret put QLIK_API_KEY
+  //   npx wrangler secret put SUPABASE_SERVICE_ROLE_KEY   (convite de usuário)
   "vars": {
     "QLIK_TENANT": "terrazoo.us.qlikcloud.com",
     "QLIK_APP_ID": "dd64c3d7-6ab3-4819-9805-fa8828633dd4",

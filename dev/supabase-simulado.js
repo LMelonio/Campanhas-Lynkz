@@ -1,24 +1,6 @@
-// ============================================================
-//  SUPABASE SIMULADO — para rodar o app sem banco (só desenvolvimento).
-//
-//  Como usar (da raiz do projeto):
-//     node dev/servidor.mjs
-//  e abra  http://localhost:8000/?papel=aprovador   ou  ?papel=coordenador
-//  O servidor entrega este arquivo no lugar de public/js/lib/supabase.js.
-//  Nunca copie este arquivo para dentro de public/.
-//
-//  Imita as regras principais do banco: só o aprovador decide, decisão só
-//  sai de Pendente, carimbos de quem decidiu, dados Swile só para o
-//  aprovador e o solicitante, balconista da mesma empresa, CPF único por
-//  empresa. Os dados ficam no sessionStorage da aba (fechar a aba zera).
-//  Para recomeçar do zero: ?zerar=1
-//  Muitas empresas do Qlik (testar volume e a leitura em blocos de 1.000): ?muitas=1500
-//
-//  Para testar falhas (lidos a cada consulta, dá para tirar da URL sem recarregar):
-//    ?sem=campanhas_app,empresas   → essas tabelas "não existem" (PGRST205, banco desatualizado)
-//    ?falhar=campanhas_app         → consulta falha como se a rede caísse
-//  Senha: qualquer uma entra, menos as que começam com "errad" (para testar senha errada).
-// ============================================================
+// Supabase simulado para desenvolvimento e testes (nunca copie para public/). Dados no sessionStorage da aba.
+// Imita as regras principais do banco. Parâmetros: ?papel=aprovador|coordenador, ?zerar=1, ?muitas=N,
+// ?sem=tabela (tabela ausente), ?falhar=tabela (falha de rede), ?convite=existe|sem-chave. Senha "errad…" é recusada.
 const q = new URLSearchParams(location.search);
 const PAPEL = q.get('papel') === 'coordenador' ? 'coordenador' : 'aprovador';
 const CHAVE = 'simulado-db-v3' + (q.get('muitas') ? '-m' + q.get('muitas') : '');
@@ -58,7 +40,7 @@ function semente() {
     forma_pagamento: 'Desconto em nota', data_inicio: dia(-1), data_fim: dia(-30), tipo_meta: 'Mensal', meta: 0,
     rebate_pct: 0, rebate_teto: 0, rebate_base: null, rebate_gatilho: null, observacoes: null, status: 'Pendente',
     aprovador_nome: null, data_decisao: null, motivo: null, empresa_id: null, balconista_id: null, importada: false,
-    compras_periodo: null, compras_consultado_em: null, compras_marca: null, compras_devolucoes: null, compras_devolvidas: null,
+    compras_periodo: null, compras_consultado_em: null, compras_marca: null, compras_devolucoes: null, compras_devolvidas: null, fornecedores: null,
     swile_nome_completo: null, swile_cpf: null, swile_data_nascimento: null, swile_email: null, swile_telefone: null,
     solicitante_nome: USUARIOS[o.solicitante_id]?.nome ?? null, ...o,
   });
@@ -129,6 +111,19 @@ function inserir(tabela, d) {
     if (d.rebate_pct > 100 || d.meta > 1e9 || d.investimento_lynkz > 1e7 || d.investimento_industria > 1e7 || d.rebate_teto > 1e7) {
       return { error: erro('new row for relation "campanhas" violates check constraint "campanhas_valores_faixa"', '23514') };
     }
+    // Migração 14: até 5 fornecedores e divisão que confere com as somas.
+    const labsSim = [...new Set(String(d.laboratorio || '').split(',').map(x => x.trim().toLowerCase()).filter(Boolean))];
+    if (labsSim.length > 5) return { error: erro('new row for relation "campanhas" violates check constraint "campanhas_fornecedores_max"', '23514') };
+    if (d.fornecedores != null) {
+      const f = d.fornecedores, cent = x => Math.round(x * 100);
+      const ok = Array.isArray(f) && f.length >= 2 && f.length <= 5 && f.length === labsSim.length
+        && f.every(x => x && typeof x.nome === 'string' && typeof x.meta === 'number' && typeof x.investimento_industria === 'number'
+          && labsSim.includes(x.nome.trim().toLowerCase()) && x.meta >= 0 && x.meta <= 1e9 && x.investimento_industria >= 0 && x.investimento_industria <= 1e7)
+        && new Set(f.map(x => x.nome.trim().toLowerCase())).size === f.length
+        && f.reduce((s, x) => s + cent(x.meta), 0) === cent(+d.meta || 0)
+        && f.reduce((s, x) => s + cent(x.investimento_industria), 0) === cent(+d.investimento_industria || 0);
+      if (!ok) return { error: erro('new row for relation "campanhas" violates check constraint "campanhas_fornecedores_valido"', '23514') };
+    }
     if (d.balconista_id != null) {
       if (d.empresa_id == null) return { error: erro('Escolha a empresa antes do balconista.') };
       if (!db.balconistas.some(b => b.id == d.balconista_id && b.empresa_id == d.empresa_id)) return { error: erro('O balconista escolhido não pertence a esta empresa.') };
@@ -138,7 +133,7 @@ function inserir(tabela, d) {
     }
     const empresa = db.empresas.find(e => e.id == d.empresa_id);
     const id = ++db.seq.campanhas;
-    const r = { compras_periodo: null, compras_consultado_em: null, compras_marca: null, compras_devolucoes: null, compras_devolvidas: null, ...d, id, importada: false, codigo: 'C2611' + String(1000 + id), criado_em: new Date().toISOString(), cliente: empresa ? empresa.nome : d.cliente,
+    const r = { compras_periodo: null, compras_consultado_em: null, compras_marca: null, compras_devolucoes: null, compras_devolvidas: null, fornecedores: null, ...d, id, importada: false, codigo: 'C2611' + String(1000 + id), criado_em: new Date().toISOString(), cliente: empresa ? empresa.nome : d.cliente,
       empresa_id: d.empresa_id == null ? null : +d.empresa_id, balconista_id: d.balconista_id == null ? null : +d.balconista_id,
       solicitante_nome: u.nome, aprovador_nome: null, data_decisao: null, motivo: null };
     db.campanhas.push(r); return { row: r };
@@ -324,6 +319,25 @@ const novaSessao = u => ({ user: { id: u.id, email: u.email, last_sign_in_at: ne
 let sessao = sessionStorage.getItem(CHAVE_SAIU) ? null : novaSessao(db.perfis[EU] || USUARIOS[EU]);
 const ouvintesAuth = new Set();
 const avisarAuth = evt => setTimeout(() => ouvintesAuth.forEach(fn => fn(evt, sessao)), 0);
+
+// Convite de usuário (Worker /api/usuarios/convidar): cria o perfil ativo no banco simulado.
+// ?convite=existe simula e-mail já cadastrado; ?convite=sem-chave, Worker sem a chave do Supabase.
+const fetchOriginal = window.fetch.bind(window);
+window.fetch = async (url, opcoes = {}) => {
+  if (!String(url).endsWith('/api/usuarios/convidar')) return fetchOriginal(url, opcoes);
+  await new Promise(r => setTimeout(r, 150));
+  const resp = (corpo, status) => new Response(JSON.stringify(corpo), { status, headers: { 'Content-Type': 'application/json' } });
+  const modo = new URLSearchParams(location.search).get('convite');
+  if (modo === 'sem-chave') return resp({ erro: 'Convite indisponível: falta configurar a chave do Supabase no servidor.' }, 503);
+  const eu = db.perfis[sessao?.user?.id];
+  if (!eu?.ativo || eu.papel !== 'aprovador') return resp({ erro: 'Só administradores convidam usuários.' }, 403);
+  const { email, nome, papel } = JSON.parse(opcoes.body || '{}');
+  if (modo === 'existe' || Object.values(db.perfis).some(u => u.email === email)) return resp({ erro: 'Já existe uma conta com este e-mail.' }, 409);
+  const id = 'u-conv-' + Date.now();
+  db.perfis[id] = { id, email, nome, papel, ativo: true, criado_em: new Date().toISOString() };
+  gravarDb();
+  return resp({ id, email }, 201);
+};
 
 export const sb = {
   from: tabela => new Consulta(tabela),

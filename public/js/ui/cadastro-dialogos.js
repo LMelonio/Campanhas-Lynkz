@@ -1,7 +1,4 @@
-// ============================================================
-//  DIÁLOGOS DE CADASTRO — empresa (só edição: as empresas vêm do Qlik) e balconista.
-//  Erro de gravação aparece dentro do próprio diálogo, que fica aberto.
-// ============================================================
+// Diálogos de empresa (só edição) e de balconista; erro de gravação aparece no próprio diálogo.
 import { html, $ } from '../lib/dom.js';
 import { icone } from './icones.js';
 import { soDigitos, cnpjValido, maskCNPJ, maskCPF, maskTelefone, telefoneValido, errosRecebedor, hojeCivil, LIMITES } from '../lib/regras.js';

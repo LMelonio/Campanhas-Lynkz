@@ -1,18 +1,10 @@
-// ============================================================
-//  NOVA CAMPANHA
-//  - Empresa pelo cadastro (combo), com "Cadastrar a empresa …".
-//  - "Quem recebe a premiação": obrigatório com pagamento Swile, opcional
-//    na mecânica "Campanha de balconista". Escolher um balconista preenche
-//    os 5 dados; mudar algum oferece atualizar o cadastro.
-//  - Rascunho no localStorage SEM os 5 dados pessoais (guarda empresa e o
-//    balconista escolhido, que voltam preenchidos do cadastro).
-//  - O formulário nunca é redesenhado por evento externo.
-// ============================================================
+// Nova campanha (também reenviar e usar como modelo). Abaixo de 900 px vira 3 passos pelo CSS.
+// O rascunho fica no aparelho sem os dados pessoais do recebedor; o formulário nunca é redesenhado por evento externo.
 import { html, pintar, $, $$, ao, debounce, armazenamento } from '../lib/dom.js';
 import {
   calc, banda, brl, textoDevolucoes, pct, lerValor, valorCampo, soDigitos, normaliza, maskCPF, maskTelefone,
   errosRecebedor, LIMITES, hojeCivil, horaBR, somaDias, periodoMes, dias, dataBR, STATUS,
-  listaLaboratorios, juntarLaboratorios,
+  listaLaboratorios, juntarLaboratorios, MAX_FORNECEDORES, MAX_MARCAS, juntarMarcas, textoMarcas, lerDivisao, somaDivisao, partilha, errosDivisao,
 } from '../lib/regras.js';
 import { icone } from '../ui/icones.js';
 import { regua, FAIXAS } from '../ui/pecas.js';
@@ -57,7 +49,7 @@ let st = null;
 
 const v = id => ($('#' + id, st.el)?.value ?? '').trim();
 
-// ---------- laboratórios (1 ou mais, v2.12) ----------
+// ---------- fornecedores ----------
 // O combo serve para acrescentar; os escolhidos ficam em st.labs e aparecem como botões com ×.
 const labsTexto = () => juntarLaboratorios(st.labs);
 // "Ouro Fino" · "Ouro Fino nem Avert" · "Ouro Fino, Avert nem Vansil"
@@ -73,18 +65,116 @@ function desenharLabs() {
   const caixa = $('#n-labs', st.el);
   if (!caixa) return;
   caixa.hidden = !st.labs.length;
-  pintar(caixa, html`${st.labs.map(l => html`<button type="button" class="chip chip-filtro" data-tirar-lab="${l}" aria-label="Tirar o laboratório ${l}">${l}${icone('x')}</button>`)}`);
+  pintar(caixa, html`${st.labs.map(l => html`<button type="button" class="chip chip-filtro" data-tirar-lab="${l}" aria-label="Tirar o fornecedor ${l}">${l}${icone('x')}</button>`)}`);
 }
 
-// Acrescentar/tirar laboratório: redesenha os botões, grava o rascunho e consulta de novo.
+// Acrescentar/tirar fornecedor: redesenha os botões e a divisão, grava o rascunho e consulta de novo.
 function mudouLabs() {
   desenharLabs();
+  desenharDivisao();
   limparErro($('#form-nova', st.el), 'n-laboratorio');
   st.salvar?.();
   st.atualizarComprasDepois?.();
   atualizarResumoPassos();
 }
 const num = id => lerValor(v(id));
+
+// ---------- divisão por fornecedor ----------
+// Valores digitados ficam em st.div, por nome: tirar ou pôr um fornecedor não perde os outros.
+// Enquanto divide, meta e indústria totais são a soma (só leitura).
+const dividindo = () => !!st && st.labs.length >= 2 && !!$('#n-dividir', st.el)?.checked;
+const idDiv = (tipo, i) => `n-div-${tipo}-${i}`;
+
+// Guarda o que está digitado nos campos da divisão (antes de redesenhar).
+function guardarDivisao() {
+  $$('[data-div-nome]', st.el).forEach(f => {
+    const i = f.dataset.divI;
+    st.div[f.dataset.divNome] = { meta: v(idDiv('meta', i)), ind: v(idDiv('ind', i)) };
+  });
+}
+
+// Linhas da divisão com números (NaN = digitado errado).
+function linhasDivisao() {
+  return st.labs.map((nome, i) => ({
+    nome,
+    meta: lerValor(v(idDiv('meta', i))),
+    investimento_industria: lerValor(v(idDiv('ind', i))),
+  }));
+}
+
+function desenharDivisao() {
+  const bloco = $('#bloco-divisao', st.el);
+  if (!bloco) return;
+  if ($('#divisao-corpo', st.el).childElementCount) guardarDivisao();
+  const pode = st.labs.length >= 2;
+  bloco.hidden = !pode;
+  const ligado = pode && $('#n-dividir', st.el).checked;
+  const corpo = $('#divisao-corpo', st.el);
+  corpo.hidden = !ligado;
+  pintar(corpo, ligado ? html`
+    ${st.labs.map((nome, i) => html`<fieldset class="div-linha" data-div-nome="${nome}" data-div-i="${i}">
+      <legend class="div-nome">${nome}</legend>
+      <div class="grade-2">
+        ${campo({ id: idDiv('meta', i), rotulo: 'Meta (R$)', valor: st.div[nome]?.meta ?? '', mascara: 'valor' })}
+        ${campo({ id: idDiv('ind', i), rotulo: 'Indústria (R$)', valor: st.div[nome]?.ind ?? '', mascara: 'valor' })}
+      </div>
+      <p class="div-parte" id="n-div-parte-${i}" aria-live="polite"></p>
+    </fieldset>`)}
+    <p class="div-soma" id="div-soma" aria-live="polite"></p>` : '');
+  // Meta e Indústria: soma dos fornecedores (só leitura) enquanto divide.
+  for (const id of ['n-meta', 'n-inv-industria']) {
+    const i = $('#' + id, st.el);
+    if (!i) continue;
+    i.readOnly = ligado;
+    if (ligado) i.setAttribute('aria-readonly', 'true'); else i.removeAttribute('aria-readonly');
+    i.closest('.campo')?.classList.toggle('campo-soma', ligado);
+    if (ligado) limparErro($('#form-nova', st.el), id);
+  }
+  const dicaMeta = $('#n-meta-dica', st.el), dicaInd = $('#n-inv-industria-dica', st.el);
+  if (dicaMeta) dicaMeta.hidden = !ligado;
+  if (dicaInd) dicaInd.hidden = !ligado;
+  atualizarDivisao();
+}
+
+// Soma nos campos totais e mostra a parte de cada fornecedor (% da meta e rebate).
+function atualizarDivisao() {
+  if (!dividindo()) return;
+  const linhas = linhasDivisao();
+  const validas = linhas.map(l => ({ ...l, meta: Number.isFinite(l.meta) ? l.meta : 0, investimento_industria: Number.isFinite(l.investimento_industria) ? l.investimento_industria : 0 }));
+  const t = somaDivisao(validas);
+  $('#n-meta', st.el).value = t.meta ? valorCampo(t.meta) : '';
+  $('#n-inv-industria', st.el).value = t.investimento_industria ? valorCampo(t.investimento_industria) : '';
+  const partes = partilha({ ...camposCusto(), fornecedores: validas }) || [];
+  const comRebate = marcado('n-rebate') && num('n-rebate-pct') > 0;
+  partes.forEach((p, i) => {
+    const alvo = $('#n-div-parte-' + i, st.el);
+    if (!alvo) return;
+    const ped = [t.meta > 0 ? `${pct(p.peso)} da meta` : 'sem meta', comRebate ? `rebate estimado R$ ${brl(p.rebate)}` : ''].filter(Boolean);
+    alvo.textContent = ped.join(' · ');
+  });
+  const soma = $('#div-soma', st.el);
+  if (soma) pintar(soma, html`Soma: <span>meta R$ ${brl(t.meta)}</span> · <span>indústria R$ ${brl(t.investimento_industria)}</span>`);
+}
+
+// Ao ligar a divisão sem nada digitado nela: reparte em partes iguais o que já estava nos totais
+// (centavos que sobram vão para o último), para não perder a meta digitada antes.
+function preencherDivisaoIgual() {
+  const vazios = st.labs.every(n => !st.div[n]?.meta && !st.div[n]?.ind);
+  if (!vazios) return;
+  const reparte = total => {
+    const c = Math.round((Number.isFinite(total) ? total : 0) * 100), n = st.labs.length, base = Math.floor(c / n);
+    return st.labs.map((_, i) => (i === n - 1 ? c - base * (n - 1) : base) / 100);
+  };
+  const metas = reparte(num('n-meta')), inds = reparte(num('n-inv-industria'));
+  st.labs.forEach((nome, i) => { st.div[nome] = { meta: metas[i] ? valorCampo(metas[i]) : '', ind: inds[i] ? valorCampo(inds[i]) : '' }; });
+}
+
+// Para o rascunho, "reenviar" e "usar como modelo": { nome: {meta, ind} } em texto, como digitado.
+function divisaoParaTela(linhas) {
+  const m = {};
+  for (const l of linhas || []) m[l.nome] = { meta: +l.meta ? valorCampo(l.meta) : '', ind: +l.investimento_industria ? valorCampo(l.investimento_industria) : '' };
+  return m;
+}
 const marcado = id => !!$('#' + id, st.el)?.checked;
 
 // ---------- quem recebe ----------
@@ -214,6 +304,7 @@ function camposCusto() {
 }
 
 function atualizarResumo() {
+  atualizarDivisao();
   const c = camposCusto();
   const k = calc(c), b = banda(k.pctMeta, FAIXAS);
   pintar($('#resumo-regua', st.el), regua(c, { titulo: 'Custo total desta campanha', compacta: true }));
@@ -224,10 +315,8 @@ function atualizarResumo() {
   atualizarResumoPassos();
 }
 
-// ---------- passos no celular (v2.9) ----------
-// Abaixo de 900 px a Nova vira 3 passos. É o MESMO formulário: o CSS mostra só as seções
-// do passo atual (data-passo), então rascunho, envio e tempo real não mudam.
-const PASSOS = ['Cliente', 'Valores', 'Quem recebe e revisão'];
+// ---------- passos no celular (mesmo formulário; o CSS mostra só as seções do passo atual) ----------
+const PASSOS = ['Cliente', 'Valores', 'Revisão'];
 const telaDePassos = () => matchMedia('(max-width: 899.98px)').matches;
 
 function elDoCampo(id) {
@@ -281,7 +370,9 @@ function atualizarResumoPassos() {
   const empresa = st.ctx.cadastros.empresa(st.comboEmpresa?.valor());
   pintar(alvo, html`<dl class="linhas">
     <div class="linha"><dt>Empresa</dt><dd>${empresa?.nome || '—'}</dd></div>
-    <div class="linha"><dt>${st.labs.length > 1 ? 'Laboratórios' : 'Laboratório'}</dt><dd>${labsTexto() || '—'}</dd></div>
+    <div class="linha"><dt>${st.labs.length > 1 ? 'Fornecedores' : 'Fornecedor'}</dt><dd>${labsTexto() || '—'}</dd></div>
+    ${dividindo() ? (partilha({ ...camposCusto(), fornecedores: linhasDivisao().map(l => ({ ...l, meta: l.meta || 0, investimento_industria: l.investimento_industria || 0 })) }) || []).map(p => html`
+    <div class="linha"><dt>${p.nome}</dt><dd>meta R$ ${brl(p.meta)} · indústria R$ ${brl(p.investimento_industria)}${marcado('n-rebate') ? ` · rebate R$ ${brl(p.rebate)}` : ''}</dd></div>`) : ''}
     <div class="linha"><dt>Custo total</dt><dd class="valor">R$ ${brl(k.total)}</dd></div>
     <div class="linha"><dt>% da meta</dt><dd>${k.pctMeta == null ? 'sem meta' : pct(k.pctMeta)}</dd></div>
     <div class="linha"><dt>Notas marcadas</dt><dd>${m.length ? `${m.length} · R$ ${brl(m.reduce((t, x) => t + x.valor, 0))}` : 'nenhuma'}</dd></div>
@@ -292,17 +383,30 @@ function atualizarResumoPassos() {
 function validar() {
   const e = {};
   if (!st.comboEmpresa.valor()) e['n-empresa'] = 'Escolha a empresa.';
-  if (!st.labs.length) e['n-laboratorio'] = 'Escolha ao menos um laboratório.';
-  else if (labsTexto().length > LIMITES.textos.laboratorio) e['n-laboratorio'] = `Laboratórios demais: os nomes juntos passam de ${LIMITES.textos.laboratorio} caracteres. Tire algum.`;
+  if (!st.labs.length) e['n-laboratorio'] = 'Escolha ao menos um fornecedor.';
+  else if (st.labs.length > MAX_FORNECEDORES) e['n-laboratorio'] = `No máximo ${MAX_FORNECEDORES} fornecedores. Tire algum.`;
+  else if (labsTexto().length > LIMITES.textos.laboratorio) e['n-laboratorio'] = `Fornecedores demais: os nomes juntos passam de ${LIMITES.textos.laboratorio} caracteres. Tire algum.`;
   if (!v('n-campanha')) e['n-campanha'] = 'Dê um nome à campanha.';
   if (v('n-inicio') && v('n-fim') && v('n-fim') < v('n-inicio')) e['n-fim'] = 'O fim está antes do início.';
 
+  // Dividindo, meta e indústria são a soma (só leitura): os erros vão para os campos de cada fornecedor.
+  const div = dividindo();
   for (const id of ['n-inv-lynkz', 'n-inv-industria', 'n-meta', 'n-rebate-teto', 'n-rebate-pct']) {
+    if (div && (id === 'n-meta' || id === 'n-inv-industria')) continue;
     if (!Number.isFinite(num(id)) || num(id) < 0) e[id] = 'Valor inválido. Use só números, como 1.500,00.';
+  }
+  if (div) {
+    const { porLinha, geral } = errosDivisao(linhasDivisao());
+    for (const [i, erros] of Object.entries(porLinha)) {
+      if (erros.meta) e[idDiv('meta', i)] = erros.meta;
+      if (erros.investimento_industria) e[idDiv('ind', i)] = erros.investimento_industria;
+    }
+    if (geral) e[idDiv('meta', 0)] = geral;
   }
   // Mesmos limites do banco (LIMITES em regras.js): erro no campo, sem ir ao banco.
   if (!e['n-rebate-pct'] && marcado('n-rebate') && num('n-rebate-pct') > LIMITES.rebate_pct) e['n-rebate-pct'] = `O rebate vai de 0 a ${LIMITES.rebate_pct}%.`;
   for (const [id, chave] of [['n-meta', 'meta'], ['n-inv-lynkz', 'investimento_lynkz'], ['n-inv-industria', 'investimento_industria'], ['n-rebate-teto', 'rebate_teto']]) {
+    if (div && (id === 'n-meta' || id === 'n-inv-industria')) continue;
     if (!e[id] && num(id) > LIMITES[chave]) e[id] = `Passou do limite de R$ ${brl(LIMITES[chave])}.`;
   }
   for (const [id, chave] of [['n-campanha', 'campanha'], ['n-mecanica', 'mecanica'], ['n-observacoes', 'observacoes']]) {
@@ -314,7 +418,10 @@ function validar() {
   }
   if (marcado('n-rebate')) {
     if (!e['n-rebate-pct'] && !(num('n-rebate-pct') > 0)) e['n-rebate-pct'] = 'Informe o % de rebate ou desligue a opção.';
-    if (!e['n-meta'] && !(num('n-meta') > 0)) e['n-meta'] = 'O rebate precisa da meta do cliente para ser calculado.';
+    if (!(num('n-meta') > 0)) {
+      if (div) { if (!e[idDiv('meta', 0)]) e[idDiv('meta', 0)] = 'O rebate precisa da meta: informe a meta de pelo menos um fornecedor.'; }
+      else if (!e['n-meta']) e['n-meta'] = 'O rebate precisa da meta do cliente para ser calculado.';
+    }
     if (!v('n-rebate-base')) e['n-rebate-base'] = 'Escolha a base de cálculo do rebate.';
     if (!v('n-rebate-gatilho')) e['n-rebate-gatilho'] = 'Escolha quando o rebate é devido.';
   }
@@ -348,13 +455,15 @@ function salvarRascunho() {
   const r = { versao: 2 };
   let algum = false;
   $$('input[id], select[id], textarea[id]', $('#form-nova', st.el)).forEach(el => {
-    if (IDS_PESSOAIS.includes(el.id) || el.type === 'radio' || el.id === 'n-empresa' || el.id === 'n-laboratorio') return;
+    if (IDS_PESSOAIS.includes(el.id) || el.type === 'radio' || el.id === 'n-empresa' || el.id === 'n-laboratorio' || el.id.startsWith('n-div-')) return;
     const val = el.type === 'checkbox' ? el.checked : el.value;
     r[el.id] = val;
     if (val !== '' && val !== false && !(el.type === 'checkbox' && el.id.startsWith('n-rec-'))) algum = true;
   });
   r.empresaId = st.comboEmpresa.valor();
   r.laboratorio = labsTexto();   // "Ouro Fino, Avert"; rascunho antigo, com um só, também serve
+  if (st.labs.length >= 2 && $('#divisao-corpo', st.el)?.childElementCount) guardarDivisao();
+  r.divisao = st.div;           // { "Ouro Fino": { meta: "20.000,00", ind: "" } }
   r.pessoa = st.pessoa;
   r.passo = st.passo;
   r.visitado = st.visitado;
@@ -401,11 +510,9 @@ function atualizarPeriodo() {
   });
 }
 
-// ---------- compras no Qlik e notas fiscais ----------
-// O que o cliente comprou do laboratório no período, vindo do Qlik, e as
-// notas fiscais que o solicitante marca como participantes da campanha.
+// ---------- compras no Qlik e notas fiscais da campanha ----------
 const moeda = n => `R$ ${brl(n)}`;
-// Com muitas notas, a lista mostra as primeiras e o botão "Ver todas" (v2.9). "Marcar todas" vale para todas.
+// Com muitas notas, a lista mostra as primeiras e o botão "Ver todas". "Marcar todas" vale para todas.
 const NOTAS_VISIVEIS = 5;
 const textoVerNotas = (n, abertas) => (abertas ? 'Mostrar só as primeiras' : `Ver todas as ${n} notas`);
 
@@ -440,15 +547,11 @@ function desenharResultadoCompras() {
   const outros = !c.notas.length && c.total === 0 && c.cliente_total > 0;
   if (semNada) console.warn('Qlik devolveu zero para o cliente inteiro no período', { inicio: c.inicio, fim: c.fim });
   pintarCompras(html`
-    <p class="compras-total" role="status">${icone('info')}<span>No período de ${dataBR(c.inicio)} a ${dataBR(c.fim)}, este cliente comprou <strong class="valor">${moeda(c.total)}</strong> de ${forn}${c.marca ? html`, marca <strong>${c.marca}</strong>` : ''}.</span></p>
+    <p class="compras-total" role="status">${icone('info')}<span>No período de ${dataBR(c.inicio)} a ${dataBR(c.fim)}, este cliente comprou <strong class="valor">${moeda(c.total)}</strong> de ${forn}${c.marcasSel.length ? html`, ${c.marcasSel.length > 1 ? 'marcas' : 'marca'} <strong>${textoMarcas(c.marcasSel)}</strong>` : ''}.</span></p>
     ${c.devolucoes > 0 ? html`<p class="compras-devolucoes" id="compras-devolucoes">Devoluções no período: <strong class="valor">${textoDevolucoes(c.devolucoes, devolvidasDe(c).length)}</strong></p>` : ''}
-    ${c.fornecedores.length ? html`<p class="campo-dica compras-origem">Vem do Qlik${varios ? ', somando os laboratórios escolhidos' : ''}. Confira se ${varios ? 'os fornecedores acima são mesmo os laboratórios' : 'o fornecedor acima é mesmo o laboratório'} da campanha.</p>` : ''}
-    ${c.foraDaConsulta.length ? html`<p class="campo-dica">${juntarLaboratorios(c.foraDaConsulta)} não ${c.foraDaConsulta.length === 1 ? 'entra' : 'entram'} na consulta: não é fornecedor do Qlik.</p>` : ''}
-    ${c.marcas.length > 1 || c.marca ? selecao({
-      id: 'n-marca', rotulo: varios ? 'Marca' : 'Marca do laboratório', opcional: true, vazio: 'Todas as marcas',
-      dica: 'Escolha uma marca para ver só o que o cliente comprou dela (ex.: WellPet dentro da Ouro Fino).',
-      opcoes: c.marcas.map(m => ({ valor: m.nome, rotulo: `${m.nome} · ${moeda(m.valor)}` })), valor: c.marca || '',
-    }) : ''}
+    ${c.fornecedores.length ? html`<p class="campo-dica compras-origem">Vem do Qlik${varios ? ', somando os fornecedores escolhidos' : ''}. Confira se ${varios ? 'os nomes acima são mesmo os fornecedores' : 'o nome acima é mesmo o fornecedor'} da campanha.</p>` : ''}
+    ${c.foraDaConsulta.length ? html`<p class="campo-dica">${juntarLaboratorios(c.foraDaConsulta)} não ${c.foraDaConsulta.length === 1 ? 'entra' : 'entram'} na consulta: não ${c.foraDaConsulta.length === 1 ? 'está' : 'estão'} no Qlik.</p>` : ''}
+    ${c.marcas.length > 1 || c.marcasSel.length ? blocoMarcas(c) : ''}
     ${c.notas.length ? html`
       <fieldset class="campo notas-fiscais" data-campo="n-notas">
         <legend class="campo-rotulo">Notas da campanha <span class="campo-opc">(opcional)</span></legend>
@@ -461,13 +564,40 @@ function desenharResultadoCompras() {
         ${c.notas.length > NOTAS_VISIVEIS ? html`<button type="button" class="btn btn-texto notas-ver" id="notas-ver" aria-controls="notas-lista" aria-expanded="${c.verTodas ? 'true' : 'false'}">${textoVerNotas(c.notas.length, c.verTodas)}</button>` : ''}
         <p class="campo-dica" id="notas-soma" aria-live="polite"></p>
       </fieldset>`
-    : semNada ? html`<p class="nota nota-alerta" role="alert">${icone('alerta')}<span>O Qlik não mostra nenhuma compra deste cliente no período, de nenhum laboratório. Se ele comprou, avise o TI: a consulta pode estar sem acesso aos dados. Você pode enviar a campanha sem as notas.</span></p>`
-    : outros ? html`<p class="nota">${icone('info')}<span>No período, o cliente comprou <strong class="valor">${moeda(c.cliente_total)}</strong> de outros laboratórios, mas nada de ${nemLista(c.laboratorios)}. Se ${varios ? 'algum deles' : c.laboratorios[0]} vende com outro nome no Qlik, avise o TI.</span></p>`
+    : semNada ? html`<p class="nota nota-alerta" role="alert">${icone('alerta')}<span>O Qlik não mostra nenhuma compra deste cliente no período, de nenhum fornecedor. Se ele comprou, avise o TI: a consulta pode estar sem acesso aos dados. Você pode enviar a campanha sem as notas.</span></p>`
+    : outros ? html`<p class="nota">${icone('info')}<span>No período, o cliente comprou <strong class="valor">${moeda(c.cliente_total)}</strong> de outros fornecedores, mas nada de ${nemLista(c.laboratorios)}. Se ${varios ? 'algum deles' : c.laboratorios[0]} vende com outro nome no Qlik, avise o TI.</span></p>`
     : html`<p class="nota">${icone('info')}<span>Nenhuma nota fiscal encontrada nesse período.</span></p>`}`);
   atualizarSomaNotas();
+  // Depois de ligar/desligar uma marca, o foco volta ao mesmo botão.
+  if (st.focoMarca) {
+    $(`[data-marca="${CSS.escape(st.focoMarca)}"]`, st.el)?.focus();
+    st.focoMarca = null;
+  }
 }
 
-// O que identifica uma consulta: cliente, laboratórios consultáveis e período (a marca vem depois).
+// Marcas escolhidas na chave da consulta (a ordem de escolha não importa).
+const chaveMarcas = () => [...st.marcas].sort().join(';');
+
+// Marcas do período como botões liga/desliga: uma ou várias, com um ou vários fornecedores.
+function blocoMarcas(c) {
+  const sel = c.marcasSel;
+  const nomes = [...c.marcas.map(m => m.nome), ...sel.filter(s => !c.marcas.some(m => m.nome === s))];
+  const valor = nome => c.marcas.find(m => m.nome === nome)?.valor;
+  const cheio = sel.length >= MAX_MARCAS;
+  return html`<fieldset class="campo marcas-qlik" data-campo="n-marcas">
+    <legend class="campo-rotulo">Marcas <span class="campo-opc">(opcional)</span></legend>
+    <p class="campo-dica" id="n-marcas-dica">Filtre por uma ou mais. Nenhuma marcada = todas.${cheio ? ` Limite de ${MAX_MARCAS} marcas.` : ''}</p>
+    <div class="chips marcas-lista" role="group" aria-label="Marcas" aria-describedby="n-marcas-dica">
+      ${nomes.map(n => {
+        const on = sel.includes(n);
+        return html`<button type="button" class="chip chip-marca" data-marca="${n}" aria-pressed="${on ? 'true' : 'false'}"${!on && cheio ? html` disabled` : ''}>${on ? icone('check') : ''}${n}${valor(n) != null ? html` <span class="chip-valor">${moeda(valor(n))}</span>` : ''}</button>`;
+      })}
+    </div>
+    ${sel.length ? html`<button type="button" class="btn btn-texto" data-marcas-todas>Ver todas as marcas</button>` : ''}
+  </fieldset>`;
+}
+
+// O que identifica uma consulta: cliente, fornecedores consultáveis e período (as marcas vêm depois).
 const baseCompras = (empresa, inicio, fim) =>
   [empresa.codigo_cliente, laboratoriosConsultaveis(st.labs).join(','), inicio, fim].join('|');
 
@@ -483,30 +613,30 @@ async function atualizarCompras() {
 
   const aviso = texto => { st.compras = null; pintarCompras(html`<p class="campo-dica">${texto}</p>`); };
   st.consulta?.abort();
-  if (!empresa || !labs.length) return aviso('Escolha a empresa e o laboratório para ver quanto o cliente comprou.');
+  if (!empresa || !labs.length) return aviso('Escolha a empresa e o fornecedor para ver quanto o cliente comprou.');
   if (!empresa.codigo_cliente) return aviso('Esta empresa não tem código de cliente do Qlik, então não há compras para consultar.');
   if (!consultaveis.length) {
-    return aviso(labs.length === 1 ? 'Este laboratório não é um fornecedor do Qlik. Siga sem notas fiscais.'
-      : 'Nenhum destes laboratórios é fornecedor do Qlik. Siga sem notas fiscais.');
+    return aviso(labs.length === 1 ? 'Este fornecedor não está no Qlik. Siga sem notas fiscais.'
+      : 'Nenhum destes fornecedores está no Qlik. Siga sem notas fiscais.');
   }
-  if (consultaveis.length > MAX_LABORATORIOS_CONSULTA) return aviso(`Para ver as compras no Qlik, escolha no máximo ${MAX_LABORATORIOS_CONSULTA} laboratórios.`);
+  if (consultaveis.length > MAX_LABORATORIOS_CONSULTA) return aviso(`Para ver as compras no Qlik, escolha no máximo ${MAX_LABORATORIOS_CONSULTA} fornecedores.`);
   if (!inicio || !fim) return aviso('Informe o início e o fim da campanha para ver as compras do período.');
   if (fim < inicio) return aviso('O fim está antes do início.');
 
   // Trocar empresa, laboratórios ou datas zera a marca escolhida (cada laboratório tem as suas).
   const base = baseCompras(empresa, inicio, fim);
-  if (st.baseCompras !== base) { st.marca = ''; st.baseCompras = base; }
-  const chave = `${base}|${st.marca || ''}`;
+  if (st.baseCompras !== base) { st.marcas = []; st.baseCompras = base; }
+  const chave = `${base}|${chaveMarcas()}`;
   if (st.compras?.chave === chave) return desenharResultadoCompras();
 
   st.compras = null;
   const controle = st.consulta = new AbortController();
   pintarCompras(html`<p class="campo-dica" role="status">Consultando o Qlik…</p>`);
   try {
-    const r = await consultarCompras({ codigoCliente: empresa.codigo_cliente, laboratorio: consultaveis, marca: st.marca || null, inicio, fim, sinal: controle.signal });
+    const r = await consultarCompras({ codigoCliente: empresa.codigo_cliente, laboratorio: consultaveis, marca: st.marcas, inicio, fim, sinal: controle.signal });
     if (st !== meu || controle.signal.aborted) return;
     st.compras = { ...r, marcas: r.marcas || [], chave, inicio, fim, laboratorios: consultaveis,
-      foraDaConsulta: labs.filter(l => !consultaveis.includes(l)), marca: st.marca || '', marcadas: new Set() };
+      foraDaConsulta: labs.filter(l => !consultaveis.includes(l)), marcasSel: [...st.marcas], marcadas: new Set() };
     desenharResultadoCompras();
   } catch (e) {
     if (e.name === 'AbortError' || st !== meu) return;
@@ -533,6 +663,7 @@ function valoresDaCampanha(c, ctx, { comoModelo = false } = {}) {
     'n-rebate': rb, 'n-rebate-pct': rb ? String(+c.rebate_pct).replace('.', ',') : '',
     'n-rebate-teto': rb && +c.rebate_teto ? valorCampo(c.rebate_teto) : '',
     'n-rebate-base': c.rebate_base || '', 'n-rebate-gatilho': c.rebate_gatilho || '',
+    'n-dividir': !!lerDivisao(c), divisao: divisaoParaTela(lerDivisao(c)),
     'n-observacoes': c.observacoes || '',
     pessoa: c.balconista_id ? String(c.balconista_id) : (c.swile_nome_completo ? 'outra' : null),
     dadosPessoais: !c.balconista_id && c.swile_nome_completo ? {
@@ -587,11 +718,13 @@ async function enviar() {
 
     const rb = marcado('n-rebate');
     // Só vale a consulta que bate com o que está na tela agora.
-    const comprasAtuais = st.compras && st.compras.chave === `${baseCompras(empresa, v('n-inicio'), v('n-fim'))}|${st.marca || ''}` ? st.compras : null;
+    const comprasAtuais = st.compras && st.compras.chave === `${baseCompras(empresa, v('n-inicio'), v('n-fim'))}|${chaveMarcas()}` ? st.compras : null;
     const { campanha: c, balconistaId: novoBalcId } = await ctx.campanhas.enviar({
       campanha: {
         cliente: empresa.nome, empresa_id: empresa.id, balconista_id: balconistaId,
         laboratorio: labsTexto(), campanha: v('n-campanha'),
+        // Divisão por fornecedor: meta e indústria acima já são a soma das linhas.
+        fornecedores: dividindo() ? linhasDivisao() : null,
         tipo: v('n-tipo') || null, mecanica: v('n-mecanica') || null,
         investimento_lynkz: num('n-inv-lynkz') || 0, investimento_industria: num('n-inv-industria') || 0,
         forma_pagamento: v('n-pagamento') || null,
@@ -610,8 +743,8 @@ async function enviar() {
         observacoes: v('n-observacoes') || null,
         compras_periodo: comprasAtuais ? comprasAtuais.total : null,
         compras_consultado_em: comprasAtuais ? comprasAtuais.consultado_em : null,
-        compras_marca: comprasAtuais?.marca || null,
-        // Devoluções (v2.9): o aprovador vê a mesma conta. Worker antigo não manda: fica vazio.
+        compras_marca: comprasAtuais?.marcasSel.length ? juntarMarcas(comprasAtuais.marcasSel) : null,   // "WELLPET; PROTEÇÃO"
+        // Devoluções: o aprovador vê a mesma conta. Worker antigo não manda: fica vazio.
         compras_devolucoes: comprasAtuais && comprasAtuais.devolucoes != null ? comprasAtuais.devolucoes : null,
         compras_devolvidas: comprasAtuais ? devolvidasDe(comprasAtuais).map(({ numero, serie, data, valor }) => ({ numero, serie, data, valor })) : null,
       },
@@ -650,10 +783,11 @@ export function montar(el, ctx, params) {
   if (!origem && sugerida && ctx.cadastros.empresa(sugerida) && String(ini.empresaId ?? '') !== sugerida) {
     ini = { ...ini, empresaId: sugerida, pessoa: null };
   }
-  st = { el, ctx, pessoa: ini.pessoa ?? null, enviando: false, enviado: false, desligar: [],
+  st = { el, ctx, pessoa: ini.pessoa ?? null, enviando: false, enviado: false, desligar: [], marcas: [],
          rascunhoSemPessoais: !!(rascunho && rascunho.pessoa === 'outra'),
          passo: Math.min(3, Math.max(1, +rascunho?.passo || 1)),
-         labs: labsConhecidos(ini.laboratorio) };
+         labs: labsConhecidos(ini.laboratorio).slice(0, MAX_FORNECEDORES),
+         div: ini.divisao && typeof ini.divisao === 'object' ? { ...ini.divisao } : {} };
   st.visitado = Math.max(st.passo, Math.min(3, +rascunho?.visitado || 1));
 
   ctx.cabecalho({ titulo: reenvio ? 'Reenviar campanha' : 'Nova campanha', voltar: origem ? `#/campanhas/${origem.id}` : '#/inicio' });
@@ -672,12 +806,12 @@ export function montar(el, ctx, params) {
       ${rascunho ? html`<p class="nota">${icone('rascunho')}<span>Rascunho recuperado.</span><button type="button" class="btn btn-texto" id="descartar">Descartar</button></p>` : ''}
       ${ini.clienteSemCadastro ? html`<p class="nota nota-alerta">${icone('info')}<span>A campanha original era de “${ini.clienteSemCadastro}”, que ainda não está no cadastro. Escolha ou cadastre a empresa.</span></p>` : ''}
 
-      <section class="painel" data-passo="1"><h2 class="painel-titulo">Empresa e laboratório</h2><div class="painel-corpo">
+      <section class="painel" data-passo="1"><h2 class="painel-titulo">Empresa e fornecedores</h2><div class="painel-corpo">
         ${campo({ id: 'n-empresa', rotulo: 'Empresa', obrigatorio: true, dica: 'Digite nome, nome fantasia, código, cidade ou CNPJ.', atributos: { placeholder: 'Nome, código, cidade ou CNPJ' } })}
-        ${campo({ id: 'n-laboratorio', rotulo: 'Laboratórios', obrigatorio: true,
-                  dica: 'Escolha um ou mais. Para acrescentar outro, escolha de novo na lista.',
+        ${campo({ id: 'n-laboratorio', rotulo: 'Fornecedores', obrigatorio: true,
+                  dica: `Escolha de 1 a ${MAX_FORNECEDORES}. Para acrescentar outro, escolha de novo na lista.`,
                   atributos: { placeholder: 'Selecione ou digite para buscar' },
-                  depois: html`<div class="chips labs-escolhidos" id="n-labs" role="group" aria-label="Laboratórios escolhidos" hidden></div>` })}
+                  depois: html`<div class="chips labs-escolhidos" id="n-labs" role="group" aria-label="Fornecedores escolhidos" hidden></div>` })}
       </div></section>
 
       <section class="painel" data-passo="1"><h2 class="painel-titulo">A campanha</h2><div class="painel-corpo">
@@ -706,7 +840,8 @@ export function montar(el, ctx, params) {
       <section class="painel" data-passo="2"><h2 class="painel-titulo">Investimento</h2><div class="painel-corpo">
         <div class="grade-2">
           ${campo({ id: 'n-inv-lynkz', rotulo: 'LYNKZ (R$)', valor: val('n-inv-lynkz'), mascara: 'valor' })}
-          ${campo({ id: 'n-inv-industria', rotulo: 'Indústria (R$)', valor: val('n-inv-industria'), mascara: 'valor' })}
+          ${campo({ id: 'n-inv-industria', rotulo: 'Indústria (R$)', valor: val('n-inv-industria'), mascara: 'valor',
+                    depois: html`<p class="campo-dica" id="n-inv-industria-dica" hidden>Soma dos fornecedores (em Contrapartida do cliente).</p>` })}
         </div>
         <p class="campo-dica bloco-dica">LYNKZ sai do caixa agora; Indústria é a bonificação paga no mês seguinte. Em branco se não houver.</p>
         ${selecao({ id: 'n-pagamento', rotulo: 'Forma de pagamento', opcoes: C.PAGTO, valor: val('n-pagamento') })}
@@ -720,7 +855,13 @@ export function montar(el, ctx, params) {
       <section class="painel" data-passo="2"><h2 class="painel-titulo">Contrapartida do cliente</h2><div class="painel-corpo">
         <div class="grade-2 quebra">
           ${selecao({ id: 'n-tipo-meta', rotulo: 'Tipo de meta', opcoes: C.METAS, valor: val('n-tipo-meta') })}
-          ${campo({ id: 'n-meta', rotulo: 'Meta do cliente (R$)', valor: val('n-meta'), mascara: 'valor' })}
+          ${campo({ id: 'n-meta', rotulo: 'Meta do cliente (R$)', valor: val('n-meta'), mascara: 'valor',
+                    depois: html`<p class="campo-dica" id="n-meta-dica" hidden>Soma das metas dos fornecedores.</p>` })}
+        </div>
+        <div class="divisao" id="bloco-divisao" hidden>
+          ${interruptor({ id: 'n-dividir', rotulo: 'Dividir por fornecedor', marcado: ini['n-dividir'] === true,
+                          dica: 'Meta e investimento da indústria de cada fornecedor. O rebate é repartido na proporção da meta.' })}
+          <div class="divisao-corpo" id="divisao-corpo" hidden></div>
         </div>
         ${interruptor({ id: 'n-rebate', rotulo: 'Esta campanha tem rebate', marcado: rbOn, dica: 'Percentual pago ao cliente se ele bater a meta.' })}
         <div id="bloco-rebate"${rbOn ? '' : html` hidden`}>
@@ -736,7 +877,7 @@ export function montar(el, ctx, params) {
       <section class="painel" data-passo="3"><h2 class="painel-titulo">Observações</h2><div class="painel-corpo">
         <div class="recolhivel${val('n-observacoes') ? '' : ' recolhido'}">
           <button type="button" class="btn btn-texto acrescentar" data-acrescentar="n-observacoes">${icone('mais')} Acrescentar observações</button>
-          ${areaTexto({ id: 'n-observacoes', rotulo: 'Observações para o aprovador', valor: val('n-observacoes'), opcional: true })}
+          ${areaTexto({ id: 'n-observacoes', rotulo: 'Observações para o administrador', valor: val('n-observacoes'), opcional: true })}
         </div>
       </div></section>
       <section class="painel resumo-passos" data-passo="3"><h2 class="painel-titulo">Revisão</h2><div class="painel-corpo" id="resumo-passos"></div></section>
@@ -766,11 +907,12 @@ export function montar(el, ctx, params) {
 
   // O combo só acrescenta: escolheu, entra na lista de botões e o campo volta a ficar vazio.
   st.comboLab = combo($('#n-laboratorio', el), {
-    opcoes: () => (C.LABORATORIOS || []).filter(l => !st.labs.includes(l)).map(l => ({ valor: l, rotulo: l })),
-    vazio: 'Nenhum laboratório com esse nome (ou já está escolhido).',
+    // Com 5 escolhidos a lista fica vazia e explica o limite.
+    opcoes: () => (st.labs.length >= MAX_FORNECEDORES ? [] : (C.LABORATORIOS || []).filter(l => !st.labs.includes(l)).map(l => ({ valor: l, rotulo: l }))),
+    vazio: () => (st.labs.length >= MAX_FORNECEDORES ? `Limite de ${MAX_FORNECEDORES} fornecedores. Tire um para trocar.` : 'Nenhum fornecedor com esse nome (ou já está escolhido).'),
     aoEscolher: o => {
       if (!o) return;
-      if (!st.labs.includes(o.valor)) st.labs = [...st.labs, o.valor];
+      if (!st.labs.includes(o.valor) && st.labs.length < MAX_FORNECEDORES) st.labs = [...st.labs, o.valor];
       st.comboLab.definir(null);
       mudouLabs();
     },
@@ -799,6 +941,7 @@ export function montar(el, ctx, params) {
   const atualizarComprasDepois = debounce(atualizarCompras, 500);
   st.atualizarComprasDepois = atualizarComprasDepois;
   desenharLabs();
+  desenharDivisao();
 
   // Primeiro desenho do bloco "Quem recebe" com o que veio do rascunho/campanha.
   desenharRecebedor({ dados: ini.dadosPessoais || null });
@@ -812,7 +955,7 @@ export function montar(el, ctx, params) {
     // Enter no celular, antes do último passo, vale como "Continuar".
     ao(form, 'submit', 'form', e => { e.preventDefault(); if (telaDePassos() && st.passo < PASSOS.length) continuar(); else enviar(); }),
     ao(el, 'click', '[data-passo-continuar]', () => continuar()),
-    // Tirar um laboratório: o foco vai para o próximo botão (ou para o campo, se acabaram).
+    // Tirar um fornecedor: o foco vai para o próximo botão (ou para o campo, se acabaram).
     ao(form, 'click', '[data-tirar-lab]', (e, b) => {
       const i = st.labs.indexOf(b.dataset.tirarLab);
       st.labs = st.labs.filter(l => l !== b.dataset.tirarLab);
@@ -831,7 +974,8 @@ export function montar(el, ctx, params) {
       if (IDS_PESSOAIS.includes(c.id)) atualizarOfertaCadastro();
       salvar();
     }),
-    ao(form, 'input', '#n-inv-lynkz, #n-inv-industria, #n-meta, #n-rebate-pct, #n-rebate-teto', atualizarResumo),
+    ao(form, 'input', '#n-inv-lynkz, #n-inv-industria, #n-meta, #n-rebate-pct, #n-rebate-teto, [id^="n-div-"]', atualizarResumo),
+    ao(form, 'change', '#n-dividir', (e, cb) => { if (cb.checked) preencherDivisaoIgual(); desenharDivisao(); atualizarResumo(); salvar(); }),
     ao(form, 'change', 'input, select, textarea', () => salvar()),
     ao(form, 'change', '#n-tipo-meta', atualizarResumo),
     ao(form, 'change', '#n-pagamento, #n-tipo', (e, s) => {
@@ -869,7 +1013,15 @@ export function montar(el, ctx, params) {
       atualizarSomaNotas();
     }),
     ao(form, 'click', '#compras-tentar', () => atualizarCompras()),
-    ao(form, 'change', '#n-marca', (e, sel) => { st.marca = sel.value; atualizarCompras(); }),
+    // Marcas: cada botão liga/desliga uma; nenhuma = todas. Consulta de novo e devolve o foco ao botão.
+    ao(form, 'click', '[data-marca]', (e, b) => {
+      const m = b.dataset.marca;
+      if (st.marcas.includes(m)) st.marcas = st.marcas.filter(x => x !== m);
+      else if (st.marcas.length < MAX_MARCAS) st.marcas = [...st.marcas, m];
+      st.focoMarca = m;
+      atualizarCompras();
+    }),
+    ao(form, 'click', '[data-marcas-todas]', () => { st.marcas = []; st.focoMarca = null; atualizarCompras(); }),
     () => st.consulta?.abort(),
     ao(form, 'click', '[data-periodo]', (e, b) => {
       const [a, z] = periodosRapidos()[b.dataset.periodo];

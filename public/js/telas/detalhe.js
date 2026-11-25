@@ -1,10 +1,6 @@
-// ============================================================
-//  DETALHE — cabeçalho, régua, painéis e barra de decisão.
-//  Aprovar espera 5 s com "Desfazer" e depois abre a próxima pendente.
-//  Reprovar abre diálogo com motivos rápidos; motivo é obrigatório.
-// ============================================================
+// Detalhe da campanha: régua de custo, painéis, conferência no Qlik e barra de decisão.
 import { html, pintar, $, ao } from '../lib/dom.js';
-import { calc, banda, pct, brl, textoDevolucoes, dataBR, dias, maskCPF, maskTelefone, soDigitos, STATUS } from '../lib/regras.js';
+import { calc, banda, pct, brl, textoDevolucoes, dataBR, dias, maskCPF, maskTelefone, soDigitos, STATUS, partilha, listaLaboratorios, listaMarcas, textoMarcas } from '../lib/regras.js';
 import { icone } from '../ui/icones.js';
 import { selo, seloNeutro, regua, vazio, carregando, FAIXAS } from '../ui/pecas.js';
 import { botaoCopiar, ligarCopiar } from '../ui/copiar.js';
@@ -22,13 +18,24 @@ let atual = null;      // { el, ctx, id, desligar[] }
 const linha = (rotulo, valor, { empilhada = false, classe = '' } = {}) =>
   html`<div class="${empilhada ? 'empilhada' : ''}"><dt>${rotulo}</dt><dd class="${classe}">${valor === '' || valor == null ? '—' : valor}</dd></div>`;
 
+// Divisão por fornecedor: meta, parte da meta, indústria e rebate proporcional de cada um.
+function painelFornecedores(c) {
+  const partes = partilha(c);
+  if (!partes) return '';
+  const comRebate = +c.rebate_pct > 0;
+  return painel('Por fornecedor', html`${partes.map(p => linha(p.nome, html`<span class="forn-valores">
+    <span>Meta <b class="valor">R$ ${brl(p.meta)}</b>${+c.meta > 0 ? ` (${pct(p.peso)})` : ''}</span>
+    <span>Indústria <b class="valor">R$ ${brl(p.investimento_industria)}</b></span>
+    ${comRebate ? html`<span>Rebate <b class="valor">R$ ${brl(p.rebate)}</b></span>` : ''}</span>`))}`);
+}
+
 function painel(titulo, conteudo, extra = '') {
   return html`<section class="painel"><h3 class="painel-titulo">${titulo}${extra}</h3><dl class="linhas">${conteudo}</dl></section>`;
 }
 
 // Notas fiscais marcadas na campanha (carregadas sob demanda, uma vez por campanha).
 const notasCache = new Map();
-// Com muitas notas, mostra as primeiras e "Ver todas" (v2.9); lembra quais campanhas estão abertas.
+// Com muitas notas, mostra as primeiras e "Ver todas"; lembra quais campanhas estão abertas.
 const NOTAS_VISIVEIS = 5;
 const notasAbertas = new Set();
 // Conferência do aprovador: o total gravado veio do aparelho de quem pediu;
@@ -44,7 +51,7 @@ function blocoConferencia(c, ctx) {
   if (r.erro) return html`<p class="painel-corpo nota nota-alerta" role="status">${icone('alerta')}<span>${r.erro}</span></p>`;
   const mesmo = (a, b) => Math.abs((+a || 0) - (+b || 0)) < 0.01;
   const totalIgual = mesmo(r.total, c.compras_periodo);
-  // Devoluções (v2.9): só compara se a campanha gravou (site 2.8.1 não grava) e o Worker devolveu.
+  // Devoluções: só compara se a campanha gravou (site 2.8.1 não grava) e o Worker devolveu.
   const comparaDev = c.compras_devolucoes != null && r.devolucoes != null;
   const devIgual = !comparaDev || mesmo(r.devolucoes, c.compras_devolucoes);
   const igual = totalIgual && devIgual;
@@ -73,14 +80,14 @@ function painelNotas(c, ctx) {
   if (!c.compras_consultado_em) return '';
   const notas = notasCache.get(String(c.id));
   const total = notas ? notas.reduce((t, n) => t + +n.valor, 0) : 0;
-  // Notas de provável devolução (v2.9): riscadas, fora da soma; vêm da própria campanha.
+  // Notas de provável devolução: riscadas, fora da soma; vêm da própria campanha.
   const devolvidas = Array.isArray(c.compras_devolvidas) ? c.compras_devolvidas : [];
   const riscadas = devolvidas.map(n => html`<li class="nota-linha nota-devolvida">
           <span><strong>NF ${n.numero}${n.serie ? ` · série ${n.serie}` : ''}</strong> <small>${n.data ? dataBR(n.data) : ''}</small> <span class="selo selo-neutro">Provável devolução</span></span>
           <span class="valor">R$ ${brl(n.valor)}</span></li>`);
   return html`<section class="painel" id="det-notas"><h3 class="painel-titulo">Compras e notas fiscais</h3>
     <dl class="linhas">
-      ${linha(c.compras_marca ? `Comprou no período (marca ${c.compras_marca})` : 'Comprou no período', +c.compras_periodo || +c.compras_periodo === 0 ? `R$ ${brl(c.compras_periodo)}` : '')}
+      ${linha(c.compras_marca ? `Comprou no período (${listaMarcas(c.compras_marca).length > 1 ? 'marcas' : 'marca'} ${textoMarcas(c.compras_marca)})` : 'Comprou no período', +c.compras_periodo || +c.compras_periodo === 0 ? `R$ ${brl(c.compras_periodo)}` : '')}
       ${+c.compras_devolucoes > 0 ? linha('Devoluções no período', textoDevolucoes(c.compras_devolucoes, devolvidas.length)) : ''}
       ${linha('Consultado no Qlik em', dataBR(c.compras_consultado_em))}
     </dl>
@@ -118,7 +125,7 @@ function painelRecebedor(c, ctx) {
 
   if (ehSwile && c.swile_visivel === false) {
     return html`<section class="painel"><h3 class="painel-titulo">Quem recebe a premiação</h3>
-      <p class="nota painel-nota">${icone('cadeado')}<span>Os dados do pagamento Swile ficam visíveis só para o aprovador e para quem fez a solicitação.</span></p>
+      <p class="nota painel-nota">${icone('cadeado')}<span>Os dados do pagamento Swile ficam visíveis só para administradores e para quem fez a solicitação.</span></p>
       ${balc ? html`<dl class="linhas">${linkBalc}</dl>` : ''}</section>`;
   }
   const d = ehSwile
@@ -182,15 +189,19 @@ function corpo(c, ctx) {
         ${linha('Duração', d ? `${d} dias` : '')}
         ${linha('Pagamento', c.forma_pagamento)}
         ${linha('Tipo de meta', c.tipo_meta)}
-        ${linha('Meta do cliente', +c.meta ? `R$ ${brl(c.meta)}` : '')}
+        ${listaLaboratorios(c.laboratorio).length > 1 ? linha('Fornecedores', listaLaboratorios(c.laboratorio).join(', ')) : ''}
+        ${linha('Meta do cliente', +c.meta ? `R$ ${brl(c.meta)}${partilha(c) ? ' (soma dos fornecedores)' : ''}` : '')}
         ${c.observacoes ? linha('Observações', c.observacoes, { empilhada: true }) : ''}`)}
+
+      ${painelFornecedores(c)}
 
       ${+c.rebate_pct > 0 ? painel('Rebate', html`
         ${linha('Percentual', pctTexto(c.rebate_pct))}
         ${linha('Base de cálculo', c.rebate_base)}
         ${linha('Quando é devido', c.rebate_gatilho)}
         ${linha('Teto', +c.rebate_teto > 0 ? `R$ ${brl(c.rebate_teto)}` : 'sem teto')}
-        ${linha('Estimado', html`R$ ${brl(k.reb)}${k.limitado ? html` <span class="tag-teto">no teto</span>` : ''}`)}`) : ''}
+        ${linha('Estimado', html`R$ ${brl(k.reb)}${k.limitado ? html` <span class="tag-teto">no teto</span>` : ''}`)}
+        ${partilha(c) ? linha('Divisão', 'Proporcional à meta de cada fornecedor (o teto também)') : ''}`) : ''}
 
       ${painelRecebedor(c, ctx)}
 

@@ -1,8 +1,6 @@
-// ============================================================
-//  Edge Function "avisar-aprovador" (C3, v2.9) — PRONTA, NÃO PUBLICADA.
-//  Disparada por um Database Webhook do Supabase em INSERT na tabela campanhas.
-//  Manda um e-mail aos administradores ativos (papel "aprovador") com código,
-//  empresa, laboratório, custo e o link da campanha. Passo a passo: NOTIFICACOES.md.
+// Edge Function "avisar-aprovador" (pronta, não publicada). Disparada por um Database Webhook em INSERT
+// na tabela campanhas, manda e-mail aos administradores ativos com código, empresa, fornecedores, custo e link.
+// Publicar: npx supabase functions deploy avisar-aprovador --no-verify-jwt e criar o webhook com x-webhook-secret.
 //
 //  Segredos (npx supabase secrets set …):
 //    WEBHOOK_SECRET   mesmo valor do cabeçalho x-webhook-secret configurado no webhook

@@ -1,6 +1,4 @@
-// ============================================================
-//  PERFIL — dados, resumo, Excel, sair e versão.
-// ============================================================
+// Perfil: dados da conta, resumo, aparência, planilha Excel, troca de senha e saída.
 import { html, pintar, ao } from '../lib/dom.js';
 import { STATUS, quandoBR, rotuloPapel } from '../lib/regras.js';
 import { icone } from '../ui/icones.js';
@@ -10,6 +8,7 @@ import { sb } from '../lib/supabase.js';
 import { abrirDialogo, erroNoDialogo } from '../ui/avisos.js';
 import { aplicarErros } from '../ui/campos.js';
 import { campoSenha, ligarSenha } from '../ui/senha.js';
+import { TEMAS, temaEscolhido, escolherTema, aoMudarTema } from '../ui/tema.js';
 
 const C = window.CONFIG;
 
@@ -38,6 +37,17 @@ function desenhar(el, ctx) {
         <div><dt>Total no sistema</dt><dd class="tabular">${todas.length}</dd></div>
         <div><dt>Aguardando decisão</dt><dd class="tabular">${ctx.campanhas.pendentes().length}</dd></div>
       </dl>
+    </section>
+
+    <section class="painel">
+      <h3 class="painel-titulo" id="pf-tema-t">Aparência</h3>
+      <div class="painel-corpo temas" role="radiogroup" aria-labelledby="pf-tema-t">
+        ${TEMAS.map(t => html`<label class="tema-opcao">
+          <input type="radio" name="pf-tema" value="${t.valor}"${t.valor === temaEscolhido() ? html` checked` : ''}>
+          <span class="tema-amostra tema-amostra-${t.valor}" aria-hidden="true">${icone(t.ico)}</span>
+          <span class="tema-texto"><strong>${t.rotulo}</strong><small>${t.dica}</small></span>
+        </label>`)}
+      </div>
     </section>
 
     <section class="painel">
@@ -112,6 +122,8 @@ export function montar(el, ctx) {
     }),
     ao(el, 'click', '#pf-sair', () => ctx.sair()),
     ao(el, 'click', '#pf-senha', () => alterarSenha(ctx)),
+    ao(el, 'change', 'input[name="pf-tema"]', (e, r) => escolherTema(r.value)),
+    aoMudarTema(() => { const r = el.querySelector(`input[name="pf-tema"][value="${temaEscolhido()}"]`); if (r) r.checked = true; }),
     ctx.campanhas.assinar(() => { if (!el.querySelector('[aria-busy="true"]')) desenhar(el, ctx); }),
   ];
   return () => desligar.forEach(fn => fn());

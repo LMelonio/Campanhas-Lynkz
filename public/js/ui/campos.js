@@ -1,7 +1,4 @@
-// ============================================================
-//  CAMPOS — formulário acessível: <label for>, aria-describedby,
-//  erro com borda + ícone + texto, máscaras delegadas.
-// ============================================================
+// Campos de formulário acessíveis (label, aria-describedby, erro com ícone e texto) e máscaras.
 import { html, atributos, pintar, ao, $, $$ } from '../lib/dom.js';
 import { maskCPF, maskCNPJ, maskTelefone, lerValor, valorCampo } from '../lib/regras.js';
 import { icone } from './icones.js';
@@ -66,7 +63,7 @@ export function areaTexto({ id, rotulo, valor = '', dica = '', obrigatorio = fal
 }
 
 // Busca com botão "limpar" (×) de 44 px, visível só com texto. Esc também limpa.
-// placeholder curto (cabe em 360 px); a explicação completa vai em dica, lida pelo leitor de tela (v2.9).
+// placeholder curto (cabe em 360 px); a explicação completa vai em dica, lida pelo leitor de tela.
 export function campoBusca({ id, rotulo, valor = '', placeholder = '', dica = '' }) {
   return html`<div class="campo busca">
     <label class="so-leitor" for="${id}">${rotulo}</label>

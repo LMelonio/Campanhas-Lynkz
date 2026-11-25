@@ -3,9 +3,9 @@
 //   cliente com código terminado em 0 → nenhuma nota deste laboratório (comprou R$ 850 de outros)
 //   cliente com código terminado em 00 → o Qlik não devolve nada do cliente (cliente_total 0)
 //   código 9999                       → erro do Qlik
-//   código terminado em 12            → 12 notas (lista recolhida em 5, v2.9)
-//   código terminado em 7             → NF 209001 (R$ 300) devolvida: vem como provável devolução (v2.9)
-//   código terminado em 8             → devolução de R$ 50 sem nota que feche (v2.9)
+//   código terminado em 12            → 12 notas
+//   código terminado em 7             → NF 209001 (R$ 300) devolvida: vem como provável devolução
+//   código terminado em 8             → devolução de R$ 50 sem nota que feche
 //   os demais                         → 3 notas, de duas marcas (WELLPET e PROTEÇÃO); com "marca" no pedido, só as dela
 export const ROTA_QLIK = '/api/qlik/compras';
 
@@ -33,12 +33,14 @@ export function qlikSimulado(rq, rs) {
     }
     const soma = l => Math.round(l.reduce((t, n) => t + n.valor, 0) * 100) / 100;
     const marcas = vazio ? [] : ['WELLPET', 'PROTEÇÃO'].map(nome => ({ nome, valor: soma(todas.filter(n => n.marca === nome)) })).sort((a, b) => b.valor - a.valor);
-    let notas = (vazio ? [] : todas.filter(n => !p.marca || n.marca === p.marca)).map(({ marca, ...n }) => n);
-    // Devoluções (v2.9): o total já desconta; devolucoes = soma das notas − total.
+    // Uma marca (texto) ou várias.
+    const marcasPedidas = p.marca == null ? [] : Array.isArray(p.marca) ? p.marca : [p.marca];
+    let notas = (vazio ? [] : todas.filter(n => !marcasPedidas.length || marcasPedidas.includes(n.marca))).map(({ marca, ...n }) => n);
+    // Devoluções: o total já desconta; devolucoes = soma das notas − total.
     const cod = String(p.codigo_cliente);
     const devolucoes = vazio || p.marca ? 0 : cod.endsWith('7') ? 300 : cod.endsWith('8') ? 50 : 0;
     if (cod.endsWith('7') && !vazio && !p.marca) notas = notas.map(n => (n.numero === '209001' ? { ...n, provavel_devolucao: true } : n));
-    // Vários laboratórios (v2.12): um fornecedor por padrão, como o Worker devolve.
+    // Vários laboratórios: um fornecedor por padrão, como o Worker devolve.
     const padroes = Array.isArray(p.fornecedor_padrao) ? p.fornecedor_padrao : [p.fornecedor_padrao];
     const fornecedores = padroes.length > 1
       ? padroes.map(x => String(x).replace(/\*/g, '').trim().toUpperCase() + ' DISTRIBUIDORA').sort()

@@ -1,23 +1,10 @@
-// ============================================================
-//  SERVICE WORKER — app instalável, abertura rápida e reserva offline.
-//
-//  v2.6: cada versão guarda TODOS os arquivos do app de uma vez (ARQUIVOS),
-//  então o celular abre a partir do aparelho, sem esperar a rede para cada
-//  um dos ~35 arquivos, e nunca mistura arquivos de duas versões.
-//   - Página (navegação) e config.js: rede primeiro (pegam versão nova e
-//     troca de banco na hora); sem rede, a cópia guardada.
-//   - Demais arquivos do app: cópia guardada na hora e atualização em
-//     segundo plano (se alguém esquecer de subir a VERSAO, a próxima
-//     abertura já pega o arquivo novo).
-//   - Fontes do Google: guardadas na primeira vez.
-//   - Supabase e /api/: nunca passam pelo cache.
-//  VERSAO tem de ser igual à do config.js e à VERSAO_APP do js/app.js. Módulo novo em public/js/?
-//  Acrescente em ARQUIVOS (o teste de navegador confere).
-// ============================================================
-const VERSAO = '2.12.0';
+// Service worker: guarda todos os arquivos da versão (ARQUIVOS) para abrir rápido e sem rede.
+// Página e config.js: rede primeiro. Demais: cópia guardada e atualização em segundo plano. Supabase e /api/ não passam pelo cache.
+// VERSAO igual à de config.js e app.js; módulo novo entra em ARQUIVOS (o teste confere).
+const VERSAO = '3.0.0';
 const CACHE = 'campanhas-' + VERSAO;
 const ARQUIVOS = [
-  './', 'config.js', 'manifest.json',          // './' e não 'index.html': o Cloudflare redireciona /index.html → /
+  './', 'config.js', 'tema-inicial.js', 'manifest.json',          // './' e não 'index.html': o Cloudflare redireciona /index.html → /
   'css/tokens.css', 'css/base.css', 'css/componentes.css', 'css/telas.css',
   'assets/logo.png', 'assets/logo-branca.png', 'assets/icon-192.png',
   'vendor/supabase-2.119.0.js',
@@ -27,7 +14,7 @@ const ARQUIVOS = [
   'js/telas/campanhas.js', 'js/telas/detalhe.js', 'js/telas/gestao.js', 'js/telas/historico.js',
   'js/telas/inicio.js', 'js/telas/nova.js', 'js/telas/perfil.js', 'js/telas/usuarios.js',
   'js/ui/adp-dialogo.js', 'js/ui/avisos.js', 'js/ui/cadastro-dialogos.js', 'js/ui/campos.js', 'js/ui/combo.js', 'js/ui/copiar.js', 'js/ui/decisao.js',
-  'js/ui/estado.js', 'js/ui/icones.js', 'js/ui/pecas.js', 'js/ui/senha.js',
+  'js/ui/estado.js', 'js/ui/icones.js', 'js/ui/tema.js', 'js/ui/pecas.js', 'js/ui/senha.js',
 ];
 const FONTES = ['fonts.googleapis.com', 'fonts.gstatic.com'];
 const REDE_PRIMEIRO = new Set(['/config.js']);

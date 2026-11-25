@@ -1,9 +1,4 @@
-// ============================================================
-//  DECISÃO — aprovar (com 5 s para desfazer) e reprovar (com motivo).
-//  Usado pelo detalhe da campanha e pela lista de Campanhas (v2.9):
-//  o mesmo comportamento nos dois lugares. Só há uma aprovação em espera
-//  por vez; quem desenha botões assina para redesenhar quando ela muda.
-// ============================================================
+// Aprovar (com 5 s para desfazer) e reprovar (com motivo), iguais no detalhe e na lista. Uma aprovação em espera por vez.
 import { html, $, ao } from '../lib/dom.js';
 import { calc, brl, STATUS } from '../lib/regras.js';
 import { icone } from './icones.js';
@@ -74,7 +69,7 @@ export async function reprovarComMotivo(ctx, c, { depois = null } = {}) {
   const corpoDlg = html`
     ${MOTIVOS_RAPIDOS.length ? html`<p class="campo-legenda" id="mr-rot">Motivos rápidos</p>
       <div class="chips" role="group" aria-labelledby="mr-rot">${MOTIVOS_RAPIDOS.map(m => html`<button type="button" class="chip" data-motivo="${m}">${m}</button>`)}</div>` : ''}
-    ${areaTexto({ id: 'rp-motivo', rotulo: 'Motivo da reprova', obrigatorio: true, dica: 'O coordenador vai ler isso. Diga o que precisa mudar.', atributos: { maxlength: 1000 } })}`;
+    ${areaTexto({ id: 'rp-motivo', rotulo: 'Motivo da reprova', obrigatorio: true, dica: 'Quem pediu a campanha vai ler este motivo. Diga o que precisa mudar.', atributos: { maxlength: 1000 } })}`;
   let desligarChips = () => {};
   let reprovada = false;
   await abrirDialogo({

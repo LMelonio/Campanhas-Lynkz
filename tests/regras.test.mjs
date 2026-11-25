@@ -5,6 +5,7 @@ import {
   calc, banda, posRegua, lerValor, valorCampo, pct, brl, contem, cpfValido, cnpjValido, maskCPF, maskCNPJ,
   maskTelefone, telefoneValido, dataCivil, dataBR, dias, dataExcel, colunaExcel, errosRecebedor,
   nomeCompleto, emailValido, textoDevolucoes, listaLaboratorios, juntarLaboratorios,
+  MAX_FORNECEDORES, MAX_MARCAS, feriadosNacionais, diaUtil, somaDiasUteis, listaMarcas, juntarMarcas, textoMarcas, lerDivisao, somaDivisao, partilha, errosDivisao, LIMITES as LIM,
 } from '../public/js/lib/regras.js';
 
 test('laboratórios (v2.12): texto da campanha ↔ lista', () => {
@@ -200,4 +201,96 @@ test('LIMITES das devoluções batem com campanhas_devolucoes_faixa do banco (mi
   const c = constraintDoSchema('campanhas_devolucoes_faixa');
   assert.equal(Number(c.match(/compras_devolucoes <= (\d+)/)[1]), LIMITES.compras_devolucoes);
   assert.equal(Number(c.match(/jsonb_array_length\(compras_devolvidas\) <= (\d+)/)[1]), LIMITES.compras_devolvidas);
+});
+
+// ---------- fornecedores ----------
+const divisao = (o = {}) => ({
+  laboratorio: 'Ouro Fino, Avert', meta: 30000, investimento_industria: 1500, rebate_pct: 2, rebate_teto: 0,
+  fornecedores: [{ nome: 'Ouro Fino', meta: 20000, investimento_industria: 1000 }, { nome: 'Avert', meta: 10000, investimento_industria: 500 }],
+  ...o,
+});
+
+test('lerDivisao: só com 2 ou mais fornecedores; números vindos do banco (texto) viram número', () => {
+  assert.equal(lerDivisao({ fornecedores: null }), null);
+  assert.equal(lerDivisao({}), null);
+  assert.equal(lerDivisao({ fornecedores: [{ nome: 'A', meta: 1 }] }), null, 'um só não é divisão');
+  assert.deepEqual(lerDivisao({ fornecedores: [{ nome: 'A', meta: '10.5' }, { nome: 'B' }] }),
+    [{ nome: 'A', meta: 10.5, investimento_industria: 0 }, { nome: 'B', meta: 0, investimento_industria: 0 }]);
+});
+
+test('somaDivisao soma em centavos', () => {
+  assert.deepEqual(somaDivisao([{ meta: 0.1, investimento_industria: 0.2 }, { meta: 0.2, investimento_industria: 0.1 }]), { meta: 0.3, investimento_industria: 0.3 });
+  assert.deepEqual(somaDivisao([]), { meta: 0, investimento_industria: 0 });
+});
+
+test('partilha: rebate proporcional à meta de cada fornecedor', () => {
+  const p = partilha(divisao());
+  assert.deepEqual(p.map(x => x.rebate), [400, 200], '2% de 20 mil e de 10 mil');
+  assert.deepEqual(p.map(x => Math.round(x.peso * 1000) / 1000), [0.667, 0.333]);
+  assert.equal(p[0].investimento_industria, 1000);
+  assert.equal(partilha({ ...divisao(), fornecedores: null }), null, 'sem divisão');
+});
+
+test('partilha: o teto é repartido na mesma proporção e as partes fecham com o total', () => {
+  const p = partilha(divisao({ rebate_teto: 500 }));
+  assert.equal(calc(divisao({ rebate_teto: 500 })).reb, 500);
+  assert.deepEqual(p.map(x => x.rebate), [333.33, 166.67]);
+  assert.equal(Math.round(p.reduce((s, x) => s + x.rebate, 0) * 100), 50000, 'soma = R$ 500,00 exatos');
+  const tres = partilha({ meta: 3, rebate_pct: 100, rebate_teto: 1, fornecedores: [{ nome: 'A', meta: 1 }, { nome: 'B', meta: 1 }, { nome: 'C', meta: 1 }] });
+  assert.deepEqual(tres.map(x => x.rebate), [0.33, 0.33, 0.34], 'centavos que sobram vão para o último');
+});
+
+test('partilha: sem meta, partes iguais e rebate zero', () => {
+  const p = partilha({ meta: 0, rebate_pct: 2, fornecedores: [{ nome: 'A', meta: 0 }, { nome: 'B', meta: 0 }] });
+  assert.deepEqual(p.map(x => x.peso), [0.5, 0.5]);
+  assert.deepEqual(p.map(x => x.rebate), [0, 0]);
+});
+
+test('errosDivisao: valor inválido, negativo, acima do limite e soma acima do limite', () => {
+  assert.deepEqual(errosDivisao([{ meta: 1, investimento_industria: 0 }, { meta: 2, investimento_industria: 0 }]), { porLinha: {}, geral: '' });
+  const e = errosDivisao([{ meta: NaN, investimento_industria: -1 }, { meta: LIM.meta + 1, investimento_industria: LIM.investimento_industria + 1 }]);
+  assert.match(e.porLinha[0].meta, /inválido/);
+  assert.match(e.porLinha[0].investimento_industria, /inválido/);
+  assert.match(e.porLinha[1].meta, /limite/);
+  assert.match(e.porLinha[1].investimento_industria, /limite/);
+  assert.match(errosDivisao([{ meta: LIM.meta, investimento_industria: 0 }, { meta: 1, investimento_industria: 0 }]).geral, /soma das metas/);
+});
+
+test('MAX_FORNECEDORES bate com o banco (migração 14)', () => {
+  assert.equal(MAX_FORNECEDORES, 5);
+  const sql = readFileSync(new URL('../sql/schema.sql', import.meta.url), 'utf8');
+  const i = sql.indexOf('add constraint campanhas_fornecedores_max');
+  assert.ok(i > 0, 'campanhas_fornecedores_max não encontrada em sql/schema.sql');
+  assert.match(sql.slice(i, sql.indexOf('not valid', i)), /<= 5\)/);
+  assert.match(sql, /jsonb_array_length\(f\) > 5/);
+});
+
+test('marcas (v2.14): texto gravado ↔ lista, sem repetir; vírgula no nome não separa', () => {
+  assert.deepEqual(listaMarcas('WELLPET; PROTEÇÃO'), ['WELLPET', 'PROTEÇÃO']);
+  assert.deepEqual(listaMarcas('WELLPET'), ['WELLPET'], 'campanha antiga, com uma marca');
+  assert.deepEqual(listaMarcas(' A ;; B; A '), ['A', 'B']);
+  assert.deepEqual(listaMarcas('CAES, GATOS; X'), ['CAES, GATOS', 'X'], 'vírgula fica no nome');
+  assert.deepEqual(listaMarcas(null), []);
+  assert.deepEqual(listaMarcas(['A', 'A', 'B']), ['A', 'B']);
+  assert.equal(juntarMarcas(['WELLPET', 'PROTEÇÃO']), 'WELLPET; PROTEÇÃO');
+  assert.equal(textoMarcas('A; B; C'), 'A, B e C');
+  assert.equal(textoMarcas('A'), 'A');
+  assert.equal(MAX_MARCAS, 10);
+});
+
+test('MAX_MARCAS bate com o Worker', async () => {
+  const { MAX_MARCAS: doWorker } = await import('../worker/qlik-engine.js');
+  assert.equal(doWorker, MAX_MARCAS);
+});
+
+test('dias úteis: fins de semana e feriados nacionais (fixos e móveis) não contam', () => {
+  const f = feriadosNacionais(2026);
+  for (const d of ['2026-01-01', '2026-02-16', '2026-02-17', '2026-04-03', '2026-04-21', '2026-06-04', '2026-11-20', '2026-12-25']) assert.ok(f.has(d), d);
+  assert.ok(feriadosNacionais(2027).has('2027-03-26'), 'Sexta-feira Santa de 2027');
+  assert.equal(diaUtil('2026-11-28'), false, 'sábado');
+  assert.equal(diaUtil('2026-11-25'), true, 'quarta comum');
+  assert.equal(somaDiasUteis('2026-11-25', 7), '2026-12-04');
+  assert.equal(somaDiasUteis('2026-12-22', 7), '2027-01-04', 'pula Natal e Ano-Novo');
+  assert.equal(somaDiasUteis('2027-02-05', 7), '2027-02-18', 'pula o Carnaval');
+  assert.equal(somaDiasUteis('2026-11-27', 1), '2026-11-30', 'sexta + 1 = segunda');
 });

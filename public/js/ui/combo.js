@@ -1,8 +1,4 @@
-// ============================================================
-//  COMBO — combobox ARIA com lista filtrada (busca sem acento).
-//  O valor só "assume" um item da lista; texto solto volta ao último item
-//  escolhido ao sair do campo. Opção "Cadastrar …" opcional.
-// ============================================================
+// Combobox ARIA com busca sem acento. Só aceita item da lista; texto solto volta ao último escolhido.
 import { html, pintar } from '../lib/dom.js';
 import { contem, normaliza } from '../lib/regras.js';
 
@@ -11,7 +7,7 @@ import { contem, normaliza } from '../lib/regras.js';
 //   valor: valor inicial,
 //   aoEscolher(opcao | null),
 //   criar: { rotulo: termo => 'Cadastrar a empresa “X”', aoCriar: termo => void },
-//   vazio: 'Nenhum resultado',
+//   vazio: 'Nenhum resultado' (ou função que devolve o texto),
 // }) → { definir(valor), valor(), abrir(), desligar() }
 export function combo(input, { opcoes, valor = null, aoEscolher = () => {}, criar = null, vazio = 'Nenhum resultado', limite = 60 }) {
   const id = input.id;
@@ -58,7 +54,7 @@ export function combo(input, { opcoes, valor = null, aoEscolher = () => {}, cria
           ? html`<li role="option" id="${id}-op-${i}" class="combo-opcao${i === ativo ? ' ativa' : ''}" data-i="${i}"
                 aria-selected="${atual && String(atual.valor) === String(v.o.valor) ? 'true' : 'false'}">${v.o.rotulo}${v.o.detalhe ? html`<small>${v.o.detalhe}</small>` : ''}</li>`
           : html`<li role="option" id="${id}-op-${i}" class="combo-opcao combo-criar${i === ativo ? ' ativa' : ''}" data-i="${i}" aria-selected="false">${criar.rotulo(v.termo)}</li>`)}`
-      : html`<li class="combo-vazio" role="presentation">${vazio}</li>`);
+      : html`<li class="combo-vazio" role="presentation">${typeof vazio === 'function' ? vazio() : vazio}</li>`);
     if (ativo >= 0) {
       input.setAttribute('aria-activedescendant', `${id}-op-${ativo}`);
       document.getElementById(`${id}-op-${ativo}`)?.scrollIntoView({ block: 'nearest' });

@@ -1,15 +1,4 @@
-// ============================================================
-//  CAMPO DE SENHA — reutilizável (login, nova senha, alterar senha).
-//
-//  campoSenha({ id, rotulo, novo, autocomplete, extraRotulo })
-//   - botão de olho (mostrar/ocultar) dentro do campo, aria-pressed/aria-label
-//   - aviso "Caps Lock está ligado" (role="status") só com o campo em foco
-//   - novo: true → medidor de força + requisitos ao vivo
-//  ligarSenha(raiz, { email }) liga os eventos de todos os campos de senha
-//  da raiz e devolve a função que desliga. email: () => texto, para o
-//  requisito "diferente do e-mail".
-//  Compatível com campos.js: tem data-campo e .campo-erro (aplicarErros).
-// ============================================================
+// Campo de senha: mostrar/ocultar, aviso de Caps Lock e, em senha nova, força e requisitos ao vivo.
 import { html, atributos, pintar, ao, $, $$ } from '../lib/dom.js';
 import { icone } from './icones.js';
 

@@ -178,7 +178,7 @@ body.manutencao .menu-nova, body.manutencao .bi-nova { visibility: hidden; }
   *, *::before, *::after { animation-duration: .001ms !important; animation-iteration-count: 1 !important; transition-duration: .001ms !important; scroll-behavior: auto !important; }
 }
 
-/* v2.9.1: a barra de baixo leva ao Perfil; o menu abre só pelo ☰ do topo.
+/* a barra de baixo leva ao Perfil; o menu abre só pelo ☰ do topo.
    Ponto vermelho no ☰ quando há contas esperando liberação (administrador). */
 .topo-menu { position: relative; }
 .topo-menu.com-aviso::after {
