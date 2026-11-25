@@ -486,10 +486,15 @@ kbd {
 .forn-valores b { font-weight: 600; }
 
 /* ---------- Nova: marcas da consulta do Qlik, uma ou várias ---------- */
+/* Mesmo ritmo dos outros campos: rótulo de 14 px, 6 px até os botões e 16 px abaixo do bloco. */
 .marcas-qlik { border: 0; padding: 0; margin: var(--e-2) 0 0; min-width: 0; }
+.marcas-qlik legend { padding: 0; margin-bottom: 6px; font-size: var(--t-14); font-weight: 600; color: var(--ink); }
+.marcas-qlik .campo-opc { font-weight: 400; color: var(--ink-2); }
 .marcas-qlik .campo-dica { margin: 0; }
-.marcas-lista { margin-top: var(--e-2); }
-.chip-marca { display: inline-flex; align-items: center; min-height: var(--tap); gap: var(--e-1); padding: 0 var(--e-2); }
+.marcas-qlik .marcas-lista { margin: 0; }
+.marcas-qlik + .notas-fiscais { margin-top: var(--e-4); }
+/* Botões de marca mais baixos que o --tap, mas com 36 px para o dedo acertar. */
+.chip-marca { display: inline-flex; align-items: center; min-height: 36px; gap: var(--e-1); padding: 0 var(--e-2); }
 .chip-marca .ico { width: 16px; height: 16px; }
 .chip-marca[aria-pressed="true"] { border-color: var(--red); background: var(--red-soft); color: var(--red-ink); font-weight: 600; }
 .chip-marca[aria-pressed="true"] .chip-valor { color: var(--red-ink); }

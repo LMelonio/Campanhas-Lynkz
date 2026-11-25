@@ -111,7 +111,9 @@ function desenharDivisao() {
   const ligado = pode && $('#n-dividir', st.el).checked;
   const corpo = $('#divisao-corpo', st.el);
   corpo.hidden = !ligado;
+  // A explicação só aparece com a divisão ligada (no celular, o passo 2 fica mais curto).
   pintar(corpo, ligado ? html`
+    <p class="campo-dica">Meta e indústria de cada fornecedor. O rebate é repartido na proporção da meta.</p>
     ${st.labs.map((nome, i) => html`<fieldset class="div-linha" data-div-nome="${nome}" data-div-i="${i}">
       <legend class="div-nome">${nome}</legend>
       <div class="grade-2">
@@ -585,9 +587,9 @@ function blocoMarcas(c) {
   const valor = nome => c.marcas.find(m => m.nome === nome)?.valor;
   const cheio = sel.length >= MAX_MARCAS;
   return html`<fieldset class="campo marcas-qlik" data-campo="n-marcas">
-    <legend class="campo-rotulo">Marcas <span class="campo-opc">(opcional)</span></legend>
-    <p class="campo-dica" id="n-marcas-dica">Filtre por uma ou mais. Nenhuma marcada = todas.${cheio ? ` Limite de ${MAX_MARCAS} marcas.` : ''}</p>
-    <div class="chips marcas-lista" role="group" aria-label="Marcas" aria-describedby="n-marcas-dica">
+    <legend class="campo-rotulo">Marcas <span class="campo-opc">(opcional · nenhuma = todas)</span></legend>
+    ${cheio ? html`<p class="campo-dica" id="n-marcas-dica">Limite de ${MAX_MARCAS} marcas.</p>` : ''}
+    <div class="chips marcas-lista" role="group" aria-label="Marcas"${cheio ? html` aria-describedby="n-marcas-dica"` : ''}>
       ${nomes.map(n => {
         const on = sel.includes(n);
         return html`<button type="button" class="chip chip-marca" data-marca="${n}" aria-pressed="${on ? 'true' : 'false'}"${!on && cheio ? html` disabled` : ''}>${on ? icone('check') : ''}${n}${valor(n) != null ? html` <span class="chip-valor">${moeda(valor(n))}</span>` : ''}</button>`;
@@ -841,7 +843,7 @@ export function montar(el, ctx, params) {
         <div class="grade-2">
           ${campo({ id: 'n-inv-lynkz', rotulo: 'LYNKZ (R$)', valor: val('n-inv-lynkz'), mascara: 'valor' })}
           ${campo({ id: 'n-inv-industria', rotulo: 'Indústria (R$)', valor: val('n-inv-industria'), mascara: 'valor',
-                    depois: html`<p class="campo-dica" id="n-inv-industria-dica" hidden>Soma dos fornecedores (em Contrapartida do cliente).</p>` })}
+                    depois: html`<p class="campo-dica" id="n-inv-industria-dica" hidden>Os totais são a soma dos fornecedores.</p>` })}
         </div>
         <p class="campo-dica bloco-dica">LYNKZ sai do caixa agora; Indústria é a bonificação paga no mês seguinte. Em branco se não houver.</p>
         ${selecao({ id: 'n-pagamento', rotulo: 'Forma de pagamento', opcoes: C.PAGTO, valor: val('n-pagamento') })}
@@ -856,11 +858,10 @@ export function montar(el, ctx, params) {
         <div class="grade-2 quebra">
           ${selecao({ id: 'n-tipo-meta', rotulo: 'Tipo de meta', opcoes: C.METAS, valor: val('n-tipo-meta') })}
           ${campo({ id: 'n-meta', rotulo: 'Meta do cliente (R$)', valor: val('n-meta'), mascara: 'valor',
-                    depois: html`<p class="campo-dica" id="n-meta-dica" hidden>Soma das metas dos fornecedores.</p>` })}
+                    depois: html`<p class="campo-dica" id="n-meta-dica" hidden>Os totais são a soma dos fornecedores.</p>` })}
         </div>
         <div class="divisao" id="bloco-divisao" hidden>
-          ${interruptor({ id: 'n-dividir', rotulo: 'Dividir por fornecedor', marcado: ini['n-dividir'] === true,
-                          dica: 'Meta e investimento da indústria de cada fornecedor. O rebate é repartido na proporção da meta.' })}
+          ${interruptor({ id: 'n-dividir', rotulo: 'Dividir por fornecedor', marcado: ini['n-dividir'] === true })}
           <div class="divisao-corpo" id="divisao-corpo" hidden></div>
         </div>
         ${interruptor({ id: 'n-rebate', rotulo: 'Esta campanha tem rebate', marcado: rbOn, dica: 'Percentual pago ao cliente se ele bater a meta.' })}
