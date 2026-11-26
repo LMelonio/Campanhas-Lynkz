@@ -2786,6 +2786,17 @@ teste('v3.2: comissões no celular (360 px) e no tema escuro — sem rolagem lat
   }
 }, { largura: 360, altura: 740, toque: true, escuro: true });
 
+// As tabelas de comissões têm 7 colunas: entre 700 e 1100 px rolam na própria caixa, sem empurrar a página nem cortar colunas.
+teste('v3.3: comissões em 1024 px com as vendas buscadas — Apuração e Contrato sem rolagem lateral', async ({ page }) => {
+  await previaOutubro(page);
+  afirma(await semOverflow(page, 'Comissões apuração 1024 px'), 'apuração sem rolagem lateral');
+  await page.click('[data-aba="contrato"]');
+  await page.locator('[data-contrato]').first().waitFor();
+  afirma(await semOverflow(page, 'Comissões contrato 1024 px'), 'contrato sem rolagem lateral');
+  const cortada = await page.evaluate(() => [...document.querySelectorAll('.cm-tabela')].some(t => t.scrollWidth > t.parentElement.clientWidth && getComputedStyle(t.parentElement).overflowX !== 'auto'));
+  afirma(!cortada, 'nenhuma tabela cortada pela caixa');
+}, { largura: 1024, altura: 768 });
+
 // ============================================================
 //  execução
 // ============================================================
