@@ -33,6 +33,10 @@ const ABAS = [
 const ABAS_DO_MES = ['previa', 'premiacoes', 'contrato'];
 
 let s = null;   // { el, ctx, aba, pronto, erro, mes, resultado, buscando, erroQlik, busca, inativos, gerando, historico, desligar[] }
+// O mês vai no endereço (#/comissoes?aba=previa&mes=2026-10) e fica lembrado aqui:
+// quem sai pelo menu e volta continua no mesmo mês, com a consulta ao Qlik que está na memória.
+let mesLembrado = null;
+const MES_RE = /^\d{4}-(0[1-9]|1[0-2])$/;
 
 const r$ = n => `R$ ${brl(n)}`;
 const pctTxt = n => `${Number(n).toLocaleString('pt-BR', { maximumFractionDigits: 2 })}%`;
@@ -833,13 +837,13 @@ async function salvarParametros(form) {
 // ---------- montagem ----------
 async function trocarMes(mes) {
   const meu = s;
-  s.mes = mes; s.erroQlik = null;
+  s.mes = mesLembrado = mes; s.erroQlik = null;
   try {
     await comissoes.carregarMes(mes);
     if (s !== meu) return;
     s.resultado = await comissoes.apurar(mes, { buscar: false });
   } catch (e) { if (s === meu) s.ctx.toast(detalhar(e).mensagem, { tom: 'erro' }); }
-  if (s === meu) desenhar();
+  if (s === meu) { marcarEndereco(); desenhar(); }
 }
 
 async function carregar() {
@@ -848,7 +852,8 @@ async function carregar() {
   try {
     await comissoes.carregar();
     if (s !== meu) return;
-    s.mes ||= mesPadrao();
+    s.mes = mesLembrado = s.mes || mesPadrao();
+    marcarEndereco();
     await comissoes.carregarMes(s.mes);
     s.resultado = await comissoes.apurar(s.mes, { buscar: false });
     s.pronto = true;
@@ -857,13 +862,17 @@ async function carregar() {
 }
 
 const abaDe = params => (ABAS.some(a => a.valor === params?.query?.aba) ? params.query.aba : 'previa');
+const mesDe = params => (MES_RE.test(params?.query?.mes || '') ? params.query.mes : null);
+const rotaDe = (aba, mes) => `#/comissoes?aba=${aba}${mes ? `&mes=${mes}` : ''}`;
+// Põe o mês no endereço sem criar entrada no histórico do navegador.
+const marcarEndereco = () => { if (s?.mes) s.ctx.navegar(rotaDe(s.aba, s.mes), { substituir: true }); };
 
 export function montar(el, ctx, params) {
-  s = { el, ctx, aba: abaDe(params), pronto: false, erro: null, mes: null, resultado: null, buscando: false, erroQlik: null, busca: '', inativos: false, gerando: null, desligar: [] };
+  s = { el, ctx, aba: abaDe(params), pronto: false, erro: null, mes: mesDe(params) || mesLembrado, resultado: null, buscando: false, erroQlik: null, busca: '', inativos: false, gerando: null, desligar: [] };
   ctx.cabecalho({ titulo: 'Comissões' });
   const doCadastro = id => comissoes.cadastro().find(x => String(x.id) === String(id));
   s.desligar.push(
-    ao(el, 'click', '[data-aba]', (e, b) => ctx.navegar(`#/comissoes?aba=${b.dataset.aba}`, { substituir: true })),
+    ao(el, 'click', '[data-aba]', (e, b) => ctx.navegar(rotaDe(b.dataset.aba, s.mes), { substituir: true })),
     ao(el, 'click', '#cm-tentar', () => { s.erro = null; desenhar(); carregar(); }),
     ao(el, 'click', '#cm-buscar', buscar),
     ao(el, 'change', '#cm-mes', (e, sel) => { if (sel.value) trocarMes(sel.value); }),
@@ -878,7 +887,7 @@ export function montar(el, ctx, params) {
     ao(el, 'click', '[data-remover]', (e, b) => remover(b.dataset.remover)),
     ao(el, 'click', '#cm-fechar', () => s.resultado && fecharMes()),
     ao(el, 'click', '#cm-reabrir', reabrirMes),
-    ao(el, 'click', '[data-abrir-mes]', async (e, b) => { await trocarMes(b.dataset.abrirMes); ctx.navegar('#/comissoes?aba=previa', { substituir: true }); }),
+    ao(el, 'click', '[data-abrir-mes]', async (e, b) => { s.aba = 'previa'; await trocarMes(b.dataset.abrirMes); }),
     ao(el, 'click', '[data-contrato]', (e, b) => { const c = doCadastro(b.dataset.contrato); if (c) editarContrato(c); }),
     ao(el, 'click', '[data-editar]', (e, b) => { const c = doCadastro(b.dataset.editar); if (c) editar(c); }),
     ao(el, 'change', '#cm-inativos', (e, i) => { s.inativos = i.checked; desenhar(); }),
@@ -901,5 +910,10 @@ export function montar(el, ctx, params) {
 export function atualizar(params) {
   if (!s) return;
   s.aba = abaDe(params);
+  const mes = mesDe(params);
+  if (mes && mes !== s.mes) {
+    if (s.pronto) { trocarMes(mes); return; }
+    s.mes = mesLembrado = mes;
+  }
   desenhar();
 }

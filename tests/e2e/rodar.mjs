@@ -2586,6 +2586,32 @@ teste('v3.3: comissões — apuração separa Farelo, aplica acordo e contrato e
   afirma(novo && novo.regime === 'PJ' && novo.pj_documento === '12345678000195', 'gravado: ' + JSON.stringify(novo));
 });
 
+teste('v3.4: comissões — o mês escolhido fica no endereço e volta com a apuração', async ({ page }) => {
+  await previaOutubro(page);
+  afirma(page.url().endsWith('#/comissoes?aba=previa&mes=2026-10'), 'mês no endereço: ' + page.url());
+  await page.click('[data-aba="premiacoes"]');
+  await page.locator('#cm-form-premio').waitFor();
+  afirma(page.url().endsWith('aba=premiacoes&mes=2026-10'), 'aba e mês no endereço: ' + page.url());
+  await page.click('[data-aba="previa"]');
+  await page.locator('.cm-destaque', { hasText: 'outubro 2026' }).waitFor();
+  // Sai pelo menu e volta: mesmo mês, com a consulta da memória (sem buscar no Qlik de novo).
+  let consultas = 0;
+  page.on('request', rq => { if (rq.url().includes('/api/qlik/comissoes')) consultas++; });
+  await page.evaluate(() => { location.hash = '#/inicio'; });
+  await page.waitForFunction(() => location.hash === '#/inicio');
+  await page.evaluate(() => { location.hash = '#/comissoes'; });
+  await page.locator('.cm-destaque', { hasText: 'outubro 2026' }).waitFor();
+  igual(await page.inputValue('#cm-mes'), '2026-10', 'seletor no mês lembrado');
+  igual(consultas, 0, 'sem nova consulta ao Qlik');
+  // Recarregar: o mês vem do endereço.
+  await page.reload();
+  await page.waitForSelector('#cm-mes');
+  igual(await page.inputValue('#cm-mes'), '2026-10', 'mês do endereço depois de recarregar');
+  // Endereço com outro mês troca o mês da tela.
+  await page.evaluate(() => { location.hash = '#/comissoes?aba=premiacoes&mes=2026-09'; });
+  await page.locator('#cm-t-premio', { hasText: 'setembro 2026' }).waitFor();
+});
+
 teste('v3.3: comissões — "não comissiona" tira o nome dos novos e grava nos parâmetros', async ({ page }) => {
   await previaOutubro(page);
   await page.click('[data-ignorar="SEM CADASTRO LTDA"]');
