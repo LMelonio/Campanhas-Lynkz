@@ -389,6 +389,8 @@ function validar() {
   else if (st.labs.length > MAX_FORNECEDORES) e['n-laboratorio'] = `No máximo ${MAX_FORNECEDORES} fornecedores. Tire algum.`;
   else if (labsTexto().length > LIMITES.textos.laboratorio) e['n-laboratorio'] = `Fornecedores demais: os nomes juntos passam de ${LIMITES.textos.laboratorio} caracteres. Tire algum.`;
   if (!v('n-campanha')) e['n-campanha'] = 'Dê um nome à campanha.';
+  // Sem a forma de pagamento, a campanha aprovada fica fora da ADP (que só pega Swile).
+  if (!v('n-pagamento')) e['n-pagamento'] = 'Escolha a forma de pagamento.';
   if (v('n-inicio') && v('n-fim') && v('n-fim') < v('n-inicio')) e['n-fim'] = 'O fim está antes do início.';
 
   // Dividindo, meta e indústria são a soma (só leitura): os erros vão para os campos de cada fornecedor.
@@ -848,7 +850,7 @@ export function montar(el, ctx, params) {
                     depois: html`<p class="campo-dica" id="n-inv-industria-dica" hidden>Os totais são a soma dos fornecedores.</p>` })}
         </div>
         <p class="campo-dica bloco-dica">LYNKZ sai do caixa agora; Indústria é a bonificação paga no mês seguinte. Em branco se não houver.</p>
-        ${selecao({ id: 'n-pagamento', rotulo: 'Forma de pagamento', opcoes: C.PAGTO, valor: val('n-pagamento') })}
+        ${selecao({ id: 'n-pagamento', rotulo: 'Forma de pagamento', opcoes: C.PAGTO, valor: val('n-pagamento'), obrigatorio: true, vazio: 'Escolha a forma de pagamento', dica: 'Com Swile, a campanha entra na ADP e pede os dados de quem recebe.' })}
       </div></section>
 
       <section class="painel" id="bloco-recebedor" data-passo="3" hidden>
