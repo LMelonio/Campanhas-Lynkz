@@ -16,6 +16,10 @@ export const CONFIG_PADRAO = {
     // Comissões: quem vendeu e de qual fornecedor (código), como na extração "Base Qlik 26 - 25".
     vendedor:         'Vendedor B2B',
     codigoFornecedor: 'Cód. Fornecedor',
+    // Só para a aba "Base Qlik" do Excel das comissões (as mesmas colunas da extração manual).
+    segmento:         'Segmento',
+    codigoVendedor:   'Cód. Vendedor B2B',
+    produto:          'Produto',
   },
   devolucao: 'Devolução',   // valor de tipoVenda nas linhas de devolução
   // Filtros fixos das vendas da LYNKZ (os mesmos do Painel Vendedor).
@@ -401,4 +405,31 @@ export async function consultarComissoes(engine, { appId, config = CONFIG_PADRAO
     apuracao: { ...apuracao, vendas, total, sem_vendedor: semVendedor },
     contrato: { ...contrato, linhas },
   };
+}
+
+// Base do Excel das comissões: as vendas do período linha a linha, como a extração manual
+// "Base Qlik 26 - 25" (Data · Cód. Fornecedor · Fornecedor · Segmento · Marca · Cód. Vendedor · Vendedor · Produto · Receita).
+export const MAX_LINHAS_BASE = 60000;
+/**
+ * @returns {{ inicio, fim, linhas: {data,cod_fornecedor,fornecedor,segmento,marca,cod_vendedor,vendedor,produto,valor}[] }}
+ */
+export async function consultarBaseComissoes(engine, { appId, config = CONFIG_PADRAO, apuracao }) {
+  const c = config.campos;
+  const doc = await engine.rpc(-1, 'OpenDoc', { qDocName: appId });
+  const hDoc = doc.qReturn.qHandle;
+  const campos = [c.data, c.codigoFornecedor, c.fornecedor, c.segmento, c.marca, c.codigoVendedor, c.vendedor, c.produto];
+  const b = await criarCubo(engine, hDoc, {
+    qDimensions: campos.map(f => ({ qDef: { qFieldDefs: [f] }, qNullSuppression: false })),
+    qMeasures: [{ qDef: { qDef: expressao(config, conjuntoPeriodo({ config, ...apuracao })) } }],
+    qSuppressZero: true, qInitialDataFetch: [],
+  }, 'da base (data, fornecedor, segmento, marca, vendedor ou produto)');
+  const n = b.cubo.qSize.qcy;
+  if (n > MAX_LINHAS_BASE) throw new ErroQlik(`A base tem ${n} linhas; o máximo para o Excel é ${MAX_LINHAS_BASE}.`, { status: 422 });
+  const linhas = (await lerLinhas(engine, b.h, n, campos.length + 1)).map(l => ({
+    data: Number.isFinite(l[0].qNum) ? dataDoSerial(l[0].qNum) : '',
+    cod_fornecedor: limpa(l[1].qText), fornecedor: limpa(l[2].qText), segmento: limpa(l[3].qText),
+    marca: limpa(l[4].qText), cod_vendedor: limpa(l[5].qText), vendedor: limpa(l[6].qText),
+    produto: limpa(l[7].qText), valor: arredonda(l[8].qNum),
+  }));
+  return { ...apuracao, linhas };
 }

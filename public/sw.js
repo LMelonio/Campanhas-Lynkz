@@ -1,16 +1,16 @@
 // Service worker: guarda todos os arquivos da versão (ARQUIVOS) para abrir rápido e sem rede.
 // Página e config.js: rede primeiro. Demais: cópia guardada e atualização em segundo plano. Supabase e /api/ não passam pelo cache.
 // VERSAO igual à de config.js e app.js; módulo novo entra em ARQUIVOS (o teste confere).
-const VERSAO = '3.2.1';
+const VERSAO = '3.3.0';
 const CACHE = 'campanhas-' + VERSAO;
 const ARQUIVOS = [
   './', 'config.js', 'tema-inicial.js', 'manifest.json',          // './' e não 'index.html': o Cloudflare redireciona /index.html → /
   'css/tokens.css', 'css/base.css', 'css/componentes.css', 'css/telas.css',
   'assets/logo.png', 'assets/logo-branca.png', 'assets/icon-192.png',
   'vendor/supabase-2.119.0.js', 'vendor/instrument-sans-5.3.0-latin.woff2',
-  'js/app.js', 'js/acesso.js', 'js/exportar.js', 'js/adp.js',
+  'js/app.js', 'js/acesso.js', 'js/exportar.js', 'js/adp.js', 'js/comissoes-excel.js', 'js/comissoes-pdf.js',
   'js/dados/cadastros.js', 'js/dados/campanhas.js', 'js/dados/comissoes.js', 'js/dados/erros.js', 'js/dados/qlik.js', 'js/dados/saude.js', 'js/dados/usuarios.js',
-  'js/lib/comissoes.js', 'js/lib/dom.js', 'js/lib/regras.js', 'js/lib/supabase.js', 'js/lib/url-auth.js',
+  'js/lib/comissoes.js', 'js/lib/comissoes-documentos.js', 'js/lib/dom.js', 'js/lib/regras.js', 'js/lib/supabase.js', 'js/lib/url-auth.js',
   'js/telas/campanhas.js', 'js/telas/comissoes.js', 'js/telas/detalhe.js', 'js/telas/gestao.js', 'js/telas/historico.js',
   'js/telas/inicio.js', 'js/telas/nova.js', 'js/telas/perfil.js', 'js/telas/usuarios.js',
   'js/ui/adp-dialogo.js', 'js/ui/avisos.js', 'js/ui/cadastro-dialogos.js', 'js/ui/campos.js', 'js/ui/combo.js', 'js/ui/copiar.js', 'js/ui/decisao.js',

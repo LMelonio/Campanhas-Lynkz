@@ -1,6 +1,6 @@
 // Worker do Cloudflare: /api/qlik/compras, /api/qlik/comissoes (só administrador) e /api/usuarios/convidar; o resto do site é estático.
 // Segredos (wrangler secret put): QLIK_API_KEY, SUPABASE_SERVICE_ROLE_KEY. Demais variáveis em wrangler.jsonc.
-import { abrirEngine, consultarCompras, consultarComissoes, codigoFornecedorSeguro, ErroQlik, CONFIG_PADRAO, codigoSeguro, padraoSeguro, serialQlik, MAX_PADROES, marcasSeguras } from './qlik-engine.js';
+import { abrirEngine, consultarCompras, consultarComissoes, consultarBaseComissoes, codigoFornecedorSeguro, ErroQlik, CONFIG_PADRAO, codigoSeguro, padraoSeguro, serialQlik, MAX_PADROES, marcasSeguras } from './qlik-engine.js';
 
 // Cabeçalhos de segurança também nas respostas da API (o _headers só vale para arquivos estáticos).
 const CABECALHOS = {
@@ -174,7 +174,7 @@ export async function tratarCompras(request, env, { conectar = conectarQlik } = 
 }
 
 // ---------- comissões ----------
-// Pedido: { apuracao_inicio, apuracao_fim, contrato_inicio, contrato_fim, cod_farelo }.
+// Pedido: { apuracao_inicio, apuracao_fim, contrato_inicio, contrato_fim, cod_farelo } ou { apuracao_inicio, apuracao_fim, base: true }.
 // O app calcula os períodos (26 a 25 e o mês anterior fechado); aqui só conferimos o formato.
 const MAX_DIAS_COMISSAO = 62;
 function periodoSeguro(inicio, fim, rotulo) {
@@ -188,6 +188,17 @@ export async function tratarComissoes(request, env, { conectar = conectarQlik } 
   const corpo = await lerCorpo(request);
   if (!corpo || typeof corpo !== 'object' || Array.isArray(corpo)) return json({ erro: 'Pedido inválido.' }, 400);
   const apuracao = periodoSeguro(corpo.apuracao_inicio, corpo.apuracao_fim, 'Apuração');
+  // { base: true }: só as vendas linha a linha do período, para a aba "Base Qlik" do Excel.
+  if (corpo.base === true) {
+    const ws = await conectar(env);
+    const engine = abrirEngine(ws, { tempoMs: 60000 });
+    try {
+      const r = await consultarBaseComissoes(engine, { appId: env.QLIK_APP_ID, config: configDoEnv(env), apuracao });
+      return json({ base: r, consultado_em: new Date().toISOString() });
+    } finally {
+      engine.fechar();
+    }
+  }
   const contrato = periodoSeguro(corpo.contrato_inicio, corpo.contrato_fim, 'Contrato de Resultado');
   const codFarelo = codigoFornecedorSeguro(corpo.cod_farelo);
   const ws = await conectar(env);

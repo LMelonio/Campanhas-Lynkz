@@ -1,4 +1,4 @@
-// Comissões: cadastro de comissionados, parâmetros, consulta ao Qlik e apuração do mês.
+// Comissões: cadastro de comissionados, parâmetros, premiações e dados do PJ no mês, consulta ao Qlik e apuração.
 // Só o administrador lê e grava (RLS da migração 16). O cálculo é de lib/comissoes.js (puro, com teste);
 // este módulo junta banco + Qlik + cálculo para a tela pedir só "apure este mês".
 import { sb } from '../lib/supabase.js';
@@ -42,10 +42,18 @@ const porNome = (a, b) => a.nome.localeCompare(b.nome, 'pt-BR', { sensitivity: '
 let lista = null;            // cadastro em memória
 let params = null;           // parâmetros em memória
 const consultas = new Map(); // mês → resposta do Qlik (a tela recalcula sem consultar de novo)
+const doMes = new Map();     // mês → { premiacoes: [], ajustes: [], mesPj: [], fechamento } do banco
 
-async function pedirAoQlik(mes, sinal) {
-  const ap = periodoApuracao(mes, params.dia_corte);
-  const ct = mesAnteriorFechado(mes);
+const lerPremiacao = r => ({ ...r, valor: Number(r.valor) });
+const lerMesPj = r => {
+  const x = { ...r };
+  for (const k of ['meta_faturamento', 'meta_positivacao', 'realizado_faturamento', 'realizado_positivacao', 'nf_valor']) x[k] = numero(x[k]);
+  return x;
+};
+const lerFechamento = r => (r ? { ...r, total: Number(r.total), total_clt: Number(r.total_clt), total_pj: Number(r.total_pj) } : null);
+const COLUNAS_HISTORICO = 'id,mes,status,total,total_clt,total_pj,fechado_em,fechado_por,reaberto_em,motivo_reabertura';
+const vazioMes = () => ({ premiacoes: [], ajustes: [], mesPj: [], fechamento: null });
+async function postarQlik(corpo, sinal) {
   const { data } = await sb.auth.getSession();
   const token = data?.session?.access_token;
   if (!token) throw new ErroApp('Entre de novo no app para consultar o Qlik.');
@@ -54,14 +62,21 @@ async function pedirAoQlik(mes, sinal) {
     resp = await fetch('/api/qlik/comissoes', {
       method: 'POST', signal: sinal,
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ apuracao_inicio: ap.inicio, apuracao_fim: ap.fim, contrato_inicio: ct.inicio, contrato_fim: ct.fim, cod_farelo: params.cod_farelo }),
+      body: JSON.stringify(corpo),
     });
   } catch (e) {
     if (e.name === 'AbortError') throw e;
     throw new ErroApp('Sem conexão para consultar o Qlik. Confira a internet e tente de novo.');
   }
-  const corpo = await resp.json().catch(() => ({}));
-  if (!resp.ok) throw new ErroApp(corpo.erro || 'Não foi possível consultar o Qlik agora.');
+  const r = await resp.json().catch(() => ({}));
+  if (!resp.ok) throw new ErroApp(r.erro || 'Não foi possível consultar o Qlik agora.');
+  return r;
+}
+
+async function pedirAoQlik(mes, sinal) {
+  const ap = periodoApuracao(mes, params.dia_corte);
+  const ct = mesAnteriorFechado(mes);
+  const corpo = await postarQlik({ apuracao_inicio: ap.inicio, apuracao_fim: ap.fim, contrato_inicio: ct.inicio, contrato_fim: ct.fim, cod_farelo: params.cod_farelo }, sinal);
   return { ...corpo, cod_farelo: params.cod_farelo, dia_corte: params.dia_corte };
 }
 
@@ -94,12 +109,6 @@ export const comissoes = {
     return params;
   },
 
-  // "Este nome do Qlik também é desta pessoa."
-  ligarNome(nome, comissionadoId) {
-    const c = (lista || []).find(x => String(x.id) === String(comissionadoId));
-    if (!c) throw new ErroApp('Pessoa não encontrada. Recarregue a página.');
-    return this.salvar({ ...c, nomes_qlik: [...c.nomes_qlik, nome] }, c.id);
-  },
   // "Este nome do Qlik não comissiona" (venda da empresa, por exemplo).
   ignorarNome(nome) {
     const atuais = this.parametros().nomes_ignorados;
@@ -107,17 +116,133 @@ export const comissoes = {
     return this.salvarParametros({ nomes_ignorados: [...atuais, nomeQlik(nome)] });
   },
 
+  // ---------- o mês: premiações e dados do PJ (metas, realizado informado, NF) ----------
+  // Lê do banco as premiações e os dados do PJ do mês. A tela chama ao trocar de mês.
+  async carregarMes(mes) {
+    const [p, a, m, f] = await Promise.all([
+      sb.from('comissao_premiacoes').select('*').eq('mes', mes).order('id'),
+      sb.from('comissao_ajustes').select('*').eq('mes', mes).order('id'),
+      sb.from('comissao_mes_pj').select('*').eq('mes', mes),
+      sb.from('comissao_fechamentos').select('*').eq('mes', mes).maybeSingle(),
+    ]);
+    doMes.set(mes, { premiacoes: (exigir(p) || []).map(lerPremiacao), ajustes: (exigir(a) || []).map(lerPremiacao),
+      mesPj: (exigir(m) || []).map(lerMesPj), fechamento: lerFechamento(exigir(f)) });
+    return doMes.get(mes);
+  },
+  premiacoes: mes => (doMes.get(mes)?.premiacoes || []).filter(x => x.ativo !== false),
+  ajustes: mes => (doMes.get(mes)?.ajustes || []).filter(x => x.ativo !== false),
+  // Fechamento do mês (com a cópia) ou null. fechado(mes): está no histórico e travado.
+  fechamento: mes => doMes.get(mes)?.fechamento || null,
+  fechado(mes) { return this.fechamento(mes)?.status === 'fechado'; },
+  mesPj: (mes, comissionadoId) => (doMes.get(mes)?.mesPj || []).find(x => String(x.comissionado_id) === String(comissionadoId)) || null,
+
+  async lancarPremiacao({ mes, comissionado_id, descricao, valor }) {
+    const r = lerPremiacao(exigir(await sb.from('comissao_premiacoes')
+      .insert({ mes, comissionado_id: Number(comissionado_id), descricao: String(descricao).trim(), valor }).select('*').single()));
+    const m = doMes.get(mes) || vazioMes();
+    m.premiacoes = [...m.premiacoes, r];
+    doMes.set(mes, m);
+    return r;
+  },
+  // Ajuste: acréscimo (+) ou desconto (−) fora da regra, com motivo. Entra depois do acordo mínimo.
+  async lancarAjuste({ mes, comissionado_id, motivo, valor }) {
+    const r = lerPremiacao(exigir(await sb.from('comissao_ajustes')
+      .insert({ mes, comissionado_id: Number(comissionado_id), motivo: String(motivo).trim(), valor }).select('*').single()));
+    const m = doMes.get(mes) || vazioMes();
+    m.ajustes = [...m.ajustes, r];
+    doMes.set(mes, m);
+    return r;
+  },
+  async removerAjuste(mes, id) {
+    exigir(await sb.from('comissao_ajustes').update({ ativo: false }).eq('id', id).select('id').single());
+    const m = doMes.get(mes);
+    if (m) m.ajustes = m.ajustes.map(x => (x.id === id ? { ...x, ativo: false } : x));
+  },
+  // Ninguém apaga: a premiação sai desativada (fica na auditoria).
+  async removerPremiacao(mes, id) {
+    exigir(await sb.from('comissao_premiacoes').update({ ativo: false }).eq('id', id).select('id').single());
+    const m = doMes.get(mes);
+    if (m) m.premiacoes = m.premiacoes.map(x => (x.id === id ? { ...x, ativo: false } : x));
+  },
+
+  // Grava os campos do PJ no mês (cria a linha na primeira vez).
+  // campos: meta_faturamento, meta_positivacao, realizado_faturamento, realizado_positivacao, realizado_motivo, nf_numero.
+  async salvarMesPj(mes, comissionadoId, campos) {
+    const atual = this.mesPj(mes, comissionadoId);
+    const r = lerMesPj(exigir(atual
+      ? await sb.from('comissao_mes_pj').update(campos).eq('id', atual.id).select('*').single()
+      : await sb.from('comissao_mes_pj').insert({ mes, comissionado_id: Number(comissionadoId), ...campos }).select('*').single()));
+    const m = doMes.get(mes) || vazioMes();
+    m.mesPj = [...m.mesPj.filter(x => x.id !== r.id), r];
+    doMes.set(mes, m);
+    return r;
+  },
+
+  // Vendas do período linha a linha (aba "Base Qlik" do Excel). Consulta pesada: só ao baixar o Excel.
+  async buscarBase(mes, { sinal } = {}) {
+    if (!params) await this.carregar();
+    const ap = periodoApuracao(mes, params.dia_corte);
+    const r = await postarQlik({ apuracao_inicio: ap.inicio, apuracao_fim: ap.fim, base: true }, sinal);
+    return r.base;
+  },
+
+  // ---------- histórico ----------
+  // Meses fechados ou reabertos, sem a cópia (leve). → [{ mes, status, total, total_clt, total_pj, fechado_em, … }]
+  async historico() {
+    return (exigir(await sb.from('comissao_fechamentos').select(COLUNAS_HISTORICO).order('mes', { ascending: false })) || []).map(lerFechamento);
+  },
+  // Fecha o mês com a apuração da tela: grava a cópia do que foi pago (cálculo, cadastro usado,
+  // premiações, ajustes e parâmetros). Mês reaberto: troca a cópia.
+  async fecharMes(resultado) {
+    const mes = resultado.mes;
+    const ids = new Set(resultado.linhas.map(l => l.id));
+    const dados = {
+      resultado, parametros: this.parametros(),
+      cadastro: (lista || []).filter(c => ids.has(c.id)),
+      premiacoes: this.premiacoes(mes), ajustes: this.ajustes(mes),
+    };
+    const campos = { status: 'fechado', dados, total: resultado.totais.geral.valor_pagar, total_clt: resultado.totais.clt.valor_pagar, total_pj: resultado.totais.pj.valor_pagar };
+    const atual = this.fechamento(mes);
+    const r = lerFechamento(exigir(atual
+      ? await sb.from('comissao_fechamentos').update(campos).eq('id', atual.id).select('*').single()
+      : await sb.from('comissao_fechamentos').insert({ mes, ...campos }).select('*').single()));
+    (doMes.get(mes) || doMes.set(mes, vazioMes()).get(mes)).fechamento = r;
+    return r;
+  },
+  async reabrirMes(mes, motivo) {
+    const atual = this.fechamento(mes);
+    if (!atual) throw new ErroApp('Este mês não está no histórico.');
+    const r = lerFechamento(exigir(await sb.from('comissao_fechamentos').update({ status: 'reaberto', motivo_reabertura: motivo }).eq('id', atual.id).select('*').single()));
+    doMes.get(mes).fechamento = r;
+    return r;
+  },
+  // O que os documentos do mês usam: a cópia do histórico (mês fechado) ou o que está no banco agora.
+  contextoDocumentos(mes) {
+    const f = this.fechamento(mes);
+    if (f?.status === 'fechado' && f.dados) {
+      const d = f.dados;
+      return { cadastro: d.cadastro || [], premiacoes: d.premiacoes || [], ajustes: d.ajustes || [], parametros: { ...PARAMETROS_PADRAO, ...(d.parametros || {}) }, fechado: true };
+    }
+    return { cadastro: this.cadastro(), premiacoes: this.premiacoes(mes), ajustes: this.ajustes(mes), parametros: this.parametros(), fechado: false };
+  },
+
   // Apuração do mês com o cadastro e os parâmetros atuais.
+  // Mês fechado: devolve a cópia do histórico (não consulta o Qlik nem recalcula).
   // buscar: true consulta o Qlik; false reaproveita a última consulta do mês (null se não houver).
   // Uma consulta feita com outro código de Farelo ou outro corte não é reaproveitada.
   // → resultado de apurarMes + { consulta: { consultado_em, total, sem_vendedor } }
   async apurar(mes, { buscar = true, sinal } = {}) {
     if (!params) await this.carregar();
+    if (!doMes.has(mes)) await this.carregarMes(mes);
+    const f = this.fechamento(mes);
+    if (f?.status === 'fechado' && f.dados?.resultado) return { ...f.dados.resultado, fechado: f };
     let q = consultas.get(mes);
     if (q && (q.cod_farelo !== params.cod_farelo || q.dia_corte !== params.dia_corte)) q = null;
     if (buscar) { q = await pedirAoQlik(mes, sinal); consultas.set(mes, q); }
     if (!q) return null;
-    const r = apurarMes({ mes, comissionados: lista, parametros: params, vendas: q.apuracao.vendas, contratoLinhas: q.contrato.linhas });
+    const m = doMes.get(mes);
+    const r = apurarMes({ mes, comissionados: lista, parametros: params, vendas: q.apuracao.vendas, contratoLinhas: q.contrato.linhas,
+      premiacoes: m.premiacoes, ajustes: m.ajustes, mesPj: m.mesPj });
     return { ...r, consulta: { consultado_em: q.consultado_em, total: q.apuracao.total, sem_vendedor: Number(q.apuracao.sem_vendedor) || 0 } };
   },
 };

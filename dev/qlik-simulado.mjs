@@ -73,8 +73,7 @@ export function qlikComissoesSimulado(rq, rs) {
       { vendedor: 'RAYANE CUNHA DOS ANJOS', total: 71727.48, farelo: 799.8 },
       { vendedor: 'ALEX REPRESENTAÇÕES', total: 118401.89, farelo: 0 },
       { vendedor: 'SELDIANA ARAUJO BARROS', total: 125709.18, farelo: 16423.12 },
-      { vendedor: 'MARIA AMANDA FARIAS DE SOUSA', total: 32519.02, farelo: 0 },
-      { vendedor: 'M A F DE SOUSA', total: 9768.34, farelo: 0 },
+      { vendedor: 'MARIA AMANDA FARIAS DE SOUSA', total: 42287.36, farelo: 0 },
       { vendedor: 'SEM CADASTRO LTDA', total: 1530.4, farelo: 0 },
       { vendedor: 'TERRAZOO', total: 40210.77, farelo: 0 },
     ];
@@ -86,8 +85,21 @@ export function qlikComissoesSimulado(rq, rs) {
     };
     espalhar('ALEX REPRESENTAÇÕES', 211223.09, 37);
     espalhar('SELDIANA ARAUJO BARROS', 170987.71, 76);
-    espalhar('M A F DE SOUSA', 44117.99, 22);
+    espalhar('MARIA AMANDA FARIAS DE SOUSA', 44117.99, 22);
     linhas.push({ vendedor: 'ALEX REPRESENTAÇÕES', cliente: '9001', valor: -150 });   // só devolução: não positiva
+    // { base: true }: as mesmas vendas linha a linha (aba "Base Qlik" do Excel). O Farelo sai do fornecedor 6610.
+    if (p.base === true) {
+      const r2 = n => Math.round(n * 100) / 100;
+      const base = [];
+      vendas.forEach((v, i) => {
+        const resto = r2(v.total - v.farelo);
+        const cod = String(100 + i);
+        base.push({ data: p.apuracao_inicio, cod_fornecedor: '7064', fornecedor: 'OURO FINO', segmento: 'PET FARMACIA', marca: 'PROTEÇÃO', cod_vendedor: cod, vendedor: v.vendedor, produto: 'BANNI COMBO COM 3 PIPETAS', valor: r2(resto * 0.6) });
+        base.push({ data: p.apuracao_fim, cod_fornecedor: '21610', fornecedor: 'DBM MINERAIS LTDA', segmento: 'PET HIGIENE E BELEZA', marca: 'CAT MIA', cod_vendedor: cod, vendedor: v.vendedor, produto: 'AREIA SANITARIA CAT MIA 4KG', valor: r2(resto - r2(resto * 0.6)) });
+        if (v.farelo) base.push({ data: p.apuracao_fim, cod_fornecedor: '6610', fornecedor: 'FARELO DO NORTE', segmento: 'AGRO', marca: 'FARELO', cod_vendedor: cod, vendedor: v.vendedor, produto: 'FARELO DE SOJA 50KG', valor: v.farelo });
+      });
+      return responder(200, { base: { inicio: p.apuracao_inicio, fim: p.apuracao_fim, linhas: base }, consultado_em: new Date().toISOString() });
+    }
     const total = Math.round(vendas.reduce((s, v) => s + v.total, 0) * 100) / 100 + 87.5;
     responder(200, {
       apuracao: { inicio: p.apuracao_inicio, fim: p.apuracao_fim, vendas, total, sem_vendedor: 87.5 },
