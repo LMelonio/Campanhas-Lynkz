@@ -167,11 +167,15 @@ teste('acesso: link de recuperação abre "Crie sua nova senha" e valida', async
   await page.goto(`${BASE}/?zerar=1#access_token=t&refresh_token=r&type=recovery`);
   await page.locator('#acesso h1', { hasText: 'Crie sua nova senha' }).waitFor();
   afirma(!page.url().includes('access_token'), 'token fora da URL');
-  await page.fill('#n-senha', '123'); await page.click('#n-ok');
-  await page.locator('#n-msg', { hasText: '8 caracteres' }).waitFor();
-  await page.fill('#n-senha', '12345678'); await page.fill('#n-senha2', '12345679'); await page.click('#n-ok');
+  await page.fill('#n-senha', '123456789'); await page.click('#n-ok');
+  await page.locator('#n-msg', { hasText: '10 caracteres' }).waitFor();
+  // A conta simulada é ana@lynkz.com.br: senha com o nome é recusada (requisito ao vivo e ao salvar).
+  await page.fill('#n-senha', 'Ana@202612'); await page.click('#n-ok');
+  await page.locator('#n-msg', { hasText: 'nome nem seu e-mail' }).waitFor();
+  afirma(!(await page.locator('#n-senha-forca [data-req="pessoal"]').getAttribute('class') || '').includes('ok'), 'requisito "sem seu nome" desmarcado');
+  await page.fill('#n-senha', '1234567890'); await page.fill('#n-senha2', '1234567891'); await page.click('#n-ok');
   await page.locator('#n-msg', { hasText: 'não são iguais' }).waitFor();
-  await page.fill('#n-senha2', '12345678'); await page.click('#n-ok');
+  await page.fill('#n-senha2', '1234567890'); await page.click('#n-ok');
   await page.locator('#l-msg', { hasText: 'Senha alterada' }).waitFor();
   igual(await page.evaluate(() => localStorage.getItem('lynkz_recuperacao_pendente')), null, 'marca de recuperação removida');
 });
@@ -2425,7 +2429,7 @@ teste('v3.0: link de convite abre "Crie sua senha" e, salvando, entra direto no 
   await page.goto(`${BASE}/?zerar=1#access_token=t&refresh_token=r&type=invite`);
   await page.locator('#acesso h1', { hasText: 'Crie sua senha' }).waitFor();
   afirma(!page.url().includes('access_token'), 'token fora da URL');
-  await page.fill('#n-senha', '12345678'); await page.fill('#n-senha2', '12345678');
+  await page.fill('#n-senha', '1234567890'); await page.fill('#n-senha2', '1234567890');
   await page.click('#n-ok');
   await page.waitForSelector('#app:not([hidden])');
   igual(await page.evaluate(() => localStorage.getItem('lynkz_recuperacao_pendente')), null, 'marca removida');

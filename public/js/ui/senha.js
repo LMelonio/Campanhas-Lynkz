@@ -1,11 +1,13 @@
 // Campo de senha: mostrar/ocultar, aviso de Caps Lock e, em senha nova, força e requisitos ao vivo.
 import { html, atributos, pintar, ao, $, $$ } from '../lib/dom.js';
 import { icone } from './icones.js';
+import { SENHA_MIN, temPedacoPessoal } from '../lib/regras.js';
 
+// Tamanho e "sem nome nem e-mail" são obrigatórios (problemaSenha() em regras.js); letras e números só pesam na força.
 const REQUISITOS = [
-  { chave: 'tamanho', texto: '8 caracteres ou mais', ok: v => v.length >= 8 },
+  { chave: 'tamanho', texto: `${SENHA_MIN} caracteres ou mais`, ok: v => v.length >= SENHA_MIN },
   { chave: 'mistura', texto: 'letras e números', ok: v => /\p{L}/u.test(v) && /\d/.test(v) },
-  { chave: 'email', texto: 'diferente do e-mail', ok: (v, email) => !!v && v.toLowerCase() !== String(email || '').trim().toLowerCase() },
+  { chave: 'pessoal', texto: 'sem seu nome nem seu e-mail', ok: (v, pessoa) => !!v && !temPedacoPessoal(v, pessoa) },
 ];
 const NIVEIS = { 1: 'fraca', 2: 'média', 3: 'forte' };
 
@@ -39,13 +41,13 @@ function alternarOlho(botao, mostrar) {
   pintar(botao, icone(mostrar ? 'olho-fechado' : 'olho'));
 }
 
-function atualizarForca(input, email) {
+function atualizarForca(input, pessoa) {
   const caixa = document.getElementById(input.id + '-forca');
   if (!caixa) return;
   const v = input.value;
   let n = 0;
   for (const r of REQUISITOS) {
-    const ok = r.ok(v, email);
+    const ok = r.ok(v, pessoa);
     if (ok) n++;
     const li = $(`[data-req="${r.chave}"]`, caixa);
     li.classList.toggle('ok', ok);
@@ -57,7 +59,9 @@ function atualizarForca(input, email) {
   pintar($('.forca-texto', caixa), v ? `Força: ${NIVEIS[nivel]}` : '');
 }
 
-export function ligarSenha(raiz, { email = () => '' } = {}) {
+// email e nome: funções que devolvem os dados da conta (a senha não pode contê-los).
+export function ligarSenha(raiz, { email = () => '', nome = () => '' } = {}) {
+  const pessoa = () => ({ email: email(), nome: nome() });
   const caps = (input, ligado) => {
     const p = document.getElementById(input.id + '-caps');
     if (!p) return;
@@ -77,11 +81,11 @@ export function ligarSenha(raiz, { email = () => '' } = {}) {
     ao(raiz, 'keydown', 'input[data-senha]', (e, i) => { if (e.getModifierState) caps(i, e.getModifierState('CapsLock')); }),
     ao(raiz, 'keyup', 'input[data-senha]', (e, i) => { if (e.getModifierState) caps(i, e.getModifierState('CapsLock')); }),
     ao(raiz, 'focusout', 'input[data-senha]', (e, i) => caps(i, false)),
-    ao(raiz, 'input', 'input[data-senha-nova]', (e, i) => atualizarForca(i, email())),
+    ao(raiz, 'input', 'input[data-senha-nova]', (e, i) => atualizarForca(i, pessoa())),
     // Ao enviar, volta tudo para "password" (o gerenciador de senhas e o
     // histórico do navegador nunca recebem a senha como texto comum).
     ao(raiz, 'submit', 'form', () => $$('[data-olho]', raiz).forEach(b => alternarOlho(b, false)), true),
   ];
-  $$('input[data-senha-nova]', raiz).forEach(i => atualizarForca(i, email()));
+  $$('input[data-senha-nova]', raiz).forEach(i => atualizarForca(i, pessoa()));
   return () => desligar.forEach(fn => fn());
 }

@@ -48,6 +48,26 @@ export const normaliza = s => String(s ?? '')
   .normalize('NFD').replace(/[̀-ͯ]/g, '')
   .toLowerCase().trim();
 
+// ---------- senha nova ----------
+// O Supabase também precisa do mesmo mínimo (Authentication → Policies), para valer fora do app.
+export const SENHA_MIN = 10;
+const PARTICULAS = new Set(['da', 'de', 'do', 'das', 'dos']);
+// Palavras do nome e do e-mail (antes do @) com 3 letras ou mais: senha como "Carlos@2026" é a primeira que se tenta.
+export function pedacosPessoais({ nome = '', email = '' } = {}) {
+  const local = String(email ?? '').split('@')[0];
+  return [...new Set(normaliza(`${nome ?? ''} ${local}`).split(/[^a-z]+/).filter(p => p.length >= 3 && !PARTICULAS.has(p)))];
+}
+export const temPedacoPessoal = (senha, pessoa) => {
+  const v = normaliza(senha);
+  return pedacosPessoais(pessoa).some(p => v.includes(p));
+};
+// → '' quando a senha serve; senão, o motivo para mostrar.
+export function problemaSenha(senha, pessoa = {}) {
+  if (String(senha ?? '').length < SENHA_MIN) return `A senha precisa ter pelo menos ${SENHA_MIN} caracteres.`;
+  if (temPedacoPessoal(senha, pessoa)) return 'A senha não pode conter seu nome nem seu e-mail.';
+  return '';
+}
+
 // ---------- fornecedores (coluna "laboratorio": "Ouro Fino, Avert"; nenhum nome da lista tem vírgula) ----------
 export const SEPARADOR_LABORATORIOS = ', ';
 export const listaLaboratorios = texto => [...new Set(String(texto ?? '').split(',').map(s => s.trim()).filter(Boolean))];

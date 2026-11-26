@@ -1,6 +1,6 @@
 // Perfil: dados da conta, resumo, aparência, planilha Excel e ADP, troca de senha e saída.
 import { html, pintar, ao } from '../lib/dom.js';
-import { STATUS, quandoBR, rotuloPapel } from '../lib/regras.js';
+import { STATUS, quandoBR, rotuloPapel, SENHA_MIN, problemaSenha } from '../lib/regras.js';
 import { icone } from '../ui/icones.js';
 import { seloNeutro } from '../ui/pecas.js';
 import { exportarExcel } from '../exportar.js';
@@ -75,7 +75,7 @@ async function alterarSenha(ctx) {
   const val = (d, id) => d.querySelector('#' + id).value;
   await abrirDialogo({
     titulo: 'Alterar senha',
-    descricao: 'Mínimo de 8 caracteres. Você continua conectado depois de trocar.',
+    descricao: `Mínimo de ${SENHA_MIN} caracteres, sem seu nome nem seu e-mail. Você continua conectado depois de trocar.`,
     corpo: html`${campoSenha({ id: 'pf-atual', rotulo: 'Senha atual', autocomplete: 'current-password' })}
       ${campoSenha({ id: 'pf-nova', rotulo: 'Nova senha', novo: true })}
       ${campoSenha({ id: 'pf-nova2', rotulo: 'Repita a nova senha', autocomplete: 'new-password' })}`,
@@ -83,13 +83,14 @@ async function alterarSenha(ctx) {
       { rotulo: 'Cancelar', valor: null, tipo: 'fantasma' },
       { rotulo: 'Salvar nova senha', valor: 'salvar', tipo: 'primario', principal: true },
     ],
-    aoAbrir: d => { desligar = ligarSenha(d, { email: () => ctx.perfil.email }); d.querySelector('#pf-atual').focus(); },
+    aoAbrir: d => { desligar = ligarSenha(d, { email: () => ctx.perfil.email, nome: () => ctx.perfil.nome }); d.querySelector('#pf-atual').focus(); },
     antesDeFechar: async (_v, d) => {
       erroNoDialogo(d, '');
       const atual = val(d, 'pf-atual'), nova = val(d, 'pf-nova'), nova2 = val(d, 'pf-nova2');
       const erros = {};
       if (!atual) erros['pf-atual'] = 'Digite sua senha atual.';
-      if (nova.length < 8) erros['pf-nova'] = 'A senha precisa ter pelo menos 8 caracteres.';
+      const problema = problemaSenha(nova, ctx.perfil);
+      if (problema) erros['pf-nova'] = problema;
       else if (nova !== nova2) erros['pf-nova2'] = 'As duas senhas não são iguais.';
       if (aplicarErros(d, erros)) return false;
 
