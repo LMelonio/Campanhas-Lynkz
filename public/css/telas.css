@@ -363,6 +363,11 @@ a.det-empresa:hover { text-decoration-color: currentColor; }
 .cm-nf { grid-column: 1 / -1; }
 .cm-nf .campo { margin-bottom: 0; }
 @media (min-width: 640px) { .cm-adp-item { grid-template-columns: minmax(0, 1fr); } .cm-adp-item .cm-nf { grid-row: auto; } }
+/* Tabelas largas (Contrato PJ, Apuração) entre 700 e ~1100 px: títulos quebram linha e,
+   se ainda não couber, a caixa rola sozinha (nunca corta a tabela nem empurra a página). */
+.comissoes .tabela-caixa { overflow-x: auto; }
+.cm-tabela th.num, .cm-tabela .cm-sub { white-space: normal; }
+@media (max-width: 1100px) { .cm-tabela th, .cm-tabela td { padding-left: var(--e-3); padding-right: var(--e-3); } }
 .cm-tabela tfoot th, .cm-tabela tfoot td { padding-top: var(--e-3); border-top: 1px solid var(--line); text-align: left; }
 .cm-tabela tfoot td.num { text-align: right; }
 @media (max-width: 699px) {
@@ -376,6 +381,8 @@ a.det-empresa:hover { text-decoration-color: currentColor; }
 .cm-consulta .campo { margin: 0; flex: 0 1 240px; }
 .comissoes #cm-conteudo { display: grid; gap: var(--e-4); min-width: 0; }
 .comissoes #cm-conteudo > *, .cm-parametros > * { margin-top: 0; margin-bottom: 0; }
+/* Item do grid não cresce com a tabela de dentro: a tabela rola na própria caixa. */
+.comissoes #cm-conteudo > * { min-width: 0; }
 .cm-cabeca { display: grid; gap: var(--e-2); }
 .cm-periodo { margin: 0; max-width: 72ch; }
 /* O número do mês é o único elemento grande da tela. */
