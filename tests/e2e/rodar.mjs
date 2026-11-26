@@ -2616,6 +2616,43 @@ teste('v3.4: comissões — o mês escolhido fica no endereço e volta com a apu
   await page.locator('#cm-t-premio', { hasText: 'setembro 2026' }).waitFor();
 });
 
+teste('v3.4: comissões — novos no Qlik em lote: marcar dois e cadastrar como CLT', async ({ page }) => {
+  // Sem o TERRAZOO nos "não comissionam", os novos passam a ser dois.
+  await abrir(page, { rota: '#/comissoes?aba=parametros' });
+  await page.fill('#cp-nomes_ignorados', '');
+  await page.click('#cm-form-param button[type="submit"]');
+  await page.locator('.cm-alterado').waitFor();
+  await page.click('[data-aba="previa"]');
+  await page.selectOption('#cm-mes', '2026-10');
+  await page.click('#cm-buscar');
+  await page.locator('.cm-lote').waitFor();
+  igual(await page.locator('[data-lote]').count(), 2, 'dois novos com caixa de marcar');
+  await page.click('#cm-lote-ok');
+  await toastCom(page, 'Marque pelo menos um');
+  await page.check('#cm-lote-todos');
+  igual(await page.locator('#cm-lote-n').innerText(), '2 marcados', 'contador');
+  await page.uncheck('[data-lote="TERRAZOO"]');
+  igual(await page.locator('#cm-lote-todos').evaluate(i => i.indeterminate), true, '"Marcar todos" pela metade');
+  await page.check('[data-lote="TERRAZOO"]');
+  await page.click('#cm-lote-ok');
+  afirma((await page.locator('[data-campo="cm-lote-acao"] .campo-erro').innerText()).includes('Escolha'), 'pede a ação');
+  await page.selectOption('#cm-lote-acao', 'CLT');
+  await page.click('#cm-lote-ok');
+  const dlg = page.locator('dialog', { hasText: 'Cadastrar 2 vendedores como CLT?' });
+  const textoDlg = await dlg.innerText();
+  afirma(textoDlg.includes('SEM CADASTRO LTDA') && textoDlg.includes('TERRAZOO') && textoDlg.includes('Farelo'), 'confirmação com os nomes e os %: ' + textoDlg);
+  await dlg.locator('button[type="submit"]').click();
+  await toastCom(page, '2 vendedores entraram na comissão como CLT');
+  await page.locator('.cm-sem').waitFor({ state: 'detached' });
+  const p = (await db(page)).comissao_parametros[0];
+  const novos = (await db(page)).comissionados.filter(c => ['SEM CADASTRO LTDA', 'TERRAZOO'].includes(c.nomes_qlik[0]));
+  afirma(novos.length === 2 && novos.every(c => c.regime === 'CLT' && c.pct_principal === p.pct_clt_principal && c.pct_farelo === p.pct_clt_farelo), 'gravados como CLT com os % padrão: ' + JSON.stringify(novos));
+  afirma(novos.some(c => c.nome === 'Sem Cadastro Ltda'), 'nome legível');
+  afirma((await page.locator('#cm-conteudo').innerText()).includes('Terrazoo'), 'entraram na tabela CLT');
+  const vio = (await axe(page, 'Comissões lote')).filter(x => ['critical', 'serious'].includes(x.impacto));
+  afirma(!vio.length, 'acessibilidade: ' + JSON.stringify(vio));
+});
+
 // WCAG 2.5.8: alvo de toque com pelo menos 24 px de altura.
 teste('v3.4: celular (360 px) — links no meio do texto e escolha de tema com 24 px de toque', async ({ page }) => {
   const altura = async sel => (await page.locator(sel).first().boundingBox()).height;

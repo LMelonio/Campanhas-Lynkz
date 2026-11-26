@@ -68,6 +68,20 @@ export const chaveNome = s => String(s ?? '')
 // Nome do Qlik como o banco guarda: maiúsculas, um espaço entre palavras, acentos mantidos.
 export const nomeQlik = s => String(s ?? '').replace(/\s+/g, ' ').trim().toUpperCase();
 
+// "DOMINGOS DAS MERCES" → "Domingos das Merces": nome sugerido para quem chega do Qlik.
+export const nomeLegivel = n => String(n ?? '').toLowerCase().replace(/(^|\s)(\p{L})/gu, (m, a, b) => a + b.toUpperCase())
+  .replace(/\b(Da|De|Do|Das|Dos|E)\b/g, x => x.toLowerCase());
+
+// Cadastro de quem apareceu em "Novos no Qlik": regime e % padrão dos parâmetros; o resto fica em branco
+// (dados da PJ, acordo e equipe se completam depois, no Cadastro).
+export function novoDoQlik(nomeDoQlik, regime = 'CLT', p = PARAMETROS_PADRAO) {
+  const pct = pctPadrao(regime, p);
+  return {
+    nome: nomeLegivel(nomeQlik(nomeDoQlik)), regime, pct_principal: pct.principal, pct_farelo: pct.farelo,
+    nomes_qlik: [nomeQlik(nomeDoQlik)], ativo: true,
+  };
+}
+
 // ---------- períodos ----------
 const iso = t => new Date(t).toISOString().slice(0, 10);
 const partesMes = mes => {

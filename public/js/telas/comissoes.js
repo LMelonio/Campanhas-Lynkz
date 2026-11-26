@@ -11,7 +11,7 @@ import { html, pintar, $, $$, ao } from '../lib/dom.js';
 import { brl, dataBR, horaBR, lerValor, valorCampo, contem, hojeCivil } from '../lib/regras.js';
 import {
   REGIMES, ROTULO_REGIME, ehPJ, pctPadrao, periodoApuracao, mesAnteriorFechado,
-  somaMes, rotuloMesComissao, errosComissionado, nomeQlik, entradaContrato, avaliarContrato,
+  somaMes, rotuloMesComissao, errosComissionado, nomeQlik, entradaContrato, avaliarContrato, novoDoQlik,
 } from '../lib/comissoes.js';
 import { recibosDoMes, linhasAdpPj, totalLinhas, pendenciasPj, NF_RE } from '../lib/comissoes-documentos.js';
 import { comissoes } from '../dados/comissoes.js';
@@ -132,8 +132,12 @@ function resultadoHtml(r) {
     ${r.semCadastro.length ? html`<section class="painel cm-sem" aria-labelledby="cm-t-sem">
       <h2 class="painel-titulo" id="cm-t-sem">Novos no Qlik</h2>
       <p class="painel-corpo campo-dica">${f ? 'Vendedores sem cadastro quando o mês foi fechado: as vendas deles ficaram fora da comissão.' : 'Vendedores que apareceram no Qlik e ainda não têm regime nem percentual. Até completar o cadastro, as vendas deles não entram em nenhuma comissão.'}</p>
+      ${f || r.semCadastro.length < 2 ? '' : loteHtml(r.semCadastro)}
       <ul class="cm-sem-lista">${r.semCadastro.map(x => html`<li>
-        <div><strong>${x.vendedor}</strong><small class="tabular">${r$(x.total)}${x.farelo ? `, Farelo ${r$(x.farelo)}` : ''}</small></div>
+        ${f || r.semCadastro.length < 2
+          ? html`<div><strong>${x.vendedor}</strong><small class="tabular">${r$(x.total)}${x.farelo ? `, Farelo ${r$(x.farelo)}` : ''}</small></div>`
+          : html`<label class="cm-sem-marca"><input type="checkbox" data-lote="${x.vendedor}"${s.lote.has(x.vendedor) ? html` checked` : ''}>
+            <span><strong>${x.vendedor}</strong><small class="tabular">${r$(x.total)}${x.farelo ? `, Farelo ${r$(x.farelo)}` : ''}</small></span></label>`}
         ${f ? '' : html`<div class="acoes">
           <button type="button" class="btn btn-fantasma btn-pequeno" data-completar="${x.vendedor}" aria-label="Completar cadastro: ${x.vendedor}">${icone('pessoa')} Completar cadastro</button>
           <button type="button" class="btn btn-texto btn-pequeno" data-ignorar="${x.vendedor}" aria-label="Não comissiona: ${x.vendedor}">Não comissiona</button>
@@ -216,8 +220,72 @@ async function ignorarNome(nome) {
   } catch (e) { s.ctx.toast(detalhar(e).mensagem, { tom: 'erro' }); }
 }
 
-const nomeLegivel = n => String(n).toLowerCase().replace(/(^|\s)(\p{L})/gu, (m, a, b) => a + b.toUpperCase())
-  .replace(/\b(Da|De|Do|Das|Dos|E)\b/g, x => x.toLowerCase());
+
+// ---------- "Novos no Qlik" em lote: marcar vários e cadastrar com os % padrão, ou "não comissiona" ----------
+const ACOES_LOTE = [
+  { valor: 'ignorar', rotulo: 'Não comissiona' },
+  ...REGIMES.map(r => ({ valor: r, rotulo: `Cadastrar como ${ROTULO_REGIME[r]}` })),
+];
+const textoLote = n => (n ? `${n} ${n === 1 ? 'marcado' : 'marcados'}` : 'Nenhum marcado');
+
+function loteHtml(novos) {
+  const n = novos.filter(x => s.lote.has(x.vendedor)).length;
+  return html`<div class="cm-lote" role="group" aria-label="Vários de uma vez">
+    <div class="cm-lote-topo">
+      <label class="cm-lote-todos"><input type="checkbox" id="cm-lote-todos"${n === novos.length ? html` checked` : ''}> Marcar todos</label>
+      <p class="cm-discreto" id="cm-lote-n" aria-live="polite">${textoLote(n)}</p>
+    </div>
+    <div class="cm-lote-aplicar">
+      ${selecao({ id: 'cm-lote-acao', rotulo: 'O que fazer com os marcados', opcoes: ACOES_LOTE, vazio: 'Escolha' })}
+      <button type="button" class="btn btn-fantasma" id="cm-lote-ok"${s.gerando ? html` disabled` : ''}${s.gerando === 'lote' ? html` aria-busy="true"` : ''}>Aplicar aos marcados</button>
+    </div>
+    <p class="campo-dica">O cadastro em lote usa os % padrão dos Parâmetros. Dados da PJ e acordo mínimo se completam depois, em Cadastro.</p>
+  </div>`;
+}
+
+// Marcar não redesenha a tela: só o contador e o "Marcar todos".
+function marcarLote() {
+  const caixas = $$('[data-lote]', s.el);
+  s.lote = new Set(caixas.filter(c => c.checked).map(c => c.dataset.lote));
+  pintar($('#cm-lote-n', s.el), textoLote(s.lote.size));
+  const todos = $('#cm-lote-todos', s.el);
+  if (todos) { todos.checked = s.lote.size === caixas.length; todos.indeterminate = s.lote.size > 0 && !todos.checked; }
+}
+
+async function aplicarLote() {
+  const acao = $('#cm-lote-acao', s.el)?.value;
+  const nomes = s.resultado.semCadastro.map(x => x.vendedor).filter(v => s.lote.has(v));
+  if (!nomes.length) { s.ctx.toast('Marque pelo menos um vendedor.', { tom: 'erro' }); return; }
+  if (!acao) { aplicarErros(s.el, { 'cm-lote-acao': 'Escolha o que fazer.' }); return; }
+  const lista = nomes.length === 1 ? nomes[0] : `${nomes.length} vendedores`;
+  const p = pctPadrao(acao, comissoes.parametros());
+  const ok = await confirmar(acao === 'ignorar'
+    ? { titulo: `${lista} não ${nomes.length === 1 ? 'comissiona' : 'comissionam'}?`, descricao: `${nomes.join(', ')}. As vendas com estes nomes deixam de aparecer como novas. Dá para desfazer em Parâmetros.`, confirmar: 'Não comissiona' }
+    : { titulo: `Cadastrar ${lista} como ${ROTULO_REGIME[acao]}?`, descricao: `${nomes.join(', ')}. Com ${pctTxt(p.principal)} na venda principal e ${pctTxt(p.farelo)} no Farelo.${acao === 'PJ' ? ' Razão social, CNPJ e PIX ficam para completar em Cadastro antes do recibo e da ADP.' : ''}`, confirmar: 'Cadastrar' });
+  if (!ok || !s) return;
+  const meu = s;
+  await ocupar('lote', async () => {
+    let feitos = 0;
+    const falhas = [];
+    if (acao === 'ignorar') { await comissoes.ignorarNomes(nomes); feitos = nomes.length; }
+    else {
+      for (const nome of nomes) {
+        const dados = novoDoQlik(nome, acao, comissoes.parametros());
+        const erros = errosComissionado(dados, comissoes.cadastro());
+        if (Object.keys(erros).length) { falhas.push(`${nome}: ${Object.values(erros)[0]}`); continue; }
+        try { await comissoes.salvar(dados); feitos++; }
+        catch (e) { falhas.push(`${nome}: ${detalhar(e).mensagem}`); }
+      }
+    }
+    if (s !== meu) return;
+    s.lote = new Set();
+    await recalcular();
+    const um = acao === 'ignorar' ? 'não comissiona' : `entrou na comissão como ${ROTULO_REGIME[acao]}`;
+    const varios = acao === 'ignorar' ? 'não comissionam' : `entraram na comissão como ${ROTULO_REGIME[acao]}`;
+    if (feitos) s.ctx.toast(feitos === 1 ? `1 vendedor ${um}.` : `${feitos} vendedores ${varios}.`, { tom: 'sucesso' });
+    if (falhas.length) s.ctx.toast(`Não foi possível: ${falhas.join('. ')}`, { tom: 'erro', duracao: 8000 });
+  });
+}
 
 // ---------- documentos do mês: Excel, recibos e ADP ----------
 async function ocupar(tipo, fn) {
@@ -672,7 +740,7 @@ const sufixo = html`<span class="cm-sufixo" aria-hidden="true">%</span>`;
 // c: cadastro existente, ou null para completar quem chegou do Qlik (nomeDoQlik obrigatório).
 async function editar(c, nomeDoQlik = null) {
   const novo = !c;
-  const base = c || { regime: 'CLT', ...pctPadraoObj('CLT'), nomes_qlik: [nomeQlik(nomeDoQlik)], nome: nomeLegivel(nomeDoQlik), ativo: true };
+  const base = c || novoDoQlik(nomeDoQlik, 'CLT', comissoes.parametros());
   const dv = k => (base[k] ?? '');
   const corpo = html`
     <p class="cm-qlik"><span class="cm-discreto">Nome no Qlik</span> <strong>${base.nomes_qlik.join(', ')}</strong></p>
@@ -868,7 +936,7 @@ const rotaDe = (aba, mes) => `#/comissoes?aba=${aba}${mes ? `&mes=${mes}` : ''}`
 const marcarEndereco = () => { if (s?.mes) s.ctx.navegar(rotaDe(s.aba, s.mes), { substituir: true }); };
 
 export function montar(el, ctx, params) {
-  s = { el, ctx, aba: abaDe(params), pronto: false, erro: null, mes: mesDe(params) || mesLembrado, resultado: null, buscando: false, erroQlik: null, busca: '', inativos: false, gerando: null, desligar: [] };
+  s = { el, ctx, aba: abaDe(params), pronto: false, erro: null, mes: mesDe(params) || mesLembrado, resultado: null, buscando: false, erroQlik: null, busca: '', inativos: false, gerando: null, lote: new Set(), desligar: [] };
   ctx.cabecalho({ titulo: 'Comissões' });
   const doCadastro = id => comissoes.cadastro().find(x => String(x.id) === String(id));
   s.desligar.push(
@@ -878,6 +946,9 @@ export function montar(el, ctx, params) {
     ao(el, 'change', '#cm-mes', (e, sel) => { if (sel.value) trocarMes(sel.value); }),
     ao(el, 'click', '[data-ignorar]', (e, b) => ignorarNome(b.dataset.ignorar)),
     ao(el, 'click', '[data-completar]', (e, b) => editar(null, b.dataset.completar)),
+    ao(el, 'change', '[data-lote]', marcarLote),
+    ao(el, 'change', '#cm-lote-todos', (e, t) => { $$('[data-lote]', el).forEach(c => { c.checked = t.checked; }); marcarLote(); }),
+    ao(el, 'click', '#cm-lote-ok', () => s.resultado && aplicarLote()),
     ao(el, 'click', '#cm-excel', () => s.resultado && baixarExcel()),
     ao(el, 'click', '#cm-recibos', () => s.resultado && baixarRecibos()),
     ao(el, 'click', '[data-recibo]', (e, b) => s.resultado && baixarRecibos(b.dataset.recibo)),
