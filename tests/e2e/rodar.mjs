@@ -2113,6 +2113,43 @@ teste('v2.10: ADP — muitas campanhas viram mais páginas, com o cabeçalho da 
   afirma(t.includes('R$ 980,00'), 'total com as 30 campanhas');
 });
 
+teste('v3.2: ADP — "todas as aprovadas" junta meses e a pessoa escolhe uma a uma', async ({ page }) => {
+  await abrir(page, { rota: '#/inicio' });
+  await prepararAdp(page);
+  await page.evaluate(() => {   // uma aprovada de setembro, para misturar meses
+    const d = JSON.parse(sessionStorage.getItem('simulado-db-v3'));
+    const base = d.campanhas.find(x => x.id === 2);
+    const n = ++d.seq.campanhas;
+    d.campanhas.push({ ...base, id: n, codigo: 'C2609X' + n, cliente: 'Pet Setembro', data_inicio: '2026-09-01', data_fim: '2026-09-30', investimento_lynkz: 40 });
+    sessionStorage.setItem('simulado-db-v3', JSON.stringify(d));
+  });
+  await page.goto(`${BASE}/?papel=aprovador#/campanhas`);
+  await page.reload();
+  await page.locator('#cp-adp').click();
+  const d = page.locator('dialog.dialogo'); await d.waitFor();
+  await page.selectOption('#adp-mes', 'todas');
+  igual(await d.locator('.adp-item').count(), 3, 'as três aprovadas com Swile, de outubro e setembro');
+  igual(await d.locator('[data-adp-marca]:checked').count(), 0, 'começam desmarcadas');
+  afirma((await d.locator('.adp-item', { hasText: 'Pet Setembro' }).innerText()).includes('Setembro 2026'), 'mostra o mês de cada campanha');
+  await d.locator('[type=submit]').click();
+  afirma((await d.locator('.dialogo-erro, [role=alert]').first().innerText()).includes('Marque pelo menos'), 'sem nada marcado não gera');
+  // Busca + "Marcar todas" marca só as visíveis.
+  await page.fill('#adp-busca', 'setembro');
+  igual(await d.locator('.adp-item:visible').count(), 1, 'busca filtra');
+  await page.check('#adp-todas');
+  await page.fill('#adp-busca', '');
+  igual(await d.locator('[data-adp-marca]:checked').count(), 1, 'marcar todas respeita a busca');
+  await d.locator('.adp-item', { hasText: 'Casa do Criador' }).locator('[data-adp-marca]').check();
+  afirma(/Gerar PDF \(2 · R\$\s?140,00\)/.test(await d.locator('[type=submit]').innerText()), 'botão soma só as marcadas');
+  await page.fill('#adp-venc', '2030-01-15');
+  const [dl] = await Promise.all([page.waitForEvent('download'), d.locator('[type=submit]').click()]);
+  igual(dl.suggestedFilename(), 'ADP - CAMPANHAS - SETEMBRO A OUTUBRO 2026.pdf', 'nome com o período');
+  await toastCom(page, 'ADP de setembro a outubro 2026 gerada');
+  const { texto: t } = abrirPdf(fs.readFileSync(await dl.path()));
+  for (const esperado of ['SETEMBRO A OUTUBRO 2026', 'PET SETEMBRO', 'CASA DO CRIADOR', 'R$ 140,00']) afirma(t.includes(esperado), 'PDF tem: ' + esperado);
+  afirma(!t.includes('PET CENTER IMPERATRIZ'), 'a desmarcada fica de fora');
+});
+
 teste('v2.10: ADP — usuário regular gera; quem recebe de campanha de outro sem cadastro fica de fora', async ({ page }) => {
   await abrir(page, { rota: '#/inicio' });
   await prepararAdp(page);

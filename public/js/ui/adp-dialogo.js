@@ -5,16 +5,20 @@ import { brl, lerValor, valorCampo, hojeCivil, maskCPF, cpfValido, emailValido, 
 import { icone } from './icones.js';
 import { abrirDialogo, erroNoDialogo } from './avisos.js';
 import { ligarMascaras, aplicarErros, campo, areaTexto } from './campos.js';
-import { mesesAdp, mesSugerido, itensAdp, linhaAdp, rotuloMes, gerarAdp, totalAdp, vencimentoPadrao, DIAS_UTEIS_VENCIMENTO } from '../adp.js';
+import { mesesAdp, mesSugerido, itensAdp, linhaAdp, rotuloMes, rotuloPeriodo, gerarAdp, totalAdp, vencimentoPadrao, DIAS_UTEIS_VENCIMENTO, TODAS } from '../adp.js';
 
 const rotuloBotao = (n, total) => (n ? `Gerar PDF (${n} · R$ ${brl(total)})` : 'Gerar PDF');
 const resumoRecebedor = l => `Recebe: ${l.favorecido || '—'}${l.cpf ? ` · CPF ${l.cpf}` : ''}`;
+const mesCurto = m => { const r = rotuloMes(m); return r ? r.charAt(0) + r.slice(1).toLowerCase() : ''; };
 
-function linhaItem(it, i) {
+// marcada: começa marcada? (num mês, sim; em "todas as aprovadas", a pessoa escolhe uma a uma.)
+// comMes: mostra o mês da campanha (quando a lista mistura meses).
+function linhaItem(it, i, { marcada = true, comMes = false } = {}) {
+  const ref = html`<span>${it.c.codigo} · ${it.c.campanha}${comMes ? ` · ${mesCurto(it.mes)}` : ''}</span>`;
   if (it.motivo) {
     return html`<li class="adp-item adp-bloqueado" data-i="${i}">
       <label class="adp-marca"><input type="checkbox" data-adp-marca="${i}" disabled aria-describedby="adp-d-${i}"><span class="adp-cliente">${it.c.cliente}</span></label>
-      <p class="adp-info" id="adp-d-${i}"><span>${it.c.codigo} · ${it.c.campanha}</span>
+      <p class="adp-info" id="adp-d-${i}">${ref}
         <span class="adp-motivo">${icone('cadeado')}${it.motivo}</span></p>
     </li>`;
   }
@@ -22,11 +26,11 @@ function linhaItem(it, i) {
   const id = s => `adp-${s}-${i}`;
   return html`<li class="adp-item" data-i="${i}">
     <label class="adp-marca">
-      <input type="checkbox" data-adp-marca="${i}" checked aria-describedby="adp-d-${i}">
+      <input type="checkbox" data-adp-marca="${i}"${marcada ? html` checked` : ''} aria-describedby="adp-d-${i}">
       <span class="adp-cliente">${it.c.cliente}</span>
     </label>
     <p class="adp-info" id="adp-d-${i}">
-      <span>${it.c.codigo} · ${it.c.campanha}</span>
+      ${ref}
       <span data-adp-resumo="${i}">${resumoRecebedor(l)}</span>
     </p>
     ${campo({ id: id('v'), rotulo: 'Valor a pagar (R$)', valor: valorCampo(l.valor), mascara: 'valor', classe: 'adp-valor' })}
@@ -76,11 +80,19 @@ async function abrir(ctx) {
         <label for="adp-mes">Mês das campanhas</label>
         <select id="adp-mes" aria-describedby="adp-mes-dica">
           ${meses.map(m => html`<option value="${m.mes}"${m.mes === mes ? html` selected` : ''}>${rotuloMes(m.mes)} (${m.total})</option>`)}
+          <option value="${TODAS}">Todas as aprovadas, escolher uma a uma (${meses.reduce((s, m) => s + m.total, 0)})</option>
         </select>
         <p class="campo-dica" id="adp-mes-dica">Pelo mês em que a campanha terminou.</p>
       </div>
       ${campo({ id: 'adp-venc', rotulo: 'Vencimento', tipo: 'date', valor: vencimentoPadrao(), obrigatorio: true, atributos: { min: hojeCivil() },
                 dica: `Padrão: ${DIAS_UTEIS_VENCIMENTO} dias úteis após a emissão (sem fins de semana e feriados nacionais).` })}
+    </div>
+    <div class="adp-filtro">
+      <label class="adp-marca"><input type="checkbox" id="adp-todas"><span>Marcar todas</span></label>
+      <div class="campo">
+        <label for="adp-busca" class="so-leitor">Buscar campanha</label>
+        <input type="search" id="adp-busca" placeholder="Buscar por cliente, código ou campanha" autocomplete="off" maxlength="100">
+      </div>
     </div>
     <p class="adp-resumo" id="adp-resumo" role="status"></p>
     <ul class="adp-lista" id="adp-lista" aria-label="Campanhas da ADP"></ul>
@@ -112,7 +124,7 @@ async function abrir(ctx) {
         if (!l.nascimento) erros[id('nasc')] = 'Informe a data de nascimento.';
         else if (l.nascimento >= hojeCivil()) erros[id('nasc')] = 'A data de nascimento precisa ser no passado.';
       }
-      linhas.push({ ...l, cpf: maskCPF(l.cpf) });
+      linhas.push({ ...l, cpf: maskCPF(l.cpf), mes: it.mes });
     });
     return { linhas, erros };
   };
@@ -125,11 +137,35 @@ async function abrir(ctx) {
     pintar($('#adp-resumo', d), html`${linhas.length} de ${itens.length} marcada(s) · total R$ ${brl(total)}${bloqueados ? html` · <strong>${bloqueados} sem dados de quem recebe</strong>` : ''}`);
     const botao = $('.dialogo-acoes [type="submit"]', d);
     if (botao) botao.textContent = rotuloBotao(linhas.length, total);
+    // "Marcar todas" reflete as visíveis (respeita a busca).
+    const cbs = marcaveis(d, { soVisiveis: true });
+    const n = cbs.filter(cb => cb.checked).length;
+    const todasCb = $('#adp-todas', d);
+    todasCb.checked = cbs.length > 0 && n === cbs.length;
+    todasCb.indeterminate = n > 0 && n < cbs.length;
+    todasCb.disabled = !cbs.length;
+  };
+
+  const marcaveis = (d, { soVisiveis = false } = {}) =>
+    [...d.querySelectorAll('[data-adp-marca]:not(:disabled)')].filter(cb => !soVisiveis || !cb.closest('.adp-item').hidden);
+
+  const filtrar = d => {
+    const q = $('#adp-busca', d).value.trim().toLocaleLowerCase('pt-BR');
+    d.querySelectorAll('#adp-lista .adp-item').forEach(li => {
+      const it = itens[+li.dataset.i];
+      const texto = `${it.c.cliente} ${it.c.codigo} ${it.c.campanha}`.toLocaleLowerCase('pt-BR');
+      li.hidden = !!q && !texto.includes(q);
+    });
   };
 
   const desenharLista = d => {
     itens = itensAdp(todas, ctx.cadastros, mes);
-    pintar($('#adp-lista', d), html`${itens.map(linhaItem)}`);
+    const todosMeses = mes === TODAS;
+    pintar($('#adp-lista', d), html`${itens.map((it, i) => linhaItem(it, i, { marcada: !todosMeses, comMes: todosMeses }))}`);
+    $('#adp-mes-dica', d).textContent = todosMeses
+      ? 'Campanhas aprovadas de todos os meses: marque só as que entram nesta ADP.'
+      : 'Pelo mês em que a campanha terminou.';
+    filtrar(d);
     atualizar(d);
   };
 
@@ -157,6 +193,8 @@ async function abrir(ctx) {
         ligarMascaras(d),
         ao(d, 'change', '#adp-mes', (e, s) => { mes = s.value; erroNoDialogo(d, ''); desenharLista(d); }),
         ao(d, 'change', '[data-adp-marca]', () => atualizar(d)),
+        ao(d, 'change', '#adp-todas', (e, s) => { marcaveis(d, { soVisiveis: true }).forEach(cb => { cb.checked = s.checked; }); atualizar(d); }),
+        ao(d, 'input', '#adp-busca', () => { filtrar(d); atualizar(d); }),
         ao(d, 'input', '.adp-valor input', () => atualizar(d)),
         ao(d, 'focusout', '.adp-valor input', () => atualizar(d)),
         ao(d, 'input', '.adp-editar input', (e, i) => atualizarResumo(d, i)),
@@ -176,10 +214,12 @@ async function abrir(ctx) {
       if (aplicarErros(d, erros)) return false;
       if (!linhas.length) { erroNoDialogo(d, 'Marque pelo menos uma campanha.'); return false; }
       try {
+        // Período do PDF: os meses das campanhas marcadas (um só, no caso comum).
+        const mesesLinhas = linhas.map(l => l.mes);
         const r = await gerarAdp(linhas, {
-          mes, vencimento: venc,
+          mes: mesesLinhas, vencimento: venc,
         });
-        ctx.toast(`ADP de ${rotuloMes(mes).toLowerCase()} gerada: ${r.quantidade} campanha(s), R$ ${brl(r.total)}.`, { tom: 'sucesso' });
+        ctx.toast(`ADP de ${rotuloPeriodo(mesesLinhas).toLowerCase()} gerada: ${r.quantidade} campanha(s), R$ ${brl(r.total)}.`, { tom: 'sucesso' });
         return true;
       } catch (err) {
         erroNoDialogo(d, err.message || 'Não deu para gerar a ADP.');

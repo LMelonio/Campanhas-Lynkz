@@ -438,6 +438,8 @@ kbd {
 /* ---------- ADP: diálogo mais largo no desktop, valor e edição por campanha ---------- */
 .lista-acoes { display: flex; flex-wrap: wrap; gap: var(--e-1) var(--e-2); }
 @media (min-width: 600px) { dialog.dialogo.dialogo-largo { width: min(720px, calc(100vw - 48px)); } }
+.adp-filtro { display: flex; flex-wrap: wrap; align-items: center; gap: var(--e-1) var(--e-3); margin-top: var(--e-3); }
+.adp-filtro .campo { flex: 1 1 220px; margin: 0; }
 .adp-resumo { font-size: var(--t-14); color: var(--ink-2); margin: var(--e-3) 0 var(--e-2); }
 .adp-lista { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--e-2); }
 .adp-item {

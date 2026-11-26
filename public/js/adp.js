@@ -22,6 +22,20 @@ export function rotuloMes(mes) {
   return MESES[m - 1] ? `${MESES[m - 1]} ${a}` : '';
 }
 
+// Período de uma ADP com campanhas de vários meses:
+// ["2026-10"] → "OUTUBRO 2026"; ["2026-09","2026-10"] → "SETEMBRO A OUTUBRO 2026";
+// ["2025-12","2026-01"] → "DEZEMBRO 2025 A JANEIRO 2026".
+export function rotuloPeriodo(meses) {
+  const ms = [...new Set([].concat(meses).filter(Boolean))].sort();
+  if (ms.length <= 1) return rotuloMes(ms[0] || '');
+  const [ini, fim] = [ms[0], ms[ms.length - 1]];
+  const mesmoAno = ini.slice(0, 4) === fim.slice(0, 4);
+  return `${mesmoAno ? MESES[+ini.slice(5, 7) - 1] : rotuloMes(ini)} A ${rotuloMes(fim)}`;
+}
+
+// Valor do seletor de mês que lista todas as aprovadas com Swile, de qualquer mês.
+export const TODAS = 'todas';
+
 // Mês de referência da campanha: o mês em que terminou (é quando se apura e paga).
 // Sem data de fim, o mês da aprovação.
 export const mesDaCampanha = c => dataCivil(c.data_fim || c.data_decisao).slice(0, 7);
@@ -58,15 +72,16 @@ export function recebedorAdp(c, cad) {
   return null;
 }
 
-// Campanhas do mês para o diálogo: { c, recebedor, valor, motivo }. motivo ≠ '' → não pode entrar (fica no fim).
+// Campanhas do mês (ou de todos os meses, com mes = TODAS) para o diálogo:
+// { c, mes, recebedor, valor, motivo }. motivo ≠ '' → não pode entrar (fica no fim).
 export function itensAdp(campanhas, cad, mes) {
   return campanhas
-    .filter(c => entraNaAdp(c) && mesDaCampanha(c) === mes)
+    .filter(c => entraNaAdp(c) && mesDaCampanha(c) && (mes === TODAS || mesDaCampanha(c) === mes))
     .sort((a, b) => String(a.cliente).localeCompare(String(b.cliente), 'pt-BR') || String(a.codigo).localeCompare(String(b.codigo)))
     .map(c => {
       const recebedor = recebedorAdp(c, cad);
       return {
-        c, recebedor,
+        c, mes: mesDaCampanha(c), recebedor,
         valor: calc(c).invL,
         motivo: recebedor ? '' : 'Os dados de quem recebe ficam visíveis só para o Administrador e para quem pediu a campanha.',
       };
@@ -93,7 +108,8 @@ export function linhaAdp({ c, recebedor, valor }) {
 export const DIAS_UTEIS_VENCIMENTO = 7;
 export const vencimentoPadrao = (emissao = hojeCivil()) => somaDiasUteis(emissao, DIAS_UTEIS_VENCIMENTO);
 
-export const nomeArquivoAdp = mes => `ADP - CAMPANHAS - ${rotuloMes(mes)}.pdf`;
+// mes: '2026-10' ou a lista de meses das campanhas da ADP.
+export const nomeArquivoAdp = mes => `ADP - CAMPANHAS - ${rotuloPeriodo(mes)}.pdf`;
 export const totalAdp = linhas => Math.round(linhas.reduce((s, l) => s + (+l.valor || 0), 0) * 100) / 100;
 const reais = n => 'R$ ' + (Number(n) || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
@@ -124,7 +140,7 @@ const MM = 2.835;
 const PAG = { l: 841.89, a: 595.28, x: 13 * MM, topo: 14 * MM, base: 11 * MM };
 
 // linhas: [{ cliente, tipo, observacao, favorecido, cpf, email, nascimento, valor }] já conferidas.
-// opcoes: { mes: '2026-10', vencimento: '2026-11-06', emitidoEm }
+// opcoes: { mes: '2026-10' (ou a lista de meses das linhas), vencimento: '2026-11-06', emitidoEm }
 // Sem nomes no PDF: quem autoriza se identifica na assinatura (SignZoo).
 export async function gerarAdp(linhas, { mes, vencimento, emitidoEm = hojeCivil() }) {
   if (!linhas.length) throw new ErroApp('Marque pelo menos uma campanha para a ADP.');
@@ -201,7 +217,7 @@ export async function gerarAdp(linhas, { mes, vencimento, emitidoEm = hojeCivil(
       pag.drawImage(logos.terrazoo, { x: PAG.x + largura - tz.width, y: y - h / 2 - tz.height / 2, ...tz });
     }
     texto('AUTORIZAÇÃO DE PAGAMENTO', PAG.x, y - 14, { f: B, tam: 15.5, w: largura, alinhar: 'centro' });
-    texto(`CAMPANHAS  ·  ${rotuloMes(mes)}`, PAG.x, y - 29, { tam: 9.5, cor: C.ink2, w: largura, alinhar: 'centro' });
+    texto(`CAMPANHAS  ·  ${rotuloPeriodo(mes)}`, PAG.x, y - 29, { tam: 9.5, cor: C.ink2, w: largura, alinhar: 'centro' });
     y -= h + 6;
     pag.drawLine({ start: { x: PAG.x, y }, end: { x: PAG.x + largura, y }, thickness: 1.4, color: C.verde });
     y -= 7;

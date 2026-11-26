@@ -2,7 +2,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  mesesAdp, mesSugerido, itensAdp, linhaAdp, recebedorAdp, rotuloMes, nomeArquivoAdp, mesDaCampanha, textosAdp, textoPdf, totalAdp,
+  mesesAdp, mesSugerido, itensAdp, linhaAdp, recebedorAdp, rotuloMes, rotuloPeriodo, nomeArquivoAdp, mesDaCampanha, textosAdp, textoPdf, totalAdp, TODAS,
 } from '../public/js/adp.js';
 
 const balc = { id: 7, empresa_id: 1, nome_completo: 'Irene Dias de Sales', cpf: '00368088308', email: 'irene@exemplo.com', data_nascimento: '1990-05-04' };
@@ -79,4 +79,17 @@ test('rótulo e nome do arquivo', () => {
   assert.equal(rotuloMes('2026-10'), 'OUTUBRO 2026');
   assert.equal(rotuloMes('2026-03'), 'MARÇO 2026');
   assert.equal(nomeArquivoAdp('2026-10'), 'ADP - CAMPANHAS - OUTUBRO 2026.pdf');
+});
+
+test('"todas as aprovadas": junta os meses e cada item sabe o seu mês', () => {
+  const it = itensAdp(camp, cad, TODAS);
+  assert.deepEqual(it.map(x => x.c.codigo), ['CMP-0002', 'CMP-0006', 'CMP-0001', 'CMP-0003']);
+  assert.deepEqual(it.map(x => x.mes), ['2026-10', '2026-09', '2026-10', '2026-10']);
+});
+
+test('período da ADP com vários meses', () => {
+  assert.equal(rotuloPeriodo(['2026-10', '2026-10']), 'OUTUBRO 2026');
+  assert.equal(rotuloPeriodo(['2026-10', '2026-08', '2026-09']), 'AGOSTO A OUTUBRO 2026');
+  assert.equal(rotuloPeriodo(['2026-01', '2025-12']), 'DEZEMBRO 2025 A JANEIRO 2026');
+  assert.equal(nomeArquivoAdp(['2026-09', '2026-10']), 'ADP - CAMPANHAS - SETEMBRO A OUTUBRO 2026.pdf');
 });
