@@ -69,6 +69,7 @@ Tela: `export function montar(el, ctx, params) → desmontar`. `ctx`: `perfil`, 
 - Exclusão: só administrador, pelo detalhe, com motivo. `campanhas.excluir()` → função `excluir_campanha()` (migração 15),
   que guarda a campanha e as notas em `campanhas_excluidas` antes de apagar. O app não tem DELETE direto em nenhuma tabela.
 - Filtros da lista de campanhas: status, fornecedor, cliente (só clientes com campanha) e "Só as minhas".
+- Forma de pagamento é obrigatória na Nova: sem ela, a aprovada fica fora da ADP.
 - ADP: aprovadas com Swile do mês em que terminaram; gerada pela lista de Campanhas, pelo Histórico ou pelo Perfil. Vencimento padrão de 7 dias úteis (`somaDiasUteis()`, sem fins de
   semana e feriados nacionais), editável. As edições do diálogo valem só para o PDF. Textos fixos em `config.js` → `ADP`.
 - Senha nova (convite, recuperação e Perfil): `problemaSenha()` (`regras.js`): `SENHA_MIN` (10) caracteres e sem palavras
