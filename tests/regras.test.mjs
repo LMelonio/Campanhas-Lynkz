@@ -6,7 +6,22 @@ import {
   maskTelefone, telefoneValido, dataCivil, dataBR, dias, dataExcel, colunaExcel, errosRecebedor,
   nomeCompleto, emailValido, textoDevolucoes, listaLaboratorios, juntarLaboratorios,
   MAX_FORNECEDORES, MAX_MARCAS, feriadosNacionais, diaUtil, somaDiasUteis, listaMarcas, juntarMarcas, textoMarcas, lerDivisao, somaDivisao, partilha, errosDivisao, LIMITES as LIM,
+  SENHA_MIN, problemaSenha, pedacosPessoais,
 } from '../public/js/lib/regras.js';
+
+test('senha nova (v3.4): 10 caracteres e sem o nome nem o e-mail', () => {
+  const ana = { nome: 'Maria Eduarda da Silva', email: 'duda.silva@lynkz.com.br' };
+  assert.equal(SENHA_MIN, 10);
+  assert.match(problemaSenha('123456789', ana), /10 caracteres/);
+  assert.equal(problemaSenha('ponte-azul-77', ana), '');
+  assert.match(problemaSenha('Maria@2026', ana), /nome nem seu e-mail/, 'padrão "Nome@"');
+  assert.match(problemaSenha('EDUARDA1234', ana), /nome/, 'maiúsculas');
+  assert.match(problemaSenha('xx-dudá-2026', ana), /e-mail/, 'parte do e-mail, com acento');
+  assert.equal(problemaSenha('daqui-pra-la', ana), '', 'partícula "da" não conta');
+  assert.deepEqual(pedacosPessoais(ana), ['maria', 'eduarda', 'silva', 'duda']);
+  assert.deepEqual(pedacosPessoais({}), []);
+  assert.equal(problemaSenha('1234567890'), '', 'sem dados da conta: só o tamanho');
+});
 
 test('laboratórios (v2.12): texto da campanha ↔ lista', () => {
   assert.deepEqual(listaLaboratorios('Ouro Fino, Avert'), ['Ouro Fino', 'Avert']);

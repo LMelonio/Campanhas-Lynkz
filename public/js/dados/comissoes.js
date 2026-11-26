@@ -109,12 +109,14 @@ export const comissoes = {
     return params;
   },
 
-  // "Este nome do Qlik não comissiona" (venda da empresa, por exemplo).
-  ignorarNome(nome) {
-    const atuais = this.parametros().nomes_ignorados;
-    if (atuais.some(n => chaveNome(n) === chaveNome(nome))) return Promise.resolve(params);
-    return this.salvarParametros({ nomes_ignorados: [...atuais, nomeQlik(nome)] });
+  // "Este nome do Qlik não comissiona" (venda da empresa, por exemplo). Vários de uma vez: uma gravação só.
+  ignorarNomes(nomes) {
+    const lista = [...this.parametros().nomes_ignorados];
+    for (const n of nomes.map(nomeQlik).filter(Boolean)) if (!lista.some(x => chaveNome(x) === chaveNome(n))) lista.push(n);
+    if (lista.length === this.parametros().nomes_ignorados.length) return Promise.resolve(params);
+    return this.salvarParametros({ nomes_ignorados: lista });
   },
+  ignorarNome(nome) { return this.ignorarNomes([nome]); },
 
   // ---------- o mês: premiações e dados do PJ (metas, realizado informado, NF) ----------
   // Lê do banco as premiações e os dados do PJ do mês. A tela chama ao trocar de mês.

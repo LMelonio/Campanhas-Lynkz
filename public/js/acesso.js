@@ -3,7 +3,7 @@
 import { sb } from './lib/supabase.js';
 import { urlAuth, limparUrl } from './lib/url-auth.js';
 import { html, pintar, $, armazenamento } from './lib/dom.js';
-import { emailValido } from './lib/regras.js';
+import { emailValido, SENHA_MIN, problemaSenha } from './lib/regras.js';
 import { icone } from './ui/icones.js';
 import { campo, interruptor, marcarErro, limparErro } from './ui/campos.js';
 import { campoSenha, ligarSenha } from './ui/senha.js';
@@ -224,7 +224,7 @@ async function mostrarNovaSenha() {
   // gerenciador de senhas a salvar no login certo.
   mostrar(html`
     <h1 tabindex="-1">${convite ? 'Crie sua senha' : 'Crie sua nova senha'}</h1>
-    <p class="acesso-sub">${convite ? 'Mínimo de 8 caracteres. Depois de salvar, você já entra no app.' : 'Mínimo de 8 caracteres. Depois de salvar, entre com a senha nova.'}</p>
+    <p class="acesso-sub">${convite ? `Mínimo de ${SENHA_MIN} caracteres, sem seu nome nem seu e-mail. Depois de salvar, você já entra no app.` : `Mínimo de ${SENHA_MIN} caracteres, sem seu nome nem seu e-mail. Depois de salvar, entre com a senha nova.`}</p>
     <form id="f-senha" novalidate>
       <div class="campo"><label for="n-email">Conta</label>
         <input id="n-email" type="email" autocomplete="username" value="${user.email || ''}" readonly></div>
@@ -235,13 +235,15 @@ async function mostrarNovaSenha() {
     <button class="btn btn-texto" id="n-cancelar" type="button">Cancelar</button>
     <p id="n-msg" class="acesso-msg" role="status" aria-live="polite"></p>`);
 
-  ligarSenha($('.acesso-caixa', el()), { email: () => user.email });
+  const pessoa = { email: user.email, nome: user.user_metadata?.nome || '' };
+  ligarSenha($('.acesso-caixa', el()), { email: () => pessoa.email, nome: () => pessoa.nome });
   $('#n-senha').focus();
   $('#n-cancelar').addEventListener('click', async () => { await encerrarRecuperacao(); mostrarLogin(); });
   $('#f-senha').addEventListener('submit', async ev => {
     ev.preventDefault();
     const s1 = $('#n-senha').value, s2 = $('#n-senha2').value;
-    if (s1.length < 8) { msg('n-msg', 'A senha precisa ter pelo menos 8 caracteres.', 'erro'); return; }
+    const problema = problemaSenha(s1, pessoa);
+    if (problema) { msg('n-msg', problema, 'erro'); return; }
     if (s1 !== s2) { msg('n-msg', 'As duas senhas não são iguais.', 'erro'); return; }
     const liberar = ocupar($('#n-ok'), 'Salvando…');
     const { error: e2 } = await sb.auth.updateUser({ password: s1 });

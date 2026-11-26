@@ -9,8 +9,17 @@ import { fileURLToPath } from 'node:url';
 import {
   periodoApuracao, mesAnteriorFechado, somaMes, rotuloMesComissao, chaveNome, nomeQlik, centavos, arred,
   acordoVigente, juntarVendas, realizadosContrato, avaliarContrato, calcularLinha, apurarMes,
-  errosComissionado, pctPadrao, PARAMETROS_PADRAO,
+  errosComissionado, pctPadrao, PARAMETROS_PADRAO, nomeLegivel, novoDoQlik,
 } from '../public/js/lib/comissoes.js';
+
+test('novos no Qlik (v3.4): cadastro com o regime e os % padrão, nome legível', () => {
+  assert.equal(nomeLegivel('DOMINGOS DAS MERCES ARAUJO E FILHOS'), 'Domingos das Merces Araujo e Filhos');
+  const p = { ...PARAMETROS_PADRAO, pct_pj_principal: 4, pct_pj_farelo: 1.5 };
+  const c = novoDoQlik('  sem  cadastro ltda ', 'PJ', p);
+  assert.deepEqual(c, { nome: 'Sem Cadastro Ltda', regime: 'PJ', pct_principal: 4, pct_farelo: 1.5, nomes_qlik: ['SEM CADASTRO LTDA'], ativo: true });
+  assert.deepEqual(errosComissionado(c, []), {}, 'passa na validação do cadastro');
+  assert.equal(novoDoQlik('X Y').regime, 'CLT', 'CLT por padrão');
+});
 
 const P = PARAMETROS_PADRAO;
 const quase = (a, b, tol = 0.005, msg = '') => assert.ok(Math.abs(a - b) <= tol + 1e-9, `${msg} ${a} ≠ ${b}`);

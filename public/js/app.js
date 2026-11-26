@@ -19,12 +19,12 @@ import * as telaHistorico from './telas/historico.js';
 import * as telaGestao from './telas/gestao.js';
 import * as telaPerfil from './telas/perfil.js';
 import * as telaUsuarios from './telas/usuarios.js';
-import * as telaComissoes from './telas/comissoes.js';
+import * as telaComissoes from './telas/comissoes/index.js';
 
 const C = window.CONFIG;
 
 // Igual à VERSAO de config.js e sw.js. Se o config.js chegar mais novo que os módulos em cache, recarrega uma vez.
-export const VERSAO_APP = '3.3.0';
+export const VERSAO_APP = '3.4.0';
 const CHAVE_RECARGA = 'lynkz-recarregou-para';
 
 const TELAS = {

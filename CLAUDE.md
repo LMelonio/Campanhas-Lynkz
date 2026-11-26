@@ -21,11 +21,14 @@ public/
   css/  tokens.css (único lugar com cor; temas claro/escuro/daltônico)  base.css  componentes.css  telas.css
   js/   app.js (casca, rotas, ctx)  acesso.js (login, senha, convite)  exportar.js (Excel)  adp.js (ADP em PDF)
         comissoes-excel.js (Excel do mês)  comissoes-pdf.js (recibos e ADP dos PJ)
+        pdf/   motor.js (único desenho de PDF: abrir, fontes, cores, logos, texto, faixa, tabela, assinatura, baixar)
         lib/   regras.js (funções puras)  comissoes.js (cálculo das comissões, puro)  comissoes-documentos.js (recibo, ADP e Excel, puro)
                dom.js (html``)  supabase.js  url-auth.js
         dados/ campanhas.js  cadastros.js  usuarios.js  qlik.js  comissoes.js  erros.js  saude.js
         ui/    avisos.js  campos.js  combo.js  pecas.js  decisao.js  tema.js  adp-dialogo.js  cadastro-dialogos.js  …
-        telas/ inicio  campanhas  detalhe  nova  historico  gestao  usuarios  comissoes  perfil
+        telas/ inicio  campanhas  detalhe  nova  historico  gestao  usuarios  perfil
+               comissoes/ index.js (casca, abas, mês)  comum.js (estado `s` e utilidades)  apuracao  documentos
+                          lancamentos  contrato  cadastro  parametros  historico (cada aba: desenhar() e ligar(el))
 worker/   index.js (rotas /api/qlik/compras, /api/qlik/comissoes e /api/usuarios/convidar)  qlik-engine.js (Engine API, testável em Node)
 sql/      schema.sql (instalação nova)  migracoes/NN-*.sql (+ rollback e validação de cada uma)
 scripts/  cargas do Qlik e das planilhas antigas (rodam no computador ou no GitHub Actions, com .env)
@@ -34,7 +37,8 @@ tests/    *.test.mjs (unidade, Worker)  banco/ (PostgreSQL)  e2e/rodar.mjs (nave
 ```
 
 Rotas: `#/inicio` `#/campanhas` `#/campanhas/:id` `#/nova` `#/nova/de/:id` `#/historico` `#/gestao`
-`#/gestao/empresas/:id` `#/usuarios` e `#/comissoes?aba=previa|premiacoes|contrato|cadastro|parametros|historico` (administrador) `#/perfil`.
+`#/gestao/empresas/:id` `#/usuarios` e `#/comissoes?aba=previa|premiacoes|contrato|cadastro|parametros|historico&mes=AAAA-MM`
+(administrador; o mês fica no endereço e lembrado na memória ao sair e voltar) `#/perfil`.
 
 Tela: `export function montar(el, ctx, params) → desmontar`. `ctx`: `perfil`, `ehAprovador`, `campanhas`, `cadastros`,
 `toast`, `navegar`, `cabecalho`, `barraDeAcao`, `remontar`, `sair`.
@@ -67,6 +71,9 @@ Tela: `export function montar(el, ctx, params) → desmontar`. `ctx`: `perfil`, 
 - Filtros da lista de campanhas: status, fornecedor, cliente (só clientes com campanha) e "Só as minhas".
 - ADP: aprovadas com Swile do mês em que terminaram; gerada pela lista de Campanhas, pelo Histórico ou pelo Perfil. Vencimento padrão de 7 dias úteis (`somaDiasUteis()`, sem fins de
   semana e feriados nacionais), editável. As edições do diálogo valem só para o PDF. Textos fixos em `config.js` → `ADP`.
+- Senha nova (convite, recuperação e Perfil): `problemaSenha()` (`regras.js`): `SENHA_MIN` (10) caracteres e sem palavras
+  do nome nem do e-mail. O mínimo no Supabase (Authentication → Policies) precisa ser o mesmo.
+- Toque: alvo de pelo menos 24 px (WCAG 2.5.8). Link no meio de uma frase leva `class="link-toque"`.
 - Temas: `ui/tema.js` (automático, claro, escuro, daltônico), salvo no aparelho; `tema-inicial.js` aplica antes da pintura.
 - Convite: Administrador convida em Usuários; o Worker chama o invite do Supabase com a chave de serviço e define o perfil
   com o token de quem convidou. O link do e-mail (`type=invite`) abre "Crie sua senha" e entra direto.
@@ -82,17 +89,19 @@ Tela: `export function montar(el, ctx, params) → desmontar`. `ctx`: `perfil`, 
   paga o maior entre a soma e o acordo. Parcelas podem ser negativas; o total pago nunca fica abaixo de zero; nada passa
   para o mês seguinte. Dinheiro em centavos inteiros por dentro, cada parcela arredondada. Sem bônus de cliente novo.
 - As pessoas vêm do Qlik: um nome do Qlik (Vendedor B2B) por pessoa. Nome novo aparece em "Novos no Qlik" na Apuração,
-  com "Completar cadastro" (regime, %, acordo, dados da PJ) ou "Não comissiona". Não há botão de cadastro novo nem
+  com "Completar cadastro" (regime, %, acordo, dados da PJ) ou "Não comissiona". Com 2 ou mais, dá para marcar vários e
+  aplicar de uma vez ("Não comissiona" ou cadastrar como CLT, Televendas ou PJ com os % padrão: `novoDoQlik()`). Não há botão de cadastro novo nem
   "ligar a alguém"; o nome do Qlik não se edita.
 - `dados/comissoes.js` junta banco + Qlik + cálculo: `carregar()`, `carregarMes(mes)`, `apurar(mes, { buscar })`,
-  `salvar()`, `salvarParametros()`, `ignorarNome()`, `lancarPremiacao()`/`lancarAjuste()` e `removerPremiacao()`/`removerAjuste()`
+  `salvar()`, `salvarParametros()`, `ignorarNome()`/`ignorarNomes()`, `lancarPremiacao()`/`lancarAjuste()` e `removerPremiacao()`/`removerAjuste()`
   (desativam), `salvarMesPj(mes, id, campos)` (metas, realizado informado, número e valor da NF), `buscarBase(mes)` (vendas linha
   a linha, só para o Excel), `fecharMes(resultado)`, `reabrirMes(mes, motivo)`, `historico()` e `contextoDocumentos(mes)`.
   `apurar(mes, { buscar: false })` recalcula com a última consulta do mês e devolve `null` se o Farelo ou o corte mudaram.
   Mês fechado: `apurar()` devolve a cópia do histórico (`resultado.fechado`), sem Qlik nem recálculo.
 - Ajustes: acréscimo ou desconto com motivo, por pessoa e mês; entram depois do acordo mínimo; aparecem no recibo
   (uma linha por ajuste) e no Excel (aba Ajustes e coluna Ajustes).
-- Histórico: "Fechar mês" grava em `comissao_fechamentos` a cópia (cálculo, cadastro usado, premiações, ajustes, parâmetros).
+- Histórico: "Fechar mês" fica numa faixa própria no fim da Apuração, com o que falta (Novos no Qlik, cadastro dos PJ,
+  NF de todos pela ADP); o botão só fica em destaque quando nada falta. Grava em `comissao_fechamentos` a cópia (cálculo, cadastro usado, premiações, ajustes, parâmetros).
   Mês fechado trava premiações, ajustes, contrato e NF (trigger no banco); documentos saem da cópia (o Excel sem a aba
   da base). Reabrir pede motivo e mantém a cópia até fechar de novo. Ninguém apaga o histórico.
 - Documentos (`lib/comissoes-documentos.js`, puro; quem desenha: `comissoes-excel.js` e `comissoes-pdf.js`):

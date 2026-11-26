@@ -167,11 +167,15 @@ teste('acesso: link de recuperação abre "Crie sua nova senha" e valida', async
   await page.goto(`${BASE}/?zerar=1#access_token=t&refresh_token=r&type=recovery`);
   await page.locator('#acesso h1', { hasText: 'Crie sua nova senha' }).waitFor();
   afirma(!page.url().includes('access_token'), 'token fora da URL');
-  await page.fill('#n-senha', '123'); await page.click('#n-ok');
-  await page.locator('#n-msg', { hasText: '8 caracteres' }).waitFor();
-  await page.fill('#n-senha', '12345678'); await page.fill('#n-senha2', '12345679'); await page.click('#n-ok');
+  await page.fill('#n-senha', '123456789'); await page.click('#n-ok');
+  await page.locator('#n-msg', { hasText: '10 caracteres' }).waitFor();
+  // A conta simulada é ana@lynkz.com.br: senha com o nome é recusada (requisito ao vivo e ao salvar).
+  await page.fill('#n-senha', 'Ana@202612'); await page.click('#n-ok');
+  await page.locator('#n-msg', { hasText: 'nome nem seu e-mail' }).waitFor();
+  afirma(!(await page.locator('#n-senha-forca [data-req="pessoal"]').getAttribute('class') || '').includes('ok'), 'requisito "sem seu nome" desmarcado');
+  await page.fill('#n-senha', '1234567890'); await page.fill('#n-senha2', '1234567891'); await page.click('#n-ok');
   await page.locator('#n-msg', { hasText: 'não são iguais' }).waitFor();
-  await page.fill('#n-senha2', '12345678'); await page.click('#n-ok');
+  await page.fill('#n-senha2', '1234567890'); await page.click('#n-ok');
   await page.locator('#l-msg', { hasText: 'Senha alterada' }).waitFor();
   igual(await page.evaluate(() => localStorage.getItem('lynkz_recuperacao_pendente')), null, 'marca de recuperação removida');
 });
@@ -2425,7 +2429,7 @@ teste('v3.0: link de convite abre "Crie sua senha" e, salvando, entra direto no 
   await page.goto(`${BASE}/?zerar=1#access_token=t&refresh_token=r&type=invite`);
   await page.locator('#acesso h1', { hasText: 'Crie sua senha' }).waitFor();
   afirma(!page.url().includes('access_token'), 'token fora da URL');
-  await page.fill('#n-senha', '12345678'); await page.fill('#n-senha2', '12345678');
+  await page.fill('#n-senha', '1234567890'); await page.fill('#n-senha2', '1234567890');
   await page.click('#n-ok');
   await page.waitForSelector('#app:not([hidden])');
   igual(await page.evaluate(() => localStorage.getItem('lynkz_recuperacao_pendente')), null, 'marca removida');
@@ -2586,6 +2590,81 @@ teste('v3.3: comissões — apuração separa Farelo, aplica acordo e contrato e
   afirma(novo && novo.regime === 'PJ' && novo.pj_documento === '12345678000195', 'gravado: ' + JSON.stringify(novo));
 });
 
+teste('v3.4: comissões — o mês escolhido fica no endereço e volta com a apuração', async ({ page }) => {
+  await previaOutubro(page);
+  afirma(page.url().endsWith('#/comissoes?aba=previa&mes=2026-10'), 'mês no endereço: ' + page.url());
+  await page.click('[data-aba="premiacoes"]');
+  await page.locator('#cm-form-premio').waitFor();
+  afirma(page.url().endsWith('aba=premiacoes&mes=2026-10'), 'aba e mês no endereço: ' + page.url());
+  await page.click('[data-aba="previa"]');
+  await page.locator('.cm-destaque', { hasText: 'outubro 2026' }).waitFor();
+  // Sai pelo menu e volta: mesmo mês, com a consulta da memória (sem buscar no Qlik de novo).
+  let consultas = 0;
+  page.on('request', rq => { if (rq.url().includes('/api/qlik/comissoes')) consultas++; });
+  await page.evaluate(() => { location.hash = '#/inicio'; });
+  await page.waitForFunction(() => location.hash === '#/inicio');
+  await page.evaluate(() => { location.hash = '#/comissoes'; });
+  await page.locator('.cm-destaque', { hasText: 'outubro 2026' }).waitFor();
+  igual(await page.inputValue('#cm-mes'), '2026-10', 'seletor no mês lembrado');
+  igual(consultas, 0, 'sem nova consulta ao Qlik');
+  // Recarregar: o mês vem do endereço.
+  await page.reload();
+  await page.waitForSelector('#cm-mes');
+  igual(await page.inputValue('#cm-mes'), '2026-10', 'mês do endereço depois de recarregar');
+  // Endereço com outro mês troca o mês da tela.
+  await page.evaluate(() => { location.hash = '#/comissoes?aba=premiacoes&mes=2026-09'; });
+  await page.locator('#cm-t-premio', { hasText: 'setembro 2026' }).waitFor();
+});
+
+teste('v3.4: comissões — novos no Qlik em lote: marcar dois e cadastrar como CLT', async ({ page }) => {
+  // Sem o TERRAZOO nos "não comissionam", os novos passam a ser dois.
+  await abrir(page, { rota: '#/comissoes?aba=parametros' });
+  await page.fill('#cp-nomes_ignorados', '');
+  await page.click('#cm-form-param button[type="submit"]');
+  await page.locator('.cm-alterado').waitFor();
+  await page.click('[data-aba="previa"]');
+  await page.selectOption('#cm-mes', '2026-10');
+  await page.click('#cm-buscar');
+  await page.locator('.cm-lote').waitFor();
+  igual(await page.locator('[data-lote]').count(), 2, 'dois novos com caixa de marcar');
+  await page.click('#cm-lote-ok');
+  await toastCom(page, 'Marque pelo menos um');
+  await page.check('#cm-lote-todos');
+  igual(await page.locator('#cm-lote-n').innerText(), '2 marcados', 'contador');
+  await page.uncheck('[data-lote="TERRAZOO"]');
+  igual(await page.locator('#cm-lote-todos').evaluate(i => i.indeterminate), true, '"Marcar todos" pela metade');
+  await page.check('[data-lote="TERRAZOO"]');
+  await page.click('#cm-lote-ok');
+  afirma((await page.locator('[data-campo="cm-lote-acao"] .campo-erro').innerText()).includes('Escolha'), 'pede a ação');
+  await page.selectOption('#cm-lote-acao', 'CLT');
+  await page.click('#cm-lote-ok');
+  const dlg = page.locator('dialog', { hasText: 'Cadastrar 2 vendedores como CLT?' });
+  const textoDlg = await dlg.innerText();
+  afirma(textoDlg.includes('SEM CADASTRO LTDA') && textoDlg.includes('TERRAZOO') && textoDlg.includes('Farelo'), 'confirmação com os nomes e os %: ' + textoDlg);
+  await dlg.locator('button[type="submit"]').click();
+  await toastCom(page, '2 vendedores entraram na comissão como CLT');
+  await page.locator('.cm-sem').waitFor({ state: 'detached' });
+  const p = (await db(page)).comissao_parametros[0];
+  const novos = (await db(page)).comissionados.filter(c => ['SEM CADASTRO LTDA', 'TERRAZOO'].includes(c.nomes_qlik[0]));
+  afirma(novos.length === 2 && novos.every(c => c.regime === 'CLT' && c.pct_principal === p.pct_clt_principal && c.pct_farelo === p.pct_clt_farelo), 'gravados como CLT com os % padrão: ' + JSON.stringify(novos));
+  afirma(novos.some(c => c.nome === 'Sem Cadastro Ltda'), 'nome legível');
+  afirma((await page.locator('#cm-conteudo').innerText()).includes('Terrazoo'), 'entraram na tabela CLT');
+  const vio = (await axe(page, 'Comissões lote')).filter(x => ['critical', 'serious'].includes(x.impacto));
+  afirma(!vio.length, 'acessibilidade: ' + JSON.stringify(vio));
+});
+
+// WCAG 2.5.8: alvo de toque com pelo menos 24 px de altura.
+teste('v3.4: celular (360 px) — links no meio do texto e escolha de tema com 24 px de toque', async ({ page }) => {
+  const altura = async sel => (await page.locator(sel).first().boundingBox()).height;
+  await abrir(page, { rota: '#/inicio' });
+  afirma(await altura('.aviso-usuarios a') >= 24, '"Liberar em Usuários" com 24 px');
+  await abrir(page, { rota: '#/campanhas/2' });
+  afirma(await altura('a.link-toque[href^="#/gestao/empresas/"]') >= 24, 'nome do balconista com 24 px');
+  await abrir(page, { rota: '#/perfil' });
+  afirma(await altura('.tema-opcao input') >= 24, 'botão de tema com 24 px');
+  afirma(await altura('.tema-opcao') >= 44, 'cartão do tema inteiro clicável');
+}, { largura: 360, altura: 740, toque: true });
+
 teste('v3.3: comissões — "não comissiona" tira o nome dos novos e grava nos parâmetros', async ({ page }) => {
   await previaOutubro(page);
   await page.click('[data-ignorar="SEM CADASTRO LTDA"]');
@@ -2690,6 +2769,34 @@ teste('v3.3: comissões — Excel no formato de outubro, recibos e ADP dos PJ co
   afirma(/\n18\n/.test(pdf.texto) && /\n300\n/.test(pdf.texto), 'números das NF na ADP');
   const nfSel = (await db(page)).comissao_mes_pj.find(x => x.comissionado_id === 6);
   afirma(nfSel?.nf_numero === '18' && nfSel?.nf_valor === 5658.89, 'número e valor da NF da Seldiana gravados no mês: ' + JSON.stringify(nfSel));
+});
+
+teste('v3.4: comissões — "Fechar mês" fica numa faixa própria e só chama atenção quando nada falta', async ({ page }) => {
+  await previaOutubro(page);
+  igual(await page.locator('.cm-documentos #cm-fechar').count(), 0, 'fora da fila dos documentos');
+  const faixa = page.locator('.cm-fechar');
+  let t = await faixa.innerText();
+  afirma(t.includes('1 vendedor em Novos no Qlik') && t.includes('sem a NF de Alex, Seldiana'), 'diz o que falta: ' + t);
+  afirma(!(await page.locator('#cm-fechar').getAttribute('class')).includes('btn-primario'), 'botão discreto enquanto falta algo');
+  igual((await page.locator('#cm-fechar').innerText()).trim(), 'Fechar mês assim mesmo', 'rótulo deixa claro que falta algo');
+  // Resolve as pendências: "não comissiona" e a ADP com a NF da Seldiana.
+  await page.click('[data-ignorar="SEM CADASTRO LTDA"]');
+  await page.click('dialog button[type="submit"]');
+  await page.locator('.cm-sem').waitFor({ state: 'detached' });
+  await page.click('#cm-adp');
+  await page.locator('#ap-venc').waitFor();
+  const aPagar = async i => (await page.locator(`#ap-d-${i}`).innerText()).match(/A pagar: R\$ ([\d.,]+)/)[1];
+  await page.fill('#ap-nv-0', await aPagar(0));
+  await page.fill('#ap-nf-1', '18');
+  await page.fill('#ap-nv-1', await aPagar(1));
+  const [adp] = await Promise.all([page.waitForEvent('download'), page.click('dialog button[type="submit"]')]);
+  afirma(adp, 'ADP baixada');
+  await page.locator('.cm-fechar-pronto').waitFor();
+  t = await faixa.innerText();
+  afirma(t.includes('Ninguém em Novos no Qlik') && t.includes('com a NF de todos'), 'tudo pronto: ' + t);
+  afirma((await page.locator('#cm-fechar').getAttribute('class')).includes('btn-primario'), 'botão em destaque');
+  const vio = (await axe(page, 'Comissões fechar')).filter(x => ['critical', 'serious'].includes(x.impacto));
+  afirma(!vio.length, 'acessibilidade: ' + JSON.stringify(vio));
 });
 
 teste('v3.3: comissões — fechar o mês grava no histórico, trava os lançamentos e reabrir pede motivo', async ({ page }) => {

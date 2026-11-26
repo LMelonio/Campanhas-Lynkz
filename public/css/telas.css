@@ -395,6 +395,26 @@ a.det-empresa:hover { text-decoration-color: currentColor; }
 .cm-sem-lista li { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--e-2) var(--e-3); padding: var(--e-3) var(--e-4); border-top: 1px solid var(--line); }
 .cm-sem-lista li > div:first-child { display: grid; gap: 2px; min-width: 0; }
 .cm-sem-lista small { font-size: var(--t-13); color: var(--ink-2); }
+/* Cadastro em lote: o rótulo inteiro marca o vendedor (alvo de toque de 44 px). */
+.cm-sem-marca { display: flex; align-items: center; gap: var(--e-3); min-height: var(--tap); min-width: 0; flex: 1 1 220px; cursor: pointer; }
+.cm-sem-marca > span { display: grid; gap: 2px; min-width: 0; overflow-wrap: anywhere; }
+.cm-sem-marca input, .cm-lote-todos input { width: 22px; height: 22px; flex: none; margin: 0; accent-color: var(--red); }
+.cm-lote { display: grid; gap: var(--e-2); padding: var(--e-3) var(--e-4); border-top: 1px solid var(--line); }
+.cm-lote-topo { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--e-2) var(--e-3); }
+.cm-lote-topo p { margin: 0; }
+.cm-lote-todos { display: inline-flex; align-items: center; gap: var(--e-3); min-height: var(--tap); font-weight: 600; cursor: pointer; }
+.cm-lote-aplicar { display: flex; flex-wrap: wrap; align-items: flex-end; gap: var(--e-3); }
+.cm-lote-aplicar .campo { margin: 0; flex: 1 1 220px; max-width: 320px; }
+.cm-lote > .campo-dica { margin: 0; }
+/* Fechar o mês: faixa própria no fim da apuração, com o que falta conferir. */
+.cm-fechar .painel-corpo { display: grid; gap: var(--e-3); }
+.cm-fechar .painel-corpo > * { margin: 0; }
+.cm-fechar-pronto { border-color: var(--ink); }
+.cm-conferir { display: grid; gap: var(--e-2); margin: 0; padding: 0; list-style: none; }
+.cm-conferir li { display: flex; align-items: flex-start; gap: var(--e-2); font-size: var(--t-14); }
+.cm-conferir .ico { width: 18px; height: 18px; flex: none; margin-top: 1px; }
+.cm-conferir .ok .ico { color: var(--green); }
+.cm-conferir .falta .ico { color: var(--amber); }
 .cm-tabela tbody tr { cursor: default; }
 .cm-tabela tbody tr:hover { background: none; }
 .cm-tabela td strong { display: block; }
