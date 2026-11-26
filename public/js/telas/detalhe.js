@@ -122,7 +122,7 @@ function painelRecebedor(c, ctx) {
   const ehSwile = c.forma_pagamento === 'Swile';
   const balc = c.balconista_id ? ctx.cadastros.balconista(c.balconista_id) : null;
   if (!ehSwile && !balc) return '';
-  const linkBalc = balc ? linha('Cadastro', html`<a href="#/gestao/empresas/${balc.empresa_id}">${balc.nome_completo}${balc.ativo ? '' : ' (desativado)'}</a>`) : '';
+  const linkBalc = balc ? linha('Cadastro', html`<a href="#/gestao/empresas/${balc.empresa_id}" class="link-toque">${balc.nome_completo}${balc.ativo ? '' : ' (desativado)'}</a>`) : '';
 
   if (ehSwile && c.swile_visivel === false) {
     return html`<section class="painel"><h3 class="painel-titulo">Quem recebe a premiação</h3>

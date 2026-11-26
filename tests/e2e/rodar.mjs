@@ -2612,6 +2612,18 @@ teste('v3.4: comissões — o mês escolhido fica no endereço e volta com a apu
   await page.locator('#cm-t-premio', { hasText: 'setembro 2026' }).waitFor();
 });
 
+// WCAG 2.5.8: alvo de toque com pelo menos 24 px de altura.
+teste('v3.4: celular (360 px) — links no meio do texto e escolha de tema com 24 px de toque', async ({ page }) => {
+  const altura = async sel => (await page.locator(sel).first().boundingBox()).height;
+  await abrir(page, { rota: '#/inicio' });
+  afirma(await altura('.aviso-usuarios a') >= 24, '"Liberar em Usuários" com 24 px');
+  await abrir(page, { rota: '#/campanhas/2' });
+  afirma(await altura('a.link-toque[href^="#/gestao/empresas/"]') >= 24, 'nome do balconista com 24 px');
+  await abrir(page, { rota: '#/perfil' });
+  afirma(await altura('.tema-opcao input') >= 24, 'botão de tema com 24 px');
+  afirma(await altura('.tema-opcao') >= 44, 'cartão do tema inteiro clicável');
+}, { largura: 360, altura: 740, toque: true });
+
 teste('v3.3: comissões — "não comissiona" tira o nome dos novos e grava nos parâmetros', async ({ page }) => {
   await previaOutubro(page);
   await page.click('[data-ignorar="SEM CADASTRO LTDA"]');

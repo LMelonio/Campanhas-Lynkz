@@ -29,7 +29,7 @@ function desenhar(el, ctx) {
 
   pintar(el, html`
     <p class="saudacao">Olá, ${primeiroNome}.</p>
-    ${semAcesso > 0 ? html`<p class="nota aviso-usuarios" role="status">${icone('pessoa')}<span>${semAcesso} ${semAcesso === 1 ? 'pessoa esperando' : 'pessoas esperando'} liberação de acesso. <a href="#/usuarios">Liberar em Usuários</a></span></p>` : ''}
+    ${semAcesso > 0 ? html`<p class="nota aviso-usuarios" role="status">${icone('pessoa')}<span>${semAcesso} ${semAcesso === 1 ? 'pessoa esperando' : 'pessoas esperando'} liberação de acesso. <a href="#/usuarios" class="link-toque">Liberar em Usuários</a></span></p>` : ''}
 
     ${ctx.ehAprovador
       ? (fila.length
