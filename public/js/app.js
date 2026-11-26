@@ -19,7 +19,7 @@ import * as telaHistorico from './telas/historico.js';
 import * as telaGestao from './telas/gestao.js';
 import * as telaPerfil from './telas/perfil.js';
 import * as telaUsuarios from './telas/usuarios.js';
-import * as telaComissoes from './telas/comissoes.js';
+import * as telaComissoes from './telas/comissoes/index.js';
 
 const C = window.CONFIG;
 
