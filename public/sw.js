@@ -10,6 +10,7 @@ const ARQUIVOS = [
   'vendor/supabase-2.119.0.js', 'vendor/instrument-sans-5.3.0-latin.woff2',
   'js/app.js', 'js/acesso.js', 'js/exportar.js', 'js/adp.js', 'js/comissoes-excel.js', 'js/comissoes-pdf.js',
   'js/dados/cadastros.js', 'js/dados/campanhas.js', 'js/dados/comissoes.js', 'js/dados/erros.js', 'js/dados/qlik.js', 'js/dados/saude.js', 'js/dados/usuarios.js',
+  'js/pdf/motor.js',
   'js/lib/comissoes.js', 'js/lib/comissoes-documentos.js', 'js/lib/dom.js', 'js/lib/regras.js', 'js/lib/supabase.js', 'js/lib/url-auth.js',
   'js/telas/campanhas.js', 'js/telas/detalhe.js', 'js/telas/gestao.js', 'js/telas/historico.js',
   'js/telas/inicio.js', 'js/telas/nova.js', 'js/telas/perfil.js', 'js/telas/usuarios.js',
