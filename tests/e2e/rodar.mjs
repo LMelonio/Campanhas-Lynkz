@@ -1444,6 +1444,7 @@ teste('v2.12: Nova com dois laboratórios — consulta os dois juntos, grava "A,
   igual(pedidos[pedidos.length - 1].fornecedor_padrao, 'OURO FINO*', 'com um só, o pedido volta ao formato antigo');
   await escolherNoCombo(page, '#n-laboratorio', 'avert', 'Avert');
   await page.fill('#n-campanha', 'Dois laboratórios');
+  await page.selectOption('#n-pagamento', 'Desconto em nota');
   await page.locator('[data-enviar]:visible').first().click();
   await page.locator('dialog.dialogo button', { hasText: 'Enviar assim' }).click();   // sem meta: o app avisa
   await page.waitForFunction(() => /^#\/campanhas\/\d+/.test(location.hash));
@@ -1571,6 +1572,7 @@ teste('lote R: devolução sem nota que feche — linha aparece, nenhuma riscada
   await page.click('#notas-todas');
   afirma(/3 notas marcadas · R\$\s?1\.600,49/.test(await page.locator('#notas-soma').innerText()), 'soma das notas (1.600,49) − devoluções (50) = total (1.550,49)');
   await page.fill('#n-campanha', 'Devolução sem nota'); await page.fill('#n-meta', '8.000');
+  await page.selectOption('#n-pagamento', 'Desconto em nota');
   await page.locator('[data-enviar]:visible').first().click();
   await page.waitForFunction(() => /#\/campanhas\/\d+$/.test(location.hash));
   const c = (await db(page)).campanhas.at(-1);
@@ -1661,6 +1663,7 @@ teste('v2.14: várias marcas com vários fornecedores; detalhe confere no Qlik c
   const vio = (await axe(page, 'Nova marcas')).filter(x => ['critical', 'serious'].includes(x.impacto));
   afirma(!vio.length, 'acessibilidade das marcas: ' + JSON.stringify(vio));
   await page.fill('#n-campanha', 'Duas marcas, dois fornecedores'); await page.fill('#n-meta', '5000');
+  await page.selectOption('#n-pagamento', 'Desconto em nota');
   await page.locator('[data-enviar]:visible').first().click();
   await page.waitForFunction(() => /#\/campanhas\/\d+$/.test(location.hash));
   const id = await page.evaluate(() => +location.hash.match(/\d+$/)[0]);
@@ -1961,6 +1964,11 @@ teste('v2.7: enviar sem período ou sem meta avisa; Voltar não envia, "Enviar a
   await escolherNoCombo(page, '#n-empresa', 'casa do', 'Casa do Criador');
   await escolherNoCombo(page, '#n-laboratorio', 'avert', 'Avert');
   await page.fill('#n-campanha', 'Sem período nem meta');
+  // Sem forma de pagamento não envia: a aprovada ficaria fora da ADP (que só pega Swile).
+  await page.locator('[data-enviar]:visible').first().click();
+  await erroDo(page, 'n-pagamento').filter({ hasText: 'forma de pagamento' }).waitFor();
+  igual((await db(page)).campanhas.length, antes, 'sem forma de pagamento não grava');
+  await page.selectOption('#n-pagamento', 'Desconto em nota');
   await page.locator('[data-enviar]:visible').first().click();
   const d = page.locator('dialog.dialogo'); await d.waitFor();
   afirma((await d.innerText()).includes('período e meta'), 'diálogo cita período e meta');
@@ -1981,6 +1989,7 @@ teste('v2.7: depois de enviar, a campanha aparece na lista mesmo com filtro de l
   await escolherNoCombo(page, '#n-empresa', 'casa do', 'Casa do Criador');
   await escolherNoCombo(page, '#n-laboratorio', 'avert', 'Avert');
   await page.fill('#n-campanha', 'Aparece na lista'); await page.fill('#n-meta', '5000');
+  await page.selectOption('#n-pagamento', 'Desconto em nota');
   await page.fill('#n-inicio', '2026-12-01'); await page.fill('#n-fim', '2026-12-31');
   await page.locator('[data-enviar]:visible').first().click();
   await page.waitForFunction(() => /#\/campanhas\/\d+$/.test(location.hash));
@@ -2225,6 +2234,7 @@ teste('v2.13: dividir por fornecedor — meta e indústria por fornecedor, rebat
   await escolherNoCombo(page, '#n-laboratorio', 'avert', 'Avert');
   afirma(await page.locator('#bloco-divisao').isVisible(), 'com dois aparece "Dividir por fornecedor"');
   await page.fill('#n-campanha', 'Meta dividida');
+  await page.selectOption('#n-pagamento', 'Desconto em nota');
   await page.fill('#n-inicio', '2026-10-01'); await page.fill('#n-fim', '2026-10-31');
   // Meta e indústria já digitadas: ao ligar, são repartidas em partes iguais.
   await page.fill('#n-meta', '30000'); await page.fill('#n-inv-industria', '1500,01');
@@ -2289,6 +2299,7 @@ teste('v2.13: tirar fornecedor até ficar um desfaz a divisão e grava sem ela; 
   afirma(await page.locator('#bloco-divisao').isHidden(), 'com um, a divisão some');
   afirma(!(await page.locator('#n-meta').evaluate(i => i.readOnly)), 'meta volta a ser editável');
   await page.fill('#n-campanha', 'Volta a um');
+  await page.selectOption('#n-pagamento', 'Desconto em nota');
   await page.fill('#n-inicio', '2026-10-01'); await page.fill('#n-fim', '2026-10-31');
   await page.locator('[data-enviar]:visible').first().click();
   await page.waitForFunction(() => /^#\/campanhas\/\d+/.test(location.hash));
