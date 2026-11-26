@@ -406,6 +406,15 @@ a.det-empresa:hover { text-decoration-color: currentColor; }
 .cm-lote-aplicar { display: flex; flex-wrap: wrap; align-items: flex-end; gap: var(--e-3); }
 .cm-lote-aplicar .campo { margin: 0; flex: 1 1 220px; max-width: 320px; }
 .cm-lote > .campo-dica { margin: 0; }
+/* Fechar o mês: faixa própria no fim da apuração, com o que falta conferir. */
+.cm-fechar .painel-corpo { display: grid; gap: var(--e-3); }
+.cm-fechar .painel-corpo > * { margin: 0; }
+.cm-fechar-pronto { border-color: var(--ink); }
+.cm-conferir { display: grid; gap: var(--e-2); margin: 0; padding: 0; list-style: none; }
+.cm-conferir li { display: flex; align-items: flex-start; gap: var(--e-2); font-size: var(--t-14); }
+.cm-conferir .ico { width: 18px; height: 18px; flex: none; margin-top: 1px; }
+.cm-conferir .ok .ico { color: var(--green); }
+.cm-conferir .falta .ico { color: var(--amber); }
 .cm-tabela tbody tr { cursor: default; }
 .cm-tabela tbody tr:hover { background: none; }
 .cm-tabela td strong { display: block; }

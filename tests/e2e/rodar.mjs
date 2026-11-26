@@ -2771,6 +2771,34 @@ teste('v3.3: comissões — Excel no formato de outubro, recibos e ADP dos PJ co
   afirma(nfSel?.nf_numero === '18' && nfSel?.nf_valor === 5658.89, 'número e valor da NF da Seldiana gravados no mês: ' + JSON.stringify(nfSel));
 });
 
+teste('v3.4: comissões — "Fechar mês" fica numa faixa própria e só chama atenção quando nada falta', async ({ page }) => {
+  await previaOutubro(page);
+  igual(await page.locator('.cm-documentos #cm-fechar').count(), 0, 'fora da fila dos documentos');
+  const faixa = page.locator('.cm-fechar');
+  let t = await faixa.innerText();
+  afirma(t.includes('1 vendedor em Novos no Qlik') && t.includes('sem a NF de Alex, Seldiana'), 'diz o que falta: ' + t);
+  afirma(!(await page.locator('#cm-fechar').getAttribute('class')).includes('btn-primario'), 'botão discreto enquanto falta algo');
+  igual((await page.locator('#cm-fechar').innerText()).trim(), 'Fechar mês assim mesmo', 'rótulo deixa claro que falta algo');
+  // Resolve as pendências: "não comissiona" e a ADP com a NF da Seldiana.
+  await page.click('[data-ignorar="SEM CADASTRO LTDA"]');
+  await page.click('dialog button[type="submit"]');
+  await page.locator('.cm-sem').waitFor({ state: 'detached' });
+  await page.click('#cm-adp');
+  await page.locator('#ap-venc').waitFor();
+  const aPagar = async i => (await page.locator(`#ap-d-${i}`).innerText()).match(/A pagar: R\$ ([\d.,]+)/)[1];
+  await page.fill('#ap-nv-0', await aPagar(0));
+  await page.fill('#ap-nf-1', '18');
+  await page.fill('#ap-nv-1', await aPagar(1));
+  const [adp] = await Promise.all([page.waitForEvent('download'), page.click('dialog button[type="submit"]')]);
+  afirma(adp, 'ADP baixada');
+  await page.locator('.cm-fechar-pronto').waitFor();
+  t = await faixa.innerText();
+  afirma(t.includes('Ninguém em Novos no Qlik') && t.includes('com a NF de todos'), 'tudo pronto: ' + t);
+  afirma((await page.locator('#cm-fechar').getAttribute('class')).includes('btn-primario'), 'botão em destaque');
+  const vio = (await axe(page, 'Comissões fechar')).filter(x => ['critical', 'serious'].includes(x.impacto));
+  afirma(!vio.length, 'acessibilidade: ' + JSON.stringify(vio));
+});
+
 teste('v3.3: comissões — fechar o mês grava no histórico, trava os lançamentos e reabrir pede motivo', async ({ page }) => {
   await previaOutubro(page);
   await page.click('#cm-fechar');

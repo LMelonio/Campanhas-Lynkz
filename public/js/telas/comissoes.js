@@ -126,7 +126,7 @@ function resultadoHtml(r) {
       ${botao('cm-excel', 'baixar', 'Baixar Excel', g === 'excel')}
       ${botao('cm-recibos', 'baixar', 'Recibos dos PJ', g === 'recibos')}
       ${botao('cm-adp', 'moeda', 'Gerar ADP dos PJ', g === 'adp')}
-      ${f ? botao('cm-reabrir', 'cadeado', 'Reabrir mês', g === 'reabrir') : botao('cm-fechar', 'cadeado', 'Fechar mês', g === 'fechar', 'btn-primario')}
+      ${f ? botao('cm-reabrir', 'cadeado', 'Reabrir mês', g === 'reabrir') : ''}
     </div>
 
     ${r.semCadastro.length ? html`<section class="painel cm-sem" aria-labelledby="cm-t-sem">
@@ -147,7 +147,35 @@ function resultadoHtml(r) {
 
     ${tabela('Vendedores CLT', r.linhas.filter(l => !ehPJ(l)), false)}
     ${tabela('Representantes PJ', r.linhas.filter(ehPJ), true)}
-    ${r.ignorados.length ? html`<p class="secao-nota">Não comissionam: ${r.ignorados.map(x => `${x.vendedor} (${r$(x.total)})`).join(', ')}. Para mudar, vá em Parâmetros.</p>` : ''}`;
+    ${r.ignorados.length ? html`<p class="secao-nota">Não comissionam: ${r.ignorados.map(x => `${x.vendedor} (${r$(x.total)})`).join(', ')}. Para mudar, vá em Parâmetros.</p>` : ''}
+    ${f ? '' : faixaFechar(r, botao)}`;
+}
+
+// O que conferir antes de fechar o mês. Cada item: { ok, texto } (o texto já diz o que falta).
+function antesDeFechar(r) {
+  const pjs = linhasAdpPj(r, comissoes.contextoDocumentos(r.mes).cadastro);
+  const semNf = pjs.filter(l => !l.nf || l.nf_valor == null).map(l => l.nome);
+  const semCadastro = pjs.filter(l => l.falta.some(x => x !== 'número da NF' && x !== 'valor da NF')).map(l => l.nome);
+  const n = r.semCadastro.length;
+  return [
+    { ok: !n, texto: n ? `${n} ${n === 1 ? 'vendedor' : 'vendedores'} em Novos no Qlik, fora da comissão` : 'Ninguém em Novos no Qlik' },
+    { ok: !semCadastro.length, texto: semCadastro.length ? `Cadastro do PJ incompleto: ${semCadastro.join(', ')}` : 'Cadastro dos PJ completo para o recibo e a ADP' },
+    { ok: !semNf.length, texto: !pjs.length ? 'Nenhum PJ a pagar neste mês' : semNf.length ? `ADP dos PJ sem a NF de ${semNf.join(', ')}` : 'ADP dos PJ gerada, com a NF de todos' },
+  ];
+}
+
+// "Fechar mês" fica sozinho no fim da apuração, longe dos documentos, e só chama atenção quando nada falta.
+function faixaFechar(r, botao) {
+  const itens = antesDeFechar(r);
+  const pronto = itens.every(i => i.ok);
+  return html`<section class="painel cm-fechar${pronto ? ' cm-fechar-pronto' : ''}" aria-labelledby="cm-t-fechar">
+    <h2 class="painel-titulo" id="cm-t-fechar">Fechar ${mesMinusculo(r.mes)}</h2>
+    <div class="painel-corpo">
+      <p class="campo-dica">Grava a cópia do que foi pago no histórico e trava premiações, ajustes, contrato e NF. Dá para reabrir, com motivo.</p>
+      <ul class="cm-conferir">${itens.map(i => html`<li class="${i.ok ? 'ok' : 'falta'}">${icone(i.ok ? 'check' : 'alerta')}<span>${i.texto}<span class="so-leitor">${i.ok ? ' (pronto)' : ' (falta)'}</span></span></li>`)}</ul>
+      <div class="acoes acoes-fim">${botao('cm-fechar', 'cadeado', pronto ? 'Fechar mês' : 'Fechar mês assim mesmo', s.gerando === 'fechar', pronto ? 'btn-primario' : 'btn-fantasma')}</div>
+    </div>
+  </section>`;
 }
 
 const alertasHtml = l => (l.alertas.length ? html`<small class="cm-alerta-linha">${icone('alerta')}<span>${l.alertas.map(a => a.texto).join(' ')}</span></small>` : '');
@@ -431,12 +459,7 @@ async function dialogoAdp() {
 // ---------- fechar e reabrir o mês (histórico) ----------
 async function fecharMes() {
   const r = s.resultado;
-  const pjs = r.linhas.filter(l => ehPJ(l) && l.valor_pagar > 0);
-  const semNf = pjs.filter(l => !l.nf_numero || l.nf_valor == null).map(l => l.nome);
-  const avisos = [
-    r.semCadastro.length && `${r.semCadastro.length} ${r.semCadastro.length === 1 ? 'vendedor novo' : 'vendedores novos'} no Qlik sem cadastro (fora da comissão)`,
-    semNf.length && `sem NF gravada: ${semNf.join(', ')}`,
-  ].filter(Boolean);
+  const avisos = antesDeFechar(r).filter(i => !i.ok).map(i => i.texto.replace(/^./, c => c.toLowerCase()));
   const ok = await confirmar({
     titulo: `Fechar ${mesMinusculo(r.mes)}?`,
     descricao: `O mês entra no histórico com ${r$(r.totais.geral.valor_pagar)} (CLT ${r$(r.totais.clt.valor_pagar)}, PJ ${r$(r.totais.pj.valor_pagar)}). Premiações, ajustes, contrato e NF ficam travados.${avisos.length ? ` Atenção: ${avisos.join('; ')}.` : ''}`,
