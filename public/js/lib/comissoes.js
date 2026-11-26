@@ -10,7 +10,9 @@
 //   - Premiações: lançadas à mão, para CLT e PJ.
 //   - Contrato de Resultado (só PJ): mês anterior fechado (01 ao último dia). Paga se
 //     faturamento ≥ 100% da meta E positivação ≥ 80% da meta; 1,0% do realizado até 105%,
-//     1,2% acima de 105%. Metas lançadas à mão; realizados vindos do Qlik.
+//     1,2% acima de 105%. Metas do mês (aba Contrato; sem elas, as do cadastro);
+//     realizado do Qlik, ou informado à mão com motivo.
+//   - Cada pessoa tem um nome só no Qlik (Vendedor B2B); nomes novos aparecem para completar o cadastro.
 //   - Acordo mínimo (só CLT, dentro da vigência): paga o maior entre a soma e o acordo.
 //   - Ajustes (motivo obrigatório) entram depois do piso.
 //   - Parcelas podem ser negativas (devolução maior que a venda); o valor a pagar nunca
@@ -200,10 +202,29 @@ export function avaliarContrato({ meta_faturamento, realizado_faturamento, meta_
   return { ...base, atingiu: true, pct_premio: pctPremio, valor: reais(aplicar(reais(realC), pctPremio)), motivo: '' };
 }
 
+// Metas e realizado do Contrato de um PJ no mês.
+// mesPj: linha da aba Contrato (comissao_mes_pj) ou null · realizado: do Qlik ({ faturamento, positivados }) ou null.
+// Meta: a do mês; sem ela, a do cadastro. Realizado: o informado (com motivo) vence o do Qlik.
+export function entradaContrato(c, mesPj = null, realizado = null) {
+  const temMetaMes = mesPj && (mesPj.meta_faturamento != null || mesPj.meta_positivacao != null);
+  const informado = !!mesPj && (mesPj.realizado_faturamento != null || mesPj.realizado_positivacao != null);
+  const qlikFat = realizado?.faturamento ?? 0;
+  const qlikPos = realizado?.positivados ?? 0;
+  return {
+    meta_faturamento: temMetaMes ? mesPj.meta_faturamento : c.meta_faturamento,
+    meta_positivacao: temMetaMes ? mesPj.meta_positivacao : c.meta_positivacao,
+    meta_origem: temMetaMes ? 'mes' : (c.meta_faturamento != null || c.meta_positivacao != null ? 'cadastro' : null),
+    realizado_faturamento: informado && mesPj.realizado_faturamento != null ? mesPj.realizado_faturamento : qlikFat,
+    positivados: informado && mesPj.realizado_positivacao != null ? mesPj.realizado_positivacao : qlikPos,
+    qlik_faturamento: arred(qlikFat), qlik_positivados: qlikPos,
+    informado, motivo_informado: informado ? mesPj.realizado_motivo || '' : '',
+  };
+}
+
 // ---------- uma pessoa ----------
-// c: cadastro · venda: { totalC, fareloC } · realizado: { faturamento, positivados } (PJ)
-// premiacoes / ajustes: [{ valor, descricao|motivo }] desta pessoa.
-export function calcularLinha(c, { venda = null, realizado = null, premiacoes = [], ajustes = [], mes, parametros = PARAMETROS_PADRAO } = {}) {
+// c: cadastro · venda: { totalC, fareloC } · realizado: { faturamento, positivados } do Qlik (PJ)
+// mesPj: metas, realizado informado e NF do PJ no mês · premiacoes / ajustes: [{ valor, descricao|motivo }] desta pessoa.
+export function calcularLinha(c, { venda = null, realizado = null, mesPj = null, premiacoes = [], ajustes = [], mes, parametros = PARAMETROS_PADRAO } = {}) {
   const totalC = venda?.totalC ?? 0;
   const fareloC = venda?.fareloC ?? 0;
   const principalC = totalC - fareloC;
@@ -216,10 +237,12 @@ export function calcularLinha(c, { venda = null, realizado = null, premiacoes = 
 
   let contrato = null;
   if (ehPJ(c)) {
-    contrato = avaliarContrato({
-      meta_faturamento: c.meta_faturamento, meta_positivacao: c.meta_positivacao,
-      realizado_faturamento: realizado?.faturamento ?? 0, positivados: realizado?.positivados ?? 0,
-    }, parametros);
+    const e = entradaContrato(c, mesPj, realizado);
+    contrato = {
+      ...avaliarContrato(e, parametros),
+      meta_origem: e.meta_origem, informado: e.informado, motivo_informado: e.motivo_informado,
+      qlik_faturamento: e.qlik_faturamento, qlik_positivados: e.qlik_positivados,
+    };
   }
   const contratoC = centavos(contrato?.valor || 0);
   const somaC = comPrincipalC + comFareloC + premC + contratoC;
@@ -236,12 +259,14 @@ export function calcularLinha(c, { venda = null, realizado = null, premiacoes = 
 
   return {
     id: c.id, nome: c.nome, regime: c.regime, equipe: c.equipe || '',
-    nomes_qlik: venda?.nomes || [],
+    nome_qlik: (c.nomes_qlik || [])[0] || '', nomes_qlik: venda?.nomes || [],
     pct_principal: pctP, pct_farelo: pctF,
     venda_total: reais(totalC), venda_farelo: reais(fareloC), venda_principal: reais(principalC),
     comissao_principal: reais(comPrincipalC), comissao_farelo: reais(comFareloC),
     comissao_total: reais(comPrincipalC + comFareloC),
-    premiacoes: reais(premC), contrato, contrato_valor: reais(contratoC),
+    premiacoes: reais(premC), premiacoes_lista: premiacoes.map(x => ({ descricao: x.descricao || '', valor: arred(x.valor) })),
+    ajustes_lista: ajustes.map(x => ({ motivo: x.motivo || x.descricao || '', valor: arred(x.valor) })),
+    contrato, contrato_valor: reais(contratoC), nf_numero: mesPj?.nf_numero || '', nf_valor: mesPj?.nf_valor ?? null,
     soma: reais(somaC), acordo, piso_aplicado: pisoAplicado,
     ajustes: reais(ajC), valor_pagar: reais(pagarC), alertas,
   };
@@ -254,13 +279,14 @@ const brlSimples = n => (n < 0 ? '−' : '') + 'R$ ' + Math.abs(n).toFixed(2).re
 //   mes: "2026-10" · comissionados (cadastro) · parametros
 //   vendas: [{ vendedor, total, farelo }] do período de apuração
 //   realizados: Map(id → { faturamento, positivados }) do mês anterior (ou contratoLinhas para calcular aqui)
-//   premiacoes / ajustes: [{ comissionado_id, valor, descricao|motivo }]
+//   premiacoes / ajustes: [{ comissionado_id, valor, descricao|motivo, ativo }] (desativadas ficam de fora)
+//   mesPj: [{ comissionado_id, meta_*, realizado_*, realizado_motivo, nf_numero }] do mês (aba Contrato e NF)
 // Saída: { mes, linhas (CLT primeiro, depois PJ, por nome), semCadastro, ignorados, totais }
-export function apurarMes({ mes, comissionados = [], parametros = PARAMETROS_PADRAO, vendas = [], realizados = null, contratoLinhas = null, premiacoes = [], ajustes = [] }) {
+export function apurarMes({ mes, comissionados = [], parametros = PARAMETROS_PADRAO, vendas = [], realizados = null, contratoLinhas = null, premiacoes = [], ajustes = [], mesPj = [] }) {
   const ativos = comissionados.filter(c => c.ativo !== false);
   const { porId, semCadastro, ignorados } = juntarVendas(vendas, ativos, parametros.nomes_ignorados);
   const real = realizados || realizadosContrato(contratoLinhas || [], ativos);
-  const doId = (lista, id) => lista.filter(x => String(x.comissionado_id) === String(id));
+  const doId = (lista, id) => lista.filter(x => String(x.comissionado_id) === String(id) && x.ativo !== false && (!x.mes || x.mes === mes));
   const ordem = c => (ehPJ(c) ? 1 : 0);
   const linhas = ativos
     .slice()
@@ -269,6 +295,7 @@ export function apurarMes({ mes, comissionados = [], parametros = PARAMETROS_PAD
       venda: porId.get(c.id) || null,
       realizado: real.get(c.id) || null,
       premiacoes: doId(premiacoes, c.id), ajustes: doId(ajustes, c.id),
+      mesPj: doId(mesPj, c.id)[0] || null,
       mes, parametros,
     }));
   const somar = (ls, k) => reais(ls.reduce((s, l) => s + centavos(l[k]), 0));

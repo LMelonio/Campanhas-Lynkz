@@ -346,7 +346,32 @@ a.det-empresa:hover { text-decoration-color: currentColor; }
 
 /* ---------- comissões ---------- */
 .comissoes { display: grid; gap: var(--e-4); }
-.cm-abas { max-width: 520px; }
+.cm-abas { max-width: 760px; }
+/* Seis seções: no celular, duas linhas de três (nenhuma fica escondida rolando de lado). */
+@media (max-width: 640px) {
+  .cm-abas { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); overflow: visible; }
+  .cm-abas .filtro { white-space: normal; line-height: 1.15; padding: 4px 6px; text-align: center; }
+}
+.cm-documentos { flex-wrap: wrap; gap: var(--e-2); }
+.cm-recibo { margin-top: var(--e-1); padding-left: 0; }
+.cm-acao { text-align: right; white-space: nowrap; }
+.cm-qlik { display: flex; flex-wrap: wrap; gap: var(--e-1) var(--e-2); align-items: baseline; margin: 0 0 var(--e-3); overflow-wrap: anywhere; }
+.cm-premiar .acoes-fim { margin-top: var(--e-1); }
+.cm-lancar { display: grid; gap: var(--e-4); grid-template-columns: minmax(0, 1fr); }
+@media (min-width: 900px) { .cm-lancar { grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; } }
+.cm-lancar .painel { margin: 0; }
+.cm-nf { grid-column: 1 / -1; }
+.cm-nf .campo { margin-bottom: 0; }
+@media (min-width: 640px) { .cm-adp-item { grid-template-columns: minmax(0, 1fr); } .cm-adp-item .cm-nf { grid-row: auto; } }
+.cm-tabela tfoot th, .cm-tabela tfoot td { padding-top: var(--e-3); border-top: 1px solid var(--line); text-align: left; }
+.cm-tabela tfoot td.num { text-align: right; }
+@media (max-width: 699px) {
+  .cm-tabela tfoot, .cm-tabela tfoot tr { display: flex; width: 100%; }
+  .cm-tabela tfoot tr { justify-content: space-between; align-items: baseline; padding: var(--e-3) var(--e-4); background: var(--card); border: 1px solid var(--line); border-radius: var(--r-panel); box-shadow: var(--sombra); }
+  .cm-tabela tfoot th, .cm-tabela tfoot td { display: inline; width: auto; padding: 0; border: 0; background: none; }
+  .cm-tabela tfoot td:empty { display: none; }
+  .cm-tabela tfoot td.num::before { content: none; }
+}
 .cm-consulta { display: flex; flex-wrap: wrap; align-items: flex-end; gap: var(--e-3); }
 .cm-consulta .campo { margin: 0; flex: 0 1 240px; }
 .comissoes #cm-conteudo { display: grid; gap: var(--e-4); min-width: 0; }

@@ -20,7 +20,9 @@ public/
   index.html  config.js (chaves públicas, VERSAO, listas, textos da ADP)  tema-inicial.js  sw.js  _headers (CSP)  manifest.json
   css/  tokens.css (único lugar com cor; temas claro/escuro/daltônico)  base.css  componentes.css  telas.css
   js/   app.js (casca, rotas, ctx)  acesso.js (login, senha, convite)  exportar.js (Excel)  adp.js (ADP em PDF)
-        lib/   regras.js (funções puras)  comissoes.js (cálculo das comissões, puro)  dom.js (html``)  supabase.js  url-auth.js
+        comissoes-excel.js (Excel do mês)  comissoes-pdf.js (recibos e ADP dos PJ)
+        lib/   regras.js (funções puras)  comissoes.js (cálculo das comissões, puro)  comissoes-documentos.js (recibo, ADP e Excel, puro)
+               dom.js (html``)  supabase.js  url-auth.js
         dados/ campanhas.js  cadastros.js  usuarios.js  qlik.js  comissoes.js  erros.js  saude.js
         ui/    avisos.js  campos.js  combo.js  pecas.js  decisao.js  tema.js  adp-dialogo.js  cadastro-dialogos.js  …
         telas/ inicio  campanhas  detalhe  nova  historico  gestao  usuarios  comissoes  perfil
@@ -32,7 +34,7 @@ tests/    *.test.mjs (unidade, Worker)  banco/ (PostgreSQL)  e2e/rodar.mjs (nave
 ```
 
 Rotas: `#/inicio` `#/campanhas` `#/campanhas/:id` `#/nova` `#/nova/de/:id` `#/historico` `#/gestao`
-`#/gestao/empresas/:id` `#/usuarios` e `#/comissoes?aba=previa|cadastro|parametros` (administrador) `#/perfil`.
+`#/gestao/empresas/:id` `#/usuarios` e `#/comissoes?aba=previa|premiacoes|contrato|cadastro|parametros|historico` (administrador) `#/perfil`.
 
 Tela: `export function montar(el, ctx, params) → desmontar`. `ctx`: `perfil`, `ehAprovador`, `campanhas`, `cadastros`,
 `toast`, `navegar`, `cabecalho`, `barraDeAcao`, `remontar`, `sair`.
@@ -73,22 +75,40 @@ Tela: `export function montar(el, ctx, params) → desmontar`. `ctx`: `perfil`, 
 
 - Cálculo puro em `lib/comissoes.js`; a interface que importa é `apurarMes()` (o resto é usado por ela e pelos testes).
   Vendas do dia 26 ao 25 (`periodoApuracao`), receita menos devolução; Farelo = fornecedor do parâmetro (6610);
-  % do cadastro de cada pessoa; premiações manuais; Contrato de Resultado só PJ, do mês anterior fechado
+  % do cadastro de cada pessoa; premiações do mês; Contrato de Resultado só PJ, do mês anterior fechado
   (`mesAnteriorFechado`): faturamento ≥ 100% e positivação ≥ 80% da meta → 1,0% do realizado, 1,2% acima de 105%.
-  Positivado = cliente com receita líquida > 0 no mês. Acordo mínimo só CLT, na vigência: paga o maior entre a soma e o acordo.
-  Ajustes entram depois do piso. Parcelas podem ser negativas; o total pago nunca fica abaixo de zero; nada passa para o
-  mês seguinte. Dinheiro em centavos inteiros por dentro, cada parcela arredondada. Sem bônus de cliente novo.
-- `dados/comissoes.js` junta banco + Qlik + cálculo: a tela chama `carregar()`, `apurar(mes, { buscar })`, `salvar()`,
-  `salvarParametros()`, `ligarNome()`, `ignorarNome()`. `apurar(mes, { buscar: false })` recalcula com a última consulta do
-  mês (depois de mexer no cadastro) e devolve `null` se o Farelo ou o corte mudaram.
-- Banco (migração 16): `comissionados` (nomes do Qlik únicos entre os ativos; `meta_atualizada_em` carimbada pelo banco;
-  ninguém apaga, desativa), `comissao_parametros` (uma linha), `comissao_auditoria`. RLS `eh_aprovador()` nas três.
+  Metas do mês na aba Contrato (`comissao_mes_pj`; sem elas, as do cadastro); realizado do Qlik ou informado à mão com
+  motivo (`entradaContrato`). Positivado = cliente com receita líquida > 0 no mês. Acordo mínimo só CLT, na vigência:
+  paga o maior entre a soma e o acordo. Parcelas podem ser negativas; o total pago nunca fica abaixo de zero; nada passa
+  para o mês seguinte. Dinheiro em centavos inteiros por dentro, cada parcela arredondada. Sem bônus de cliente novo.
+- As pessoas vêm do Qlik: um nome do Qlik (Vendedor B2B) por pessoa. Nome novo aparece em "Novos no Qlik" na Apuração,
+  com "Completar cadastro" (regime, %, acordo, dados da PJ) ou "Não comissiona". Não há botão de cadastro novo nem
+  "ligar a alguém"; o nome do Qlik não se edita.
+- `dados/comissoes.js` junta banco + Qlik + cálculo: `carregar()`, `carregarMes(mes)`, `apurar(mes, { buscar })`,
+  `salvar()`, `salvarParametros()`, `ignorarNome()`, `lancarPremiacao()`/`lancarAjuste()` e `removerPremiacao()`/`removerAjuste()`
+  (desativam), `salvarMesPj(mes, id, campos)` (metas, realizado informado, número e valor da NF), `buscarBase(mes)` (vendas linha
+  a linha, só para o Excel), `fecharMes(resultado)`, `reabrirMes(mes, motivo)`, `historico()` e `contextoDocumentos(mes)`.
+  `apurar(mes, { buscar: false })` recalcula com a última consulta do mês e devolve `null` se o Farelo ou o corte mudaram.
+  Mês fechado: `apurar()` devolve a cópia do histórico (`resultado.fechado`), sem Qlik nem recálculo.
+- Ajustes: acréscimo ou desconto com motivo, por pessoa e mês; entram depois do acordo mínimo; aparecem no recibo
+  (uma linha por ajuste) e no Excel (aba Ajustes e coluna Ajustes).
+- Histórico: "Fechar mês" grava em `comissao_fechamentos` a cópia (cálculo, cadastro usado, premiações, ajustes, parâmetros).
+  Mês fechado trava premiações, ajustes, contrato e NF (trigger no banco); documentos saem da cópia (o Excel sem a aba
+  da base). Reabrir pede motivo e mantém a cópia até fechar de novo. Ninguém apaga o histórico.
+- Documentos (`lib/comissoes-documentos.js`, puro; quem desenha: `comissoes-excel.js` e `comissoes-pdf.js`):
+  Excel no formato da planilha de outubro/2026 (abas Campanha mensal, Contrato de Resultado - Mês, Análise de comissões,
+  Base Qlik 26 - 25; fórmulas com ROUND em cada parcela, iguais à tela; sem a base, as vendas vão como valor);
+  recibo por PJ (A4 em pé, uma página por PJ); ADP dos PJ "documentos diversos / NF" com o número da NF obrigatório,
+  gravado no mês com o valor da NF (aviso quando não bate com o valor a pagar). Textos fixos em `config.js` → `COMISSOES` (empresa pagadora e CNPJ = tomador das NF dos PJ; a loja vem de `ADP`).
+  Nomes de arquivo sem acento (alguns navegadores trocam por "download").
+- Banco: migração 16 (`comissionados`, `comissao_parametros`, `comissao_auditoria`) e 17 (`comissao_premiacoes`,
+  `comissao_ajustes`, `comissao_mes_pj`, `comissao_fechamentos`). RLS `eh_aprovador()` em todas; ninguém apaga (premiação sai desativada); tudo na auditoria.
 - Worker: `/api/qlik/comissoes` só para `papel = 'aprovador'` (`ROTAS_QLIK[...].soAdmin`). Cubos `[Vendedor B2B]` (total e
   Farelo) e `[Vendedor B2B] × [Cód. Cliente]` (contrato), com os mesmos `{1<…>}`, filtros e medida das compras.
+  Com `{ base: true }`, devolve só a base linha a linha (campos `segmento`, `codigoVendedor` e `produto` em `QLIK_CAMPOS`).
 - O teste "outubro/2026" refaz a planilha real com `dados-privados/comissoes-outubro-2026.json` (fora do Git; sem ele, é pulado).
   `npm run qlik:comissoes -- --mes AAAA-MM --planilha arquivo.xlsx` compara o Qlik com a planilha do mês.
-- Próximas entregas: fechamento do mês (premiações, ajustes com motivo, travar/reabrir, cópia dos % usados), Excel,
-  recibo PDF por PJ e ADP de comissões com número da nota obrigatório.
+- Próximas entregas: envio do recibo por e-mail.
 
 ## Qlik
 

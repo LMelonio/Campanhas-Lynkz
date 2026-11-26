@@ -75,7 +75,7 @@ function sementeComissoes() {
       c(2, { nome: 'Nayra Juliana Lima Vale', regime: 'CLT', equipe: 'Equipe Imperatriz', pct_principal: 2.5, pct_farelo: 1, nomes_qlik: ['NAYRA JULIANA LIMA VALE'],
         acordo_minimo: 5000, acordo_inicio: '2026-10-01', acordo_fim: '2027-03-31' }),
       c(3, { nome: 'Rayane Cunha dos Anjos', regime: 'TELEVENDAS', equipe: 'Equipe Capital · Televendas', pct_principal: 1, pct_farelo: 1, nomes_qlik: ['RAYANE CUNHA DOS ANJOS'] }),
-      c(4, { nome: 'Maria Amanda', regime: 'CLT', equipe: 'Equipe Tocantins', pct_principal: 2.5, pct_farelo: 1, nomes_qlik: ['MARIA AMANDA FARIAS DE SOUSA', 'M A F DE SOUSA'] }),
+      c(4, { nome: 'Maria Amanda', regime: 'CLT', equipe: 'Equipe Tocantins', pct_principal: 2.5, pct_farelo: 1, nomes_qlik: ['MARIA AMANDA FARIAS DE SOUSA'] }),
       c(5, { nome: 'Alex', regime: 'PJ', equipe: 'Equipe Interior · Equipe 02', pct_principal: 5, pct_farelo: 2, nomes_qlik: ['ALEX REPRESENTAÇÕES'],
         meta_faturamento: 199360.26, meta_positivacao: 40, meta_atualizada_em: '2026-10-05T13:00:00.000Z', meta_atualizada_por: 'u-aprov',
         pj_razao_social: 'ALEX REPRESENTACOES', pj_documento: '11222333000181', pj_pix: '11.222.333/0001-81', pj_banco: 'NUBANK',
@@ -96,6 +96,15 @@ let db = (() => { try { return JSON.parse(sessionStorage.getItem(CHAVE)) || seme
 db.campanha_notas ||= []; db.seq.campanha_notas ||= 0;
 if (!db.comissionados) { Object.assign(db, sementeComissoes()); db.seq.comissionados = 7; }
 db.comissao_auditoria ||= [];
+// Migração 17: premiações e dados do PJ no mês. Semente: uma premiação de outubro e a NF do Alex.
+if (!db.comissao_premiacoes) {
+  db.comissao_premiacoes = [{ id: 1, mes: '2026-10', comissionado_id: 3, descricao: 'Campanha Ouro Fino', valor: 150, ativo: true,
+    criado_em: new Date().toISOString(), criado_por: 'u-aprov', atualizado_em: null, atualizado_por: null }];
+  db.comissao_mes_pj = [{ id: 1, mes: '2026-10', comissionado_id: 5, meta_faturamento: null, meta_positivacao: null,
+    realizado_faturamento: null, realizado_positivacao: null, realizado_motivo: null, nf_numero: '300', atualizado_em: null, atualizado_por: null }];
+  db.seq.comissao_premiacoes = 1; db.seq.comissao_mes_pj = 1;
+}
+db.comissao_ajustes ||= []; db.comissao_fechamentos ||= [];
 db.perfis ||= JSON.parse(JSON.stringify(USUARIOS));
 const gravarDb = () => { try { sessionStorage.setItem(CHAVE, JSON.stringify(db)); } catch { /* cheio */ } };
 gravarDb();
@@ -123,7 +132,64 @@ function verView(c) {
 
 // ---------- comissões (migração 16) ----------
 const nomeQlikSim = t => String(t ?? '').replace(/\s+/g, ' ').trim().toUpperCase();
-const TABELAS_COMISSAO = ['comissionados', 'comissao_parametros', 'comissao_auditoria'];
+const TABELAS_MES = ['comissao_premiacoes', 'comissao_ajustes', 'comissao_mes_pj', 'comissao_fechamentos'];
+const TABELAS_COMISSAO = ['comissionados', 'comissao_parametros', 'comissao_auditoria', ...TABELAS_MES];
+const mesFechado = mes => db.comissao_fechamentos.some(f => f.mes === mes && f.status === 'fechado');
+// Fechar, reabrir e fechar de novo (trigger preparar_comissao_fechamento).
+function prepararFechamento(r, antigo) {
+  const u = usuario(), agora = new Date().toISOString();
+  r.motivo_reabertura = String(r.motivo_reabertura ?? '').replace(/\s+/g, ' ').trim() || null;
+  if (!antigo) {
+    if (db.comissao_fechamentos.some(f => f.mes === r.mes)) return erro('duplicate key value violates unique constraint "comissao_fechamentos_mes_unico"', '23505');
+    Object.assign(r, { status: 'fechado', fechado_em: agora, fechado_por: u.id, reaberto_em: null, reaberto_por: null, motivo_reabertura: null });
+    return null;
+  }
+  r.mes = antigo.mes;
+  if (antigo.status === 'fechado' && r.status === 'fechado') return erro(`O mês ${antigo.mes} já está fechado. Reabra antes de fechar de novo.`);
+  if (r.status === 'reaberto') {
+    if (!(r.motivo_reabertura && r.motivo_reabertura.length >= 3)) return erro('violates check constraint "comissao_fechamentos_motivo"', '23514');
+    Object.assign(r, { dados: antigo.dados, total: antigo.total, total_clt: antigo.total_clt, total_pj: antigo.total_pj,
+      fechado_em: antigo.fechado_em, fechado_por: antigo.fechado_por, reaberto_em: agora, reaberto_por: u.id });
+  } else {
+    Object.assign(r, { fechado_em: agora, fechado_por: u.id, reaberto_em: antigo.reaberto_em, reaberto_por: antigo.reaberto_por, motivo_reabertura: antigo.motivo_reabertura });
+  }
+  return null;
+}
+const MES_RE = /^\d{4}-(0[1-9]|1[0-2])$/;
+// Regras das tabelas da migração 17 (constraints e trigger preparar_comissao_mes).
+function prepararMes(tabela, r, antigo) {
+  const u = usuario();
+  if (tabela === 'comissao_fechamentos') return prepararFechamento(r, antigo);
+  if (!MES_RE.test(r.mes || '')) return erro(`violates check constraint "${tabela}_mes"`, '23514');
+  if (mesFechado(r.mes) || (antigo && mesFechado(antigo.mes))) return erro(`O mês ${r.mes} está fechado. Reabra o mês para mudar premiações, ajustes, contrato ou nota fiscal.`);
+  if (tabela === 'comissao_ajustes') {
+    r.motivo = String(r.motivo || '').replace(/\s+/g, ' ').trim();
+    if (r.motivo.length < 3 || r.motivo.length > 200) return erro('violates check constraint "comissao_ajustes_motivo"', '23514');
+    if (!(r.valor >= -1e6 && r.valor <= 1e6 && r.valor !== 0)) return erro('violates check constraint "comissao_ajustes_valor"', '23514');
+    if (antigo) { r.mes = antigo.mes; r.comissionado_id = antigo.comissionado_id; r.criado_em = antigo.criado_em; r.criado_por = antigo.criado_por; r.atualizado_em = new Date().toISOString(); r.atualizado_por = u.id; }
+    else { r.criado_em = new Date().toISOString(); r.criado_por = u.id; }
+    return null;
+  }
+  if (tabela === 'comissao_premiacoes') {
+    r.descricao = String(r.descricao || '').replace(/\s+/g, ' ').trim();
+    if (r.descricao.length < 2 || r.descricao.length > 120) return erro('violates check constraint "comissao_premiacoes_descricao"', '23514');
+    if (!(r.valor >= 0.01 && r.valor <= 1e6)) return erro('violates check constraint "comissao_premiacoes_valor"', '23514');
+    if (antigo) { r.mes = antigo.mes; r.comissionado_id = antigo.comissionado_id; r.criado_em = antigo.criado_em; r.criado_por = antigo.criado_por; }
+    else { r.criado_em = new Date().toISOString(); r.criado_por = u.id; }
+  } else {
+    const c = db.comissionados.find(x => x.id == r.comissionado_id);
+    if (!c || c.regime !== 'PJ') return erro('Contrato de Resultado e nota fiscal são só para representantes PJ.');
+    if (!antigo && db.comissao_mes_pj.some(x => x.mes === r.mes && x.comissionado_id == r.comissionado_id)) return erro('duplicate key value violates unique constraint "comissao_mes_pj_unico"', '23505');
+    r.nf_numero = String(r.nf_numero ?? '').trim() || null;
+    if (r.nf_numero && !/^[0-9A-Za-z./-]{1,20}$/.test(r.nf_numero)) return erro('violates check constraint "comissao_mes_pj_nf"', '23514');
+    if (r.nf_valor != null && !(r.nf_valor >= 0.01 && r.nf_valor <= 1e7)) return erro('violates check constraint "comissao_mes_pj_nf_valor"', '23514');
+    const temReal = r.realizado_faturamento != null || r.realizado_positivacao != null;
+    r.realizado_motivo = temReal ? String(r.realizado_motivo || '').replace(/\s+/g, ' ').trim() || null : null;
+    if (temReal && !(r.realizado_motivo && r.realizado_motivo.length >= 3)) return erro('violates check constraint "comissao_mes_pj_realizado"', '23514');
+  }
+  if (antigo || tabela === 'comissao_mes_pj') { r.atualizado_em = new Date().toISOString(); r.atualizado_por = u.id; }
+  return null;
+}
 function prepararComissionado(r, antigo) {
   const u = usuario();
   r.nome = String(r.nome || '').replace(/\s+/g, ' ').trim();
@@ -158,6 +224,17 @@ function inserir(tabela, d) {
     const e = prepararComissionado(r, null);
     if (e) { db.seq.comissionados--; return { error: e }; }
     db.comissionados.push(r); return { row: r };
+  }
+  if (TABELAS_MES.includes(tabela)) {
+    if (!ehAprovador()) return { error: erro(`new row violates row-level security policy for table "${tabela}"`, '42501') };
+    const base = tabela === 'comissao_mes_pj'
+      ? { meta_faturamento: null, meta_positivacao: null, realizado_faturamento: null, realizado_positivacao: null, realizado_motivo: null, nf_numero: null, nf_valor: null }
+      : tabela === 'comissao_fechamentos' ? { status: 'fechado' } : { ativo: true, atualizado_em: null, atualizado_por: null };
+    const r = { ...base, ...d, id: (db.seq[tabela] || 0) + 1 };
+    const e = prepararMes(tabela, r, null);
+    if (e) return { error: e };
+    db.seq[tabela] = r.id;
+    db[tabela].push(r); return { row: r };
   }
   if (TABELAS_COMISSAO.includes(tabela)) return { error: erro('permission denied for table ' + tabela, '42501') };
   if (tabela === 'empresas') {
@@ -233,7 +310,7 @@ function atualizar(tabela, linhas, d) {
     const prontas = [];
     for (const atual of linhas) {
       const r = { ...atual, ...d, id: atual.id };
-      const e = prepararComissionado(r, atual);
+      const e = tabela === 'comissionados' ? prepararComissionado(r, atual) : prepararMes(tabela, r, atual);
       if (e) return { error: e };
       prontas.push([atual, r]);
     }

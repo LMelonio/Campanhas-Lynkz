@@ -12,7 +12,7 @@ window.CONFIG = {
   SUBMARCA: "Campanhas",
   DOMINIO: "lynkz.com.br",
   // Igual a VERSAO do sw.js e VERSAO_APP do js/app.js.
-  VERSAO: "3.2.1",
+  VERSAO: "3.3.0",
 
   // Faixas do custo sobre a meta (0.08 = 8%).
   FAIXA_VERDE: 0.08,   // até aqui, dentro do padrão
@@ -43,6 +43,17 @@ window.CONFIG = {
     DEPARTAMENTO: "COMERCIAL",
     FORMA: "SWILE",
     TIPO_SEM_TIPO: "PREMIAÇÃO CAMPANHA",   // quando a campanha não tem tipo
+  },
+
+  // Textos fixos do recibo e da ADP das comissões dos PJ (empresa pagadora e loja vêm de ADP acima).
+  // Empresa pagadora = o tomador das notas fiscais dos PJ (a ADP de campanhas continua com ADP.EMPRESA_PAGADORA).
+  COMISSOES: {
+    EMPRESA_PAGADORA: "LYNKZ DISTRIBUIDORA LTDA",
+    CNPJ_PAGADORA: "27.095.555/0001-10",
+    CIDADE: "São Luís",                           // local da data no recibo
+    DEPARTAMENTO_PJ: "SERVIÇOS PRESTADOS PJ",
+    FORMA_PJ: "PIX",
+    OBSERVACAO_PJ: "Pagamento dos representantes comerciais da Lynkz",   // quando o cadastro não tem observação
   },
 
   // Motivos rápidos do diálogo de reprova (o texto continua editável).
