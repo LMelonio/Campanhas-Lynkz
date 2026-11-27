@@ -2112,6 +2112,33 @@ comment on column public.comissionados.pct_farelo is 'Obsoleto desde a 21: o % d
 comment on column public.comissao_parametros.cod_farelo is 'Obsoleto desde a 21: o Farelo é um secundário em comissao_fornecedores.';
 
 -- ============================================================
+--  PJ COM OS DADOS DE PAGAMENTO OBRIGATÓRIOS (v3.6.0) — mesmo conteúdo de
+--  migracoes/22-pj-completo.sql. Se mudar aqui, mude lá também.
+-- ============================================================
+create or replace function public.validar_pj_completo()
+returns trigger language plpgsql security definer set search_path = public as $$
+begin
+  if new.regime <> 'PJ' or not new.ativo then return new; end if;
+  if btrim(coalesce(new.pj_razao_social, '')) = '' then
+    raise exception 'Informe a razão social.';
+  end if;
+  if not (public.cpf_valido(coalesce(new.pj_documento, '')) or public.cnpj_valido(coalesce(new.pj_documento, ''))) then
+    raise exception 'CNPJ ou CPF inválido.';
+  end if;
+  if btrim(coalesce(new.pj_pix, '')) = '' then
+    raise exception 'Informe a chave PIX.';
+  end if;
+  if btrim(coalesce(new.pj_banco, '')) = '' then
+    raise exception 'Informe o banco.';
+  end if;
+  return new;
+end $$;
+revoke execute on function public.validar_pj_completo() from public, anon, authenticated;
+drop trigger if exists ao_validar_pj_completo on public.comissionados;
+create trigger ao_validar_pj_completo before insert or update on public.comissionados
+  for each row execute function public.validar_pj_completo();
+
+-- ============================================================
 --  DEPOIS DE FAZER SEU PRIMEIRO LOGIN NO APP, rode a linha abaixo
 --  trocando pelo seu e-mail, para virar o primeiro administrador:
 --

@@ -326,6 +326,16 @@ async function aplicarLote() {
   if (!nomes.length) { s.ctx.toast('Marque pelo menos um vendedor.', { tom: 'erro' }); return; }
   if (!acao) { aplicarErros(s.el, { 'cm-lote-acao': 'Escolha o que fazer.' }); return; }
   const lista = nomes.length === 1 ? nomes[0] : `${nomes.length} vendedores`;
+  // PJ precisa de razão social, documento, PIX e banco: não dá em lote. Abre o cadastro do primeiro marcado.
+  if (acao === 'PJ') {
+    const ok = await confirmar({
+      titulo: 'PJ precisa dos dados de pagamento',
+      descricao: `Complete um por vez: razão social, CNPJ ou CPF, chave PIX e banco. Começando por ${nomes[0]}.`,
+      confirmar: 'Completar cadastro',
+    });
+    if (ok && s) await editar(null, nomes[0], { regime: 'PJ' });
+    return;
+  }
   const p = pctPadrao(acao, comissoes.parametros());
   const ok = await confirmar(acao === 'ignorar'
     ? { titulo: `${lista} não ${nomes.length === 1 ? 'comissiona' : 'comissionam'}?`, descricao: `${nomes.join(', ')}. As vendas com estes nomes deixam de aparecer como novas. Dá para desfazer em Parâmetros.`, confirmar: 'Não comissiona' }

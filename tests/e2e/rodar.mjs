@@ -2675,7 +2675,10 @@ teste('v3.3: comissões — apuração separa Farelo, aplica acordo e contrato e
   igual(await page.locator('#dc-nomes-qlik').count(), 0, 'nome do Qlik não se digita');
   await page.selectOption('#dc-regime', 'PJ');
   igual(await page.inputValue('#dc-pct-principal'), '5', '% principal do PJ');
+  await page.fill('#dc-pj-razao-social', 'SEM CADASTRO LTDA');
   await page.fill('#dc-pj-documento', '12.345.678/0001-95');
+  await page.fill('#dc-pj-pix', '12345678000195');
+  await page.fill('#dc-pj-banco', 'Caixa');
   await page.click('dialog button[type="submit"]');
   await page.locator('dialog').waitFor({ state: 'detached' });
   await page.locator('.cm-sem').waitFor({ state: 'detached' });
@@ -3131,6 +3134,41 @@ teste('v3.6: comissões — principal em lista manda o resto para "Outros", com 
   afirma(/Elielson Serpa Mendes[\s\S]*0,2% em Outros[\s\S]*R\$ 4\.765,12/.test(await page.locator('#cm-conteudo').innerText()), 'comissão de Outros');
 });
 
+teste('v3.6: comissões — PJ precisa dos dados de pagamento; no lote, PJ abre o cadastro um por vez', async ({ page }) => {
+  await previaOutubro(page);
+  await page.click('[data-completar="SEM CADASTRO LTDA"]');
+  const d = page.locator('dialog.dialogo'); await d.waitFor();
+  await d.locator('#dc-regime').selectOption('PJ');
+  await d.locator('button[type="submit"]').click();
+  const erros = {};
+  for (const k of ['razao-social', 'documento', 'pix', 'banco']) erros[k] = (await erroDo(page, `dc-pj-${k}`).innerText()).trim();
+  igual(JSON.stringify(erros), JSON.stringify({ 'razao-social': 'Informe a razão social.', documento: 'CNPJ ou CPF inválido.', pix: 'Informe a chave PIX.', banco: 'Informe o banco.' }), 'os 4 erros');
+  afirma(await d.isVisible(), 'o diálogo não fecha');
+  await d.locator('#dc-pj-documento').fill('529.982.247-24');
+  await d.locator('button[type="submit"]').click();
+  igual((await erroDo(page, 'dc-pj-documento').innerText()).trim(), 'CNPJ ou CPF inválido.', 'CPF com dígito errado');
+  await page.keyboard.press('Escape'); await d.waitFor({ state: 'detached' });
+  igual((await db(page)).comissionados.some(c => c.nomes_qlik.includes('SEM CADASTRO LTDA')), false, 'nada gravado');
+
+  // Lote: escolher PJ explica e abre o cadastro individual, já como PJ.
+  await page.goto(`${BASE}/?papel=aprovador#/comissoes?aba=parametros`);
+  await page.fill('#cp-nomes_ignorados', '');
+  await page.click('#cm-form-param button[type="submit"]');
+  await page.locator('.cm-alterado').waitFor();
+  await page.goto(`${BASE}/?papel=aprovador#/comissoes?aba=apuracao&mes=2026-10`);
+  await page.locator('.cm-lote').waitFor();
+  await page.locator('#cm-buscar:not([disabled])').waitFor();
+  await page.check('#cm-lote-todos');
+  await page.selectOption('#cm-lote-acao', 'PJ');
+  await page.click('#cm-lote-ok');
+  const aviso = page.locator('dialog', { hasText: 'PJ precisa dos dados de pagamento' });
+  afirma((await aviso.innerText()).includes('Complete um por vez'), 'explica por que não dá em lote');
+  await aviso.locator('button[type="submit"]').click();
+  const ind = page.locator('dialog', { hasText: 'Completar cadastro' }); await ind.waitFor();
+  igual(await ind.locator('#dc-regime').inputValue(), 'PJ', 'já vem como PJ');
+  afirma(await ind.locator('#dc-pj-razao-social').isVisible(), 'com os campos do PJ');
+});
+
 teste('v3.3: comissões — cadastro só edita quem veio do Qlik e avisa o que falta no PJ', async ({ page }) => {
   await abrir(page, { rota: '#/comissoes?aba=cadastro' });
   await page.locator('.usuarios-lista').first().waitFor();
@@ -3143,8 +3181,8 @@ teste('v3.3: comissões — cadastro só edita quem veio do Qlik e avisa o que f
   igual(await page.locator('#dc-nomes-qlik, #dc-meta-faturamento').count(), 0, 'nome do Qlik e metas não ficam no cadastro');
   await page.fill('#dc-pj-pix', '');
   await page.click('dialog button[type="submit"]');
-  await page.locator('dialog').waitFor({ state: 'detached' });
-  afirma((await page.locator('#cm-lista').innerText()).includes('Falta para o recibo e a ADP: chave PIX'), 'avisa o que falta');
+  igual((await erroDo(page, 'dc-pj-pix').innerText()).trim(), 'Informe a chave PIX.', 'PJ sem PIX não salva');
+  await page.keyboard.press('Escape'); await page.locator('dialog').waitFor({ state: 'detached' });
   const vio = (await axe(page, 'Comissões cadastro')).filter(x => ['critical', 'serious'].includes(x.impacto));
   afirma(!vio.length, 'acessibilidade: ' + JSON.stringify(vio));
 });

@@ -5,6 +5,7 @@
 //  Testes: tests/comissoes-documentos.test.mjs.
 // ============================================================
 import { ehPJ, rotuloMesComissao, arred, centavos, reais, secundariosDaLinha } from './comissoes.js';
+import { cpfValido, cnpjValido } from './regras.js';
 
 const soDigitos = v => String(v ?? '').replace(/\D/g, '');
 const colIndice = l => [...l].reduce((n, ch) => n * 26 + ch.charCodeAt(0) - 64, 0) - 1;
@@ -16,15 +17,19 @@ export function documentoFormatado(v) {
 }
 const mesMinusculo = mes => rotuloMesComissao(mes).replace(/^\S+/, m => m.toLowerCase());
 
-// O que falta no cadastro de um PJ para sair no recibo e na ADP.
-export function pendenciasPj(c) {
-  const falta = [];
-  if (!String(c?.pj_razao_social || '').trim()) falta.push('razão social');
-  if (!/^(\d{11}|\d{14})$/.test(soDigitos(c?.pj_documento))) falta.push('CNPJ');
-  if (!String(c?.pj_pix || '').trim()) falta.push('chave PIX');
-  if (!String(c?.pj_banco || '').trim()) falta.push('banco');
-  return falta;
-}
+// Dados de pagamento do PJ: obrigatórios no cadastro (tela e banco, migração 22) e no recibo e na ADP.
+// Uma regra só: errosPj() dá a mensagem de cada campo; pendenciasPj(), o nome curto do que falta.
+const documentoValido = v => { const d = soDigitos(v); return cpfValido(d) || cnpjValido(d); };
+const CAMPOS_PJ = [
+  ['pj_razao_social', 'razão social', c => !!String(c?.pj_razao_social || '').trim(), 'Informe a razão social.'],
+  ['pj_documento', 'CNPJ', c => documentoValido(c?.pj_documento), 'CNPJ ou CPF inválido.'],
+  ['pj_pix', 'chave PIX', c => !!String(c?.pj_pix || '').trim(), 'Informe a chave PIX.'],
+  ['pj_banco', 'banco', c => !!String(c?.pj_banco || '').trim(), 'Informe o banco.'],
+];
+// → { campo: mensagem } (vazio = completo)
+export const errosPj = c => Object.fromEntries(CAMPOS_PJ.filter(([, , ok]) => !ok(c)).map(([k, , , msg]) => [k, msg]));
+// O que falta no cadastro de um PJ para sair no recibo e na ADP: ['razão social', 'CNPJ', …].
+export const pendenciasPj = c => CAMPOS_PJ.filter(([, , ok]) => !ok(c)).map(([, rotulo]) => rotulo);
 
 // ---------- recibo ----------
 // Linhas do recibo de um PJ: [{ descricao, base, pct, valor }] (base e pct só nas comissões sobre venda).

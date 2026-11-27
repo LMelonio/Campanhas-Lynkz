@@ -3,7 +3,7 @@
 import { html, pintar, $, $$, ao } from '../../lib/dom.js';
 import { dataBR, lerValor, valorCampo, contem } from '../../lib/regras.js';
 import { REGIMES, ROTULO_REGIME, ehPJ, pctPadrao, errosComissionado, novoDoQlik } from '../../lib/comissoes.js';
-import { pendenciasPj } from '../../lib/comissoes-documentos.js';
+import { pendenciasPj, errosPj } from '../../lib/comissoes-documentos.js';
 import { comissoes } from '../../dados/comissoes.js';
 import { detalhar } from '../../dados/erros.js';
 import { icone } from '../../ui/icones.js';
@@ -89,9 +89,10 @@ const ID = k => `dc-${k.replace(/_/g, '-')}`;
 const pctPadraoObj = regime => { const p = pctPadrao(regime, comissoes.parametros()); return { pct_principal: p.principal, pct_farelo: p.farelo }; };
 
 // c: cadastro existente, ou null para completar quem chegou do Qlik (nomeDoQlik obrigatório).
-export async function editar(c, nomeDoQlik = null) {
+// regime: o regime já escolhido (ex.: PJ escolhido no lote). Devolve o cadastro gravado ou null.
+export async function editar(c, nomeDoQlik = null, { regime = 'CLT' } = {}) {
   const novo = !c;
-  const base = c || novoDoQlik(nomeDoQlik, 'CLT', comissoes.parametros());
+  const base = c || novoDoQlik(nomeDoQlik, regime, comissoes.parametros());
   const comTabela = comissoes.temFornecedores();
   const dv = k => (base[k] ?? '');
   const corpo = html`
@@ -120,13 +121,13 @@ export async function editar(c, nomeDoQlik = null) {
 
     <fieldset class="cm-bloco" data-so="pj"${ehPJ(base) ? '' : html` hidden`}>
       <legend>Quem recebe (recibo e ADP)</legend>
-      <p class="campo-dica">As metas do Contrato de Resultado ficam na aba Contrato PJ, mês a mês.</p>
-      ${campo({ id: ID('pj_razao_social'), rotulo: 'Razão social', opcional: true, valor: dv('pj_razao_social'), atributos: { maxlength: 120 } })}
+      <p class="campo-dica">Obrigatórios para PJ: sem eles não sai o recibo nem a ADP. As metas do Contrato de Resultado ficam na aba Contrato PJ, mês a mês.</p>
+      ${campo({ id: ID('pj_razao_social'), rotulo: 'Razão social', obrigatorio: true, valor: dv('pj_razao_social'), atributos: { maxlength: 120 } })}
       <div class="cm-duas">
-        ${campo({ id: ID('pj_documento'), rotulo: 'CNPJ ou CPF', opcional: true, valor: dv('pj_documento'), atributos: { inputmode: 'numeric', maxlength: 18, autocomplete: 'off' } })}
-        ${campo({ id: ID('pj_banco'), rotulo: 'Banco', opcional: true, valor: dv('pj_banco'), atributos: { maxlength: 60 } })}
+        ${campo({ id: ID('pj_documento'), rotulo: 'CNPJ ou CPF', obrigatorio: true, valor: dv('pj_documento'), atributos: { inputmode: 'numeric', maxlength: 18, autocomplete: 'off' } })}
+        ${campo({ id: ID('pj_banco'), rotulo: 'Banco', obrigatorio: true, valor: dv('pj_banco'), atributos: { maxlength: 60 } })}
       </div>
-      ${campo({ id: ID('pj_pix'), rotulo: 'Chave PIX', opcional: true, valor: dv('pj_pix'), atributos: { maxlength: 140, autocomplete: 'off' } })}
+      ${campo({ id: ID('pj_pix'), rotulo: 'Chave PIX', obrigatorio: true, valor: dv('pj_pix'), atributos: { maxlength: 140, autocomplete: 'off' } })}
       ${campo({ id: ID('adp_observacao'), rotulo: 'Observação na ADP', opcional: true, valor: dv('adp_observacao'), dica: 'Por exemplo: Pagamento dos representantes comerciais da Lynkz do interior do Maranhão', atributos: { maxlength: 200 } })}
     </fieldset>
     ${novo ? '' : interruptor({ id: ID('ativo'), rotulo: 'Ativo', marcado: base.ativo !== false, dica: 'Desligado, sai das próximas apurações. Nada é apagado.' })}`;
@@ -183,7 +184,8 @@ export async function editar(c, nomeDoQlik = null) {
       };
       if (dados.regime === 'PJ') Object.assign(dados, { acordo_minimo: null, acordo_inicio: null, acordo_fim: null });
       const erros = errosComissionado(dados, comissoes.cadastro());
-      if (dados.pj_documento && !/^(\d{11}|\d{14})$/.test(dados.pj_documento)) erros.pj_documento = 'CNPJ com 14 números ou CPF com 11.';
+      // PJ ativo: razão social, CNPJ ou CPF válido, PIX e banco (a mesma regra do recibo e do banco, migração 22).
+      if (dados.regime === 'PJ' && dados.ativo) Object.assign(erros, errosPj(dados));
       if (erros.nomes_qlik) { erroNoDialogo(d, erros.nomes_qlik); delete erros.nomes_qlik; if (!Object.keys(erros).length) return false; }
       // % próprio em cada secundário: vazio = o padrão do regime.
       const proprios = comTabela ? secundariosAtivos().map(f => ({ f, pct: num(`sec-${f.id}`) })) : [];

@@ -253,6 +253,12 @@ function prepararForn(tabela, r, antigo) {
   Object.assign(r, { atualizado_em: agora, atualizado_por: u.id });
   return null;
 }
+function cnpjValidoSim(d) {
+  if (!/^\d{14}$/.test(d) || /^(\d)\1{13}$/.test(d)) return false;
+  const n = d.split('').map(Number);
+  const dv = tam => { let soma = 0, peso = tam - 7; for (let i = 0; i < tam; i++) { soma += n[i] * peso--; if (peso < 2) peso = 9; } const r = soma % 11; return r < 2 ? 0 : 11 - r; };
+  return dv(12) === n[12] && dv(13) === n[13];
+}
 function prepararComissionado(r, antigo) {
   const u = usuario();
   r.nome = String(r.nome || '').replace(/\s+/g, ' ').trim();
@@ -263,6 +269,14 @@ function prepararComissionado(r, antigo) {
   if (!r.nomes_qlik.length) return erro('violates check constraint "comissionados_nomes_qlik_valido"', '23514');
   if (!r.acordo_minimo) { r.acordo_minimo = null; r.acordo_inicio = null; r.acordo_fim = null; }
   if (r.acordo_minimo && (r.regime === 'PJ' || !r.acordo_inicio)) return erro('violates check constraint "comissionados_acordo_valido"', '23514');
+  // Migração 22: PJ ativo precisa dos dados de pagamento (mesmas mensagens da tela).
+  if (r.regime === 'PJ' && r.ativo !== false) {
+    const doc = String(r.pj_documento || '').replace(/\D/g, '');
+    if (!String(r.pj_razao_social || '').trim()) return erro('Informe a razão social.');
+    if (!(cpfValido(doc) || cnpjValidoSim(doc))) return erro('CNPJ ou CPF inválido.');
+    if (!String(r.pj_pix || '').trim()) return erro('Informe a chave PIX.');
+    if (!String(r.pj_banco || '').trim()) return erro('Informe o banco.');
+  }
   if (r.ativo !== false) {
     const outro = db.comissionados.find(c => c.ativo && c.id !== r.id && c.nomes_qlik.some(n => r.nomes_qlik.includes(n)));
     if (outro) return erro(`"${outro.nomes_qlik.find(n => r.nomes_qlik.includes(n))}" já está ligado a ${outro.nome}. Cada nome do Qlik pode estar em uma pessoa só.`);

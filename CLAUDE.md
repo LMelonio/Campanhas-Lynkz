@@ -134,7 +134,8 @@ Tela: `export function montar(el, ctx, params) → desmontar`. `ctx`: `perfil`, 
   Nomes de arquivo sem acento (alguns navegadores trocam por "download").
 - Banco: migração 16 (`comissionados`, `comissao_parametros`, `comissao_auditoria`), 17 (`comissao_premiacoes`,
   `comissao_ajustes`, `comissao_mes_pj`, `comissao_fechamentos`), 19 (`comissao_consultas`) e 21 (`comissao_fornecedores`,
-  `comissao_excecoes`). O fechamento grava as regras usadas (`resultado.regras`, `fornecedores`, `excecoes`); reabrir calcula com elas. RLS `eh_aprovador()` em todas; ninguém apaga (premiação sai desativada); tudo na auditoria.
+  `comissao_excecoes`) e 22 (PJ ativo exige razão social, CNPJ ou CPF válido, PIX e banco; mesma regra de `errosPj()` /
+  `pendenciasPj()` em `lib/comissoes-documentos.js`; PJ não se cadastra em lote). O fechamento grava as regras usadas (`resultado.regras`, `fornecedores`, `excecoes`); reabrir calcula com elas. RLS `eh_aprovador()` em todas; ninguém apaga (premiação sai desativada); tudo na auditoria.
 - Worker: `/api/qlik/comissoes` só para `papel = 'aprovador'` (`ROTAS_QLIK[...].soAdmin`). Cubos `[Vendedor B2B] × [Cód.
   Fornecedor] × [Nome Fantasia Fornecedor]` (formato 2, até `MAX_LINHAS_COMISSAO`) e `[Vendedor B2B] × [Cód. Cliente]`
   (contrato), com os mesmos `{1<…>}`, filtros e medida das compras. O Worker não sabe quem é secundário: `cod_farelo` no

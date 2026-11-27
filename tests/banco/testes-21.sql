@@ -33,8 +33,9 @@ update perfis set papel = 'aprovador', ativo = true where id = '22222222-2222-22
 -- ---------- 1. semente: Farelo com os % dos Parâmetros; exceção só para quem difere ----------
 select t21.logar('');
 insert into comissionados (nome, regime, pct_principal, pct_farelo, nomes_qlik)
-  values ('Padrão Vinte Um', 'CLT', 2.5, (select pct_clt_farelo from comissao_parametros), '{PADRAO VINTE UM}'),
-         ('Diferente Vinte Um', 'PJ', 5, 3.5, '{DIFERENTE VINTE UM}');
+  values ('Padrão Vinte Um', 'CLT', 2.5, (select pct_clt_farelo from comissao_parametros), '{PADRAO VINTE UM}');
+insert into comissionados (nome, regime, pct_principal, pct_farelo, nomes_qlik, pj_razao_social, pj_documento, pj_pix, pj_banco)
+  values ('Diferente Vinte Um', 'PJ', 5, 3.5, '{DIFERENTE VINTE UM}', 'Diferente Ltda', '11222333000181', 'pix', 'Banco');
 \ir ../../sql/migracoes/21-fornecedores-da-comissao.sql
 select t21.ok((select count(*) = 1 from comissao_fornecedores f join comissao_parametros p on f.codigo = p.cod_farelo
                where f.nome = 'Farelo' and f.grupo = 'secundario' and f.pct_clt = p.pct_clt_farelo and f.pct_pj = p.pct_pj_farelo and f.vale_de = '2000-01'),

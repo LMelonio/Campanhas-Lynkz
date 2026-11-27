@@ -7,7 +7,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { apurarMes, entradaContrato, PARAMETROS_PADRAO } from '../public/js/lib/comissoes.js';
 import {
-  pendenciasPj, itensRecibo, recibosDoMes, linhasAdpPj, totalLinhas, modeloExcel, documentoFormatado,
+  pendenciasPj, errosPj, itensRecibo, recibosDoMes, linhasAdpPj, totalLinhas, modeloExcel, documentoFormatado,
   ABA_ANALISE, ABA_AJUSTES, ABA_CONTRATO, ABA_PREMIACOES, abaBase, NF_RE,
 } from '../public/js/lib/comissoes-documentos.js';
 
@@ -93,6 +93,18 @@ test('recibo: comissões, contrato e cada premiação; só PJ com valor a pagar'
   assert.equal(recibos[0].cnpj, '26.923.986/0001-65');
   assert.deepEqual(recibos[1].falta, ['razão social', 'CNPJ', 'chave PIX', 'banco']);
   assert.deepEqual(pendenciasPj(ALEX), []);
+});
+
+test('PJ (v3.6): dados de pagamento obrigatórios, CPF e CNPJ pelos dígitos verificadores', () => {
+  assert.deepEqual(errosPj(ALEX), {});
+  assert.deepEqual(errosPj({ ...ALEX, pj_documento: '529.982.247-25' }), {}, 'CPF válido');
+  assert.deepEqual(errosPj({ ...ALEX, pj_documento: '52998224724' }), { pj_documento: 'CNPJ ou CPF inválido.' }, 'CPF com dígito errado');
+  assert.deepEqual(errosPj({ ...ALEX, pj_documento: '26923986000166' }), { pj_documento: 'CNPJ ou CPF inválido.' }, 'CNPJ com dígito errado');
+  assert.deepEqual(errosPj({ ...ALEX, pj_documento: '11111111111111' }), { pj_documento: 'CNPJ ou CPF inválido.' }, 'sequência repetida');
+  assert.deepEqual(errosPj(SEM_DADOS), {
+    pj_razao_social: 'Informe a razão social.', pj_documento: 'CNPJ ou CPF inválido.', pj_pix: 'Informe a chave PIX.', pj_banco: 'Informe o banco.',
+  });
+  assert.deepEqual(pendenciasPj({ ...ALEX, pj_banco: '  ' }), ['banco']);
 });
 
 test('ADP dos PJ: número e valor da NF, digitados vencem os gravados, pendências do cadastro', () => {
