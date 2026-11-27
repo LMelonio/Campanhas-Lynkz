@@ -29,6 +29,7 @@ function resultadoHtml(r) {
   return html`
     ${f ? html`<p class="nota cm-fechado">${icone('cadeado')}<span>Mês fechado em ${quemFechou(f)}. Os valores abaixo são a cópia do histórico: não mudam com o Qlik nem com o cadastro.</span></p>` : ''}
     ${reaberto ? html`<p class="nota nota-alerta">${icone('alerta')}<span>Mês reaberto em ${dataBR(reaberto.reaberto_em)}: ${reaberto.motivo_reabertura}. Feche de novo depois de corrigir.</span></p>` : ''}
+    ${reaberto && comissoes.usaCadastroDaCopia(r.mes) ? html`<p class="nota" id="cm-nota-copia">${icone('info')}<span>Calculado com o cadastro de quando o mês foi fechado. Mudanças feitas depois no Cadastro não entram aqui.</span></p>` : ''}
     <section class="destaque cm-destaque" aria-labelledby="cm-total-t">
       <p class="destaque-rotulo" id="cm-total-t">${f ? 'Pago' : 'A pagar'} em ${mesMinusculo(r.mes)}</p>
       <p class="cm-total num-display">${r$(t.geral.valor_pagar)}</p>

@@ -9,7 +9,7 @@ import { fileURLToPath } from 'node:url';
 import {
   periodoApuracao, mesAnteriorFechado, somaMes, rotuloMesComissao, chaveNome, nomeQlik, centavos, arred,
   acordoVigente, juntarVendas, realizadosContrato, avaliarContrato, calcularLinha, apurarMes,
-  errosComissionado, pctPadrao, PARAMETROS_PADRAO, nomeLegivel, novoDoQlik,
+  errosComissionado, pctPadrao, PARAMETROS_PADRAO, nomeLegivel, novoDoQlik, cadastroDaCopia,
 } from '../public/js/lib/comissoes.js';
 
 test('novos no Qlik (v3.4): cadastro com o regime e os % padrão, nome legível', () => {
@@ -111,6 +111,17 @@ test('cadastro (v3.5): nome do Qlik de quem está desativado pede para reativar'
   const e = errosComissionado({ nome: 'Saiu de novo', regime: 'CLT', pct_principal: 2.5, pct_farelo: 1, nomes_qlik: ['SAIU'] }, CAD);
   assert.equal(e.nomes_qlik, '"SAIU" é de Saiu, que está desativado. Reative o cadastro em vez de criar outro.');
   assert.deepEqual(errosComissionado({ ...CAD[2], ativo: true }, CAD), {}, 'reativar o próprio cadastro passa');
+});
+
+test('mês reaberto (v3.5): usa o % do cadastro da cópia; gente nova vem do cadastro de hoje', () => {
+  const copia = [{ ...CAD[0], pct_principal: 2.5 }];
+  const hoje = [{ ...CAD[0], pct_principal: 4 }, { id: 8, nome: 'Nova', regime: 'CLT', pct_principal: 1, pct_farelo: 1, nomes_qlik: ['NOVA'] }];
+  const cad = cadastroDaCopia(copia, hoje);
+  assert.deepEqual(cad.map(c => [c.id, c.pct_principal]), [[1, 2.5], [8, 1]]);
+  const r = apurarMes({ mes: '2026-10', comissionados: cad, vendas: [{ vendedor: 'ANA SILVA', total: 1000, farelo: 0 }, { vendedor: 'NOVA', total: 100, farelo: 0 }] });
+  assert.equal(r.linhas.find(l => l.id === 1).comissao_principal, 25, '2,5% de quando o mês foi fechado, não os 4% de hoje');
+  assert.equal(r.linhas.find(l => l.id === 8).comissao_principal, 1, 'quem é novo entra com o cadastro de hoje');
+  assert.equal(cadastroDaCopia(undefined, hoje), hoje, 'sem cópia: cadastro de hoje');
 });
 
 test('contrato: realizados e positivação líquida por pessoa', () => {

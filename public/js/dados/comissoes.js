@@ -3,7 +3,7 @@
 // este módulo junta banco + Qlik + cálculo para a tela pedir só "apure este mês".
 import { sb } from '../lib/supabase.js';
 import { exigir, ErroApp } from './erros.js';
-import { PARAMETROS_PADRAO, periodoApuracao, mesAnteriorFechado, nomeQlik, chaveNome, apurarMes } from '../lib/comissoes.js';
+import { PARAMETROS_PADRAO, periodoApuracao, mesAnteriorFechado, nomeQlik, chaveNome, apurarMes, cadastroDaCopia } from '../lib/comissoes.js';
 
 const NUMEROS_PARAMETROS = Object.keys(PARAMETROS_PADRAO).filter(k => typeof PARAMETROS_PADRAO[k] === 'number');
 const NUMEROS_CADASTRO = ['pct_principal', 'pct_farelo', 'acordo_minimo', 'meta_faturamento', 'meta_positivacao'];
@@ -131,6 +131,15 @@ export const comissoes = {
       mesPj: (exigir(m) || []).map(lerMesPj), fechamento: lerFechamento(exigir(f)) });
     return doMes.get(mes);
   },
+  // Mês reaberto calcula com o cadastro de quando foi fechado (mudanças de % depois não voltam no tempo).
+  usaCadastroDaCopia(mes) {
+    const f = this.fechamento(mes);
+    return f?.status === 'reaberto' && Array.isArray(f.dados?.cadastro);
+  },
+  cadastroDoMes(mes) {
+    if (!this.usaCadastroDaCopia(mes)) return lista || [];
+    return cadastroDaCopia(this.fechamento(mes).dados.cadastro.map(lerComissionado), lista || []).sort(porNome);
+  },
   premiacoes: mes => (doMes.get(mes)?.premiacoes || []).filter(x => x.ativo !== false),
   ajustes: mes => (doMes.get(mes)?.ajustes || []).filter(x => x.ativo !== false),
   // Fechamento do mês (com a cópia) ou null. fechado(mes): está no histórico e travado.
@@ -200,7 +209,7 @@ export const comissoes = {
     const ids = new Set(resultado.linhas.map(l => l.id));
     const dados = {
       resultado, parametros: this.parametros(),
-      cadastro: (lista || []).filter(c => ids.has(c.id)),
+      cadastro: this.cadastroDoMes(mes).filter(c => ids.has(c.id)),
       premiacoes: this.premiacoes(mes), ajustes: this.ajustes(mes),
     };
     const campos = { status: 'fechado', dados, total: resultado.totais.geral.valor_pagar, total_clt: resultado.totais.clt.valor_pagar, total_pj: resultado.totais.pj.valor_pagar };
@@ -225,11 +234,12 @@ export const comissoes = {
       const d = f.dados;
       return { cadastro: d.cadastro || [], premiacoes: d.premiacoes || [], ajustes: d.ajustes || [], parametros: { ...PARAMETROS_PADRAO, ...(d.parametros || {}) }, fechado: true };
     }
-    return { cadastro: this.cadastro(), premiacoes: this.premiacoes(mes), ajustes: this.ajustes(mes), parametros: this.parametros(), fechado: false };
+    return { cadastro: this.cadastroDoMes(mes), premiacoes: this.premiacoes(mes), ajustes: this.ajustes(mes), parametros: this.parametros(), fechado: false };
   },
 
   // Apuração do mês com o cadastro e os parâmetros atuais.
   // Mês fechado: devolve a cópia do histórico (não consulta o Qlik nem recalcula).
+  // Mês reaberto: cadastro da cópia do fechamento (cadastroDoMes), completado com quem é novo.
   // buscar: true consulta o Qlik; false reaproveita a última consulta do mês (null se não houver).
   // Uma consulta feita com outro código de Farelo ou outro corte não é reaproveitada.
   // → resultado de apurarMes + { consulta: { consultado_em, total, sem_vendedor } }
@@ -243,7 +253,7 @@ export const comissoes = {
     if (buscar) { q = await pedirAoQlik(mes, sinal); consultas.set(mes, q); }
     if (!q) return null;
     const m = doMes.get(mes);
-    const r = apurarMes({ mes, comissionados: lista, parametros: params, vendas: q.apuracao.vendas, contratoLinhas: q.contrato.linhas,
+    const r = apurarMes({ mes, comissionados: this.cadastroDoMes(mes), parametros: params, vendas: q.apuracao.vendas, contratoLinhas: q.contrato.linhas,
       premiacoes: m.premiacoes, ajustes: m.ajustes, mesPj: m.mesPj });
     return { ...r, consulta: { consultado_em: q.consultado_em, total: q.apuracao.total, sem_vendedor: Number(q.apuracao.sem_vendedor) || 0 } };
   },

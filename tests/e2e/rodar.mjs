@@ -2922,6 +2922,30 @@ teste('v3.3: comissões — fechar o mês grava no histórico, trava os lançame
   afirma(!vio.length, 'acessibilidade: ' + JSON.stringify(vio));
 });
 
+teste('v3.5: comissões — mês reaberto calcula com o cadastro de quando foi fechado', async ({ page }) => {
+  await previaOutubro(page);
+  await page.click('#cm-fechar');
+  await page.click('dialog button[type="submit"]');
+  await page.locator('#cm-reabrir').waitFor();
+  await page.click('#cm-reabrir');
+  await page.fill('#rb-motivo', 'Conferir o Farelo');
+  await page.click('dialog button[type="submit"]');
+  await page.locator('#cm-fechar').waitFor();
+  // Depois do fechamento, o % do Elielson muda no Cadastro (2,5% → 4%).
+  await page.evaluate(() => {
+    const d = JSON.parse(sessionStorage.getItem('simulado-db-v3'));
+    d.comissionados.find(c => c.id === 1).pct_principal = 4;
+    sessionStorage.setItem('simulado-db-v3', JSON.stringify(d));
+  });
+  await page.goto(`${BASE}/?papel=aprovador#/comissoes?aba=previa&mes=2026-10`);
+  await page.waitForSelector('#cm-mes');
+  await page.click('#cm-buscar');
+  await page.locator('#cm-nota-copia').waitFor();
+  const t = await page.locator('#cm-conteudo').innerText();
+  afirma(/Elielson Serpa Mendes[\s\S]*2,5%[\s\S]*R\$ 4\.880,12/.test(t), 'usa o 2,5% da cópia, não os 4% de hoje');
+  afirma(t.includes('Calculado com o cadastro de quando o mês foi fechado'), 'nota explica a regra');
+});
+
 teste('v3.3: comissões — cadastro só edita quem veio do Qlik e avisa o que falta no PJ', async ({ page }) => {
   await abrir(page, { rota: '#/comissoes?aba=cadastro' });
   await page.locator('.usuarios-lista').first().waitFor();

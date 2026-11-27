@@ -341,6 +341,16 @@ export function apurarMes({ mes, comissionados = [], parametros = PARAMETROS_PAD
   };
 }
 
+// ---------- mês reaberto ----------
+// Cadastro de um mês reaberto: o da cópia do fechamento para quem estava nela (o %, o acordo e o
+// regime daquele mês), completado com o cadastro atual só para quem não estava (gente nova).
+// copia: dados.cadastro do fechamento · atual: cadastro de hoje.
+export function cadastroDaCopia(copia, atual = []) {
+  if (!Array.isArray(copia)) return atual;
+  const ids = new Set(copia.map(c => String(c.id)));
+  return [...copia, ...atual.filter(c => !ids.has(String(c.id)))];
+}
+
 // ---------- conferência do cadastro (antes de salvar) ----------
 // → { campo: mensagem }. Vazio = ok. outros: os demais comissionados (nome do Qlik não pode repetir).
 export function errosComissionado(d, outros = []) {
