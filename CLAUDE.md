@@ -37,7 +37,8 @@ tests/    *.test.mjs (unidade, Worker)  banco/ (PostgreSQL)  e2e/rodar.mjs (nave
 ```
 
 Rotas: `#/inicio` `#/campanhas` `#/campanhas/:id` `#/nova` `#/nova/de/:id` `#/historico` `#/gestao`
-`#/gestao/empresas/:id` `#/usuarios` e `#/comissoes?aba=previa|premiacoes|contrato|cadastro|parametros|historico&mes=AAAA-MM`
+`#/gestao/empresas/:id` `#/usuarios` e `#/comissoes?aba=apuracao|premiacoes|contrato|cadastro|parametros|historico&mes=AAAA-MM`
+(`aba=previa` é apelido de `apuracao` para links antigos)
 (administrador; o mês fica no endereço e lembrado na memória ao sair e voltar) `#/perfil`.
 
 Tela: `export function montar(el, ctx, params) → desmontar`. `ctx`: `perfil`, `ehAprovador`, `campanhas`, `cadastros`,
@@ -106,6 +107,9 @@ Tela: `export function montar(el, ctx, params) → desmontar`. `ctx`: `perfil`, 
   Mês fechado: `apurar()` devolve a cópia do histórico (`resultado.fechado`), sem Qlik nem recálculo.
 - Ajustes: acréscimo ou desconto com motivo, por pessoa e mês; entram depois do acordo mínimo; aparecem no recibo
   (uma linha por ajuste) e no Excel (aba Ajustes e coluna Ajustes).
+- Apuração: o total (fixo no topo até 600 px, com as pendências), Novos e Desativados, as pessoas (tabela; até 600 px um
+  cartão por pessoa com "Ver conta") e, no fim, documentos junto de "Fechar mês". Buscar no Qlik e o período só na Apuração.
+  Premiações até 600 px: lista primeiro e "Lançar premiação / ajuste" num diálogo.
 - Histórico: "Fechar mês" fica numa faixa própria no fim da Apuração, com o que falta (Novos no Qlik, cadastro dos PJ,
   NF de todos pela ADP); o botão só fica em destaque quando nada falta. Grava em `comissao_fechamentos` a cópia (cálculo, cadastro usado, premiações, ajustes, parâmetros).
   Mês fechado trava premiações, ajustes, contrato e NF (trigger no banco); documentos saem da cópia (o Excel sem a aba

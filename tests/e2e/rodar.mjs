@@ -2695,13 +2695,77 @@ teste('v3.5: comissões — a consulta do Qlik fica gravada: recarregar a págin
   igual(consultas, 0, 'nenhuma consulta ao Qlik depois de recarregar');
 });
 
+teste('v3.5: comissões — Apuração no celular (390 px): pendências antes dos documentos, cartões compactos e total fixo', async ({ page }) => {
+  await previaOutubro(page);
+  const alt = await page.evaluate(() => document.documentElement.scrollHeight);
+  afirma(alt < 1500, `Apuração com 6 pessoas abaixo de 1.500 px: ${alt}`);
+  const antes = await page.evaluate(() => {
+    const segue = (a, b) => !!(document.querySelector(a).compareDocumentPosition(document.querySelector(b)) & Node.DOCUMENT_POSITION_FOLLOWING);
+    return { novos: segue('.cm-sem', '#cm-excel'), pessoas: segue('#cm-t-clt', '#cm-excel'), fechar: segue('#cm-excel', '#cm-fechar') };
+  });
+  afirma(antes.novos && antes.pessoas && antes.fechar, 'pendências e pessoas antes dos documentos; documentos junto de Fechar mês: ' + JSON.stringify(antes));
+  igual(await page.locator('.cm-caixa-pessoas').first().isVisible(), false, 'tabela dá lugar aos cartões');
+  const cartao = page.locator('.cm-cartao', { hasText: 'Nayra Juliana Lima Vale' });
+  afirma(/R\$ 5\.000,00/.test(await cartao.locator('summary').innerText()) && /Acordo R\$ 5\.000,00/.test(await cartao.innerText()), 'cartão com o valor a pagar e o resumo');
+  igual(await cartao.locator('.cm-conta').isVisible(), false, 'conta fechada');
+  await cartao.locator('summary').click();
+  afirma(/Venda principal[\s\S]*R\$ 124\.511,13/.test(await cartao.locator('.cm-conta').innerText()), '"Ver conta" abre as linhas');
+  afirma((await page.locator('.cm-pendencias').innerText()).includes('2 pendências'), 'pendências no total');
+  await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+  const topo = await page.locator('.cm-destaque').evaluate(e => ({ pos: getComputedStyle(e).position, y: Math.round(e.getBoundingClientRect().top) }));
+  afirma(topo.pos === 'sticky' && topo.y >= 0 && topo.y < 120, 'total fixo no topo ao rolar: ' + JSON.stringify(topo));
+  afirma(await semOverflow(page, 'Comissões apuração 390 px'), 'sem rolagem lateral');
+  const abas = await page.locator('.cm-abas').evaluate(e => ({ alto: e.getBoundingClientRect().height, rola: e.scrollWidth > e.clientWidth }));
+  afirma(abas.alto < 60 && abas.rola, 'abas numa linha, rolando de lado: ' + JSON.stringify(abas));
+  const vio = (await axe(page, 'Comissões apuração 390')).filter(x => ['critical', 'serious'].includes(x.impacto));
+  afirma(!vio.length, 'acessibilidade: ' + JSON.stringify(vio));
+}, { largura: 390, altura: 844, toque: true });
+
+teste('v3.5: comissões — Premiações no celular: lista primeiro e o lançamento num diálogo', async ({ page }) => {
+  await abrir(page, { rota: '#/comissoes?aba=premiacoes&mes=2026-10' });
+  await page.locator('#cm-lancar').waitFor();
+  igual(await page.locator('#cm-form-premio').count(), 0, 'sem formulário na tela');
+  const ordem = await page.evaluate(() => !!(document.querySelector('#cm-t-premio').compareDocumentPosition(document.querySelector('#cm-lancar')) & Node.DOCUMENT_POSITION_FOLLOWING));
+  afirma(ordem, 'lista antes do botão');
+  await page.click('#cm-lancar');
+  const d = page.locator('dialog.dialogo'); await d.waitFor();
+  await d.locator('button[type="submit"]').click();
+  afirma((await erroDo(page, 'pr-pessoa').innerText()).includes('Escolha'), 'valida no diálogo');
+  await d.locator('#lc-tipo').selectOption('ajuste');
+  afirma(await d.locator('#aj-motivo').isVisible() && !(await d.locator('#pr-desc').isVisible()), 'troca para os campos do ajuste');
+  await d.locator('#aj-pessoa').selectOption('1');
+  await d.locator('#aj-motivo').fill('Acerto de rota');
+  await d.locator('#aj-tipo').selectOption('acrescimo');
+  await d.locator('#aj-valor').fill('50,00');
+  await d.locator('button[type="submit"]').click(); await d.waitFor({ state: 'detached' });
+  await toastCom(page, 'Ajuste de +R$ 50,00 lançado para Elielson Serpa Mendes');
+  await page.locator('#cm-t-ajuste').waitFor();
+  const aj = (await db(page)).comissao_ajustes.find(x => x.motivo === 'Acerto de rota');
+  afirma(aj && aj.valor === 50 && aj.mes === '2026-10', 'ajuste gravado: ' + JSON.stringify(aj));
+  afirma(await semOverflow(page, 'Comissões premiações 390 px'), 'sem rolagem lateral');
+}, { largura: 390, altura: 844, toque: true });
+
+teste('v3.5: comissões — Premiações e Contrato só trocam o mês; aba=previa ainda abre a Apuração', async ({ page }) => {
+  await previaOutubro(page);
+  await page.click('[data-aba="premiacoes"]');
+  await page.locator('#cm-mes').waitFor();
+  igual(await page.locator('#cm-buscar, .cm-periodo').count(), 0, 'sem buscar nem período em Premiações');
+  await page.click('[data-aba="contrato"]');
+  await page.locator('[data-contrato]').first().waitFor();
+  igual(await page.locator('#cm-buscar, .cm-periodo').count(), 0, 'sem buscar nem período no Contrato');
+  await page.goto(`${BASE}/?papel=aprovador#/comissoes?aba=previa&mes=2026-10`);
+  await page.locator('#cm-buscar').waitFor();
+  await page.waitForFunction(() => location.hash.includes('aba=apuracao'));
+  igual(await page.getAttribute('[data-aba="apuracao"]', 'aria-pressed'), 'true', 'apelido antigo abre a Apuração');
+});
+
 teste('v3.4: comissões — o mês escolhido fica no endereço e volta com a apuração', async ({ page }) => {
   await previaOutubro(page);
-  afirma(page.url().endsWith('#/comissoes?aba=previa&mes=2026-10'), 'mês no endereço: ' + page.url());
+  afirma(page.url().endsWith('#/comissoes?aba=apuracao&mes=2026-10'), 'mês no endereço: ' + page.url());
   await page.click('[data-aba="premiacoes"]');
   await page.locator('#cm-form-premio').waitFor();
   afirma(page.url().endsWith('aba=premiacoes&mes=2026-10'), 'aba e mês no endereço: ' + page.url());
-  await page.click('[data-aba="previa"]');
+  await page.click('[data-aba="apuracao"]');
   await page.locator('.cm-destaque', { hasText: 'outubro 2026' }).waitFor();
   // Sai pelo menu e volta: mesmo mês, com a consulta da memória (sem buscar no Qlik de novo).
   let consultas = 0;
@@ -2727,7 +2791,7 @@ teste('v3.4: comissões — novos no Qlik em lote: marcar dois e cadastrar como 
   await page.fill('#cp-nomes_ignorados', '');
   await page.click('#cm-form-param button[type="submit"]');
   await page.locator('.cm-alterado').waitFor();
-  await page.click('[data-aba="previa"]');
+  await page.click('[data-aba="apuracao"]');
   await page.selectOption('#cm-mes', '2026-10');
   await page.click('#cm-buscar');
   await page.locator('.cm-lote').waitFor();
@@ -2800,7 +2864,7 @@ teste('v3.3: comissões — premiação lançada e removida muda o valor a pagar
   afirma((await page.locator('#cm-conteudo').innerText()).includes('R$ 350,00'), 'total das premiações do mês');
   const p = (await db(page)).comissao_premiacoes.find(x => x.descricao === 'Campanha Farmina');
   afirma(p && p.mes === '2026-10' && p.comissionado_id === 5 && p.valor === 200, 'gravada no mês: ' + JSON.stringify(p));
-  await page.click('[data-aba="previa"]');
+  await page.click('[data-aba="apuracao"]');
   afirma(/Alex[\s\S]*R\$ 200,00[\s\S]*Ajustes −R\$ 50,00[\s\S]*R\$ 8\.602,97/.test(await page.locator('#cm-conteudo').innerText()), 'premiação e ajuste no valor a pagar do Alex');
   await page.click('[data-aba="premiacoes"]');
   await page.click(`[data-remover="premio:${p.id}"]`);
@@ -2996,7 +3060,7 @@ teste('v3.3: comissões — parâmetros validam, gravam e pedem nova consulta', 
   await page.locator('.cm-alterado').waitFor();
   const p = (await db(page)).comissao_parametros[0];
   afirma(p.cod_farelo === '6611' && p.dia_corte === 20, 'parâmetros gravados');
-  await page.click('[data-aba="previa"]');
+  await page.click('[data-aba="apuracao"]');
   const t = await page.locator('#cm-conteudo').innerText();
   afirma(t.includes('fornecedor 6611') && t.includes('Vendas de 21/09/2026 a 20/10/2026') && !t.includes('A pagar em'), 'apuração usa o parâmetro novo e pede nova consulta');
 });
@@ -3017,7 +3081,7 @@ teste('v3.2: comissões no celular (360 px) e no tema escuro — sem rolagem lat
   afirma(!vio.length, 'acessibilidade: ' + JSON.stringify(vio));
   for (const aba of ['premiacoes', 'contrato', 'cadastro']) {
     await page.click(`[data-aba="${aba}"]`);
-    await page.locator(aba === 'cadastro' ? '.usuarios-lista' : aba === 'contrato' ? '[data-contrato]' : '#cm-form-premio').first().waitFor();
+    await page.locator(aba === 'cadastro' ? '.usuarios-lista' : aba === 'contrato' ? '[data-contrato]' : '#cm-lancar').first().waitFor();
     afirma(await semOverflow(page, `Comissões ${aba} 360 px`), `${aba} sem rolagem lateral`);
   }
 }, { largura: 360, altura: 740, toque: true, escuro: true });

@@ -14,22 +14,26 @@ import { s, r$, mesMinusculo, redesenhar, recalcular, ocupar } from './comum.js'
 
 const NF = ['número da NF', 'valor da NF'];
 
+// rotulo pode ser [antes, essencial, depois]: no celular só a parte essencial aparece (e é o nome do botão ali).
 function botao(id, ic, rotulo, ocupado, tipo = 'btn-fantasma') {
-  return html`<button type="button" class="btn ${tipo}" id="${id}"${s.gerando ? html` disabled` : ''}${ocupado ? html` aria-busy="true"` : ''}>${icone(ic)} ${ocupado ? `${rotulo}…` : rotulo}</button>`;
+  const [antes, meio, depois] = Array.isArray(rotulo) ? rotulo : ['', rotulo, ''];
+  const texto = html`${antes ? html`<span class="cm-so-largo">${antes}</span>` : ''}${meio}${depois ? html`<span class="cm-so-largo">${depois}</span>` : ''}`;
+  return html`<button type="button" class="btn ${tipo}" id="${id}"${s.gerando ? html` disabled` : ''}${ocupado ? html` aria-busy="true"` : ''}>${icone(ic)} ${texto}${ocupado ? '…' : ''}</button>`;
 }
 
+// Na Apuração, os documentos ficam no fim, junto de "Fechar mês" (ou sozinhos, com Reabrir, no mês fechado).
 export function documentosHtml(r) {
   const g = s.gerando;
   return html`<div class="acoes cm-documentos" role="group" aria-label="Documentos do mês">
-      ${botao('cm-excel', 'baixar', 'Baixar Excel', g === 'excel')}
-      ${botao('cm-recibos', 'baixar', 'Recibos dos PJ', g === 'recibos')}
-      ${botao('cm-adp', 'moeda', 'Gerar ADP dos PJ', g === 'adp')}
+      ${botao('cm-excel', 'baixar', ['Baixar ', 'Excel', ''], g === 'excel')}
+      ${botao('cm-recibos', 'baixar', ['', 'Recibos', ' dos PJ'], g === 'recibos')}
+      ${botao('cm-adp', 'moeda', ['Gerar ', 'ADP', ' dos PJ'], g === 'adp')}
       ${r.fechado ? botao('cm-reabrir', 'cadeado', 'Reabrir mês', g === 'reabrir') : ''}
     </div>`;
 }
 
 // O que conferir antes de fechar o mês. Cada item: { ok, texto } (o texto já diz o que falta).
-function antesDeFechar(r) {
+export function antesDeFechar(r) {
   const pjs = linhasAdpPj(r, comissoes.contextoDocumentos(r.mes).cadastro);
   const semNf = pjs.filter(l => !l.nf || l.nf_valor == null).map(l => l.nome);
   const semCadastro = pjs.filter(l => l.falta.some(x => !NF.includes(x))).map(l => l.nome);
@@ -54,6 +58,7 @@ export function faixaFechar(r) {
     <div class="painel-corpo">
       <p class="campo-dica">Grava a cópia do que foi pago no histórico e trava premiações, ajustes, contrato e NF. Dá para reabrir, com motivo.</p>
       <ul class="cm-conferir">${itens.map(i => html`<li class="${i.ok ? 'ok' : 'falta'}">${icone(i.ok ? 'check' : 'alerta')}<span>${i.texto}<span class="so-leitor">${i.ok ? ' (pronto)' : ' (falta)'}</span></span></li>`)}</ul>
+      ${documentosHtml(r)}
       <div class="acoes acoes-fim">${botao('cm-fechar', 'cadeado', pronto ? 'Fechar mês' : 'Fechar mês assim mesmo', s.gerando === 'fechar', pronto ? 'btn-primario' : 'btn-fantasma')}</div>
     </div>
   </section>`;
