@@ -4,9 +4,10 @@
 //  Quem desenha: comissoes-pdf.js (recibo e ADP) e comissoes-excel.js (SheetJS).
 //  Testes: tests/comissoes-documentos.test.mjs.
 // ============================================================
-import { ehPJ, rotuloMesComissao, arred, centavos, reais } from './comissoes.js';
+import { ehPJ, rotuloMesComissao, arred, centavos, reais, secundariosDaLinha } from './comissoes.js';
 
 const soDigitos = v => String(v ?? '').replace(/\D/g, '');
+const colIndice = l => [...l].reduce((n, ch) => n * 26 + ch.charCodeAt(0) - 64, 0) - 1;
 export function documentoFormatado(v) {
   const d = soDigitos(v);
   if (d.length === 14) return d.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/, '$1.$2.$3/$4-$5');
@@ -30,7 +31,11 @@ export function pendenciasPj(c) {
 // contratoMes: mês avaliado no Contrato de Resultado ("2026-09").
 export function itensRecibo(l, { contratoMes = '' } = {}) {
   const itens = [{ descricao: 'Comissão sobre a venda principal', base: l.venda_principal, pct: l.pct_principal, valor: l.comissao_principal }];
-  if (l.venda_farelo || l.comissao_farelo) itens.push({ descricao: 'Comissão sobre o Farelo', base: l.venda_farelo, pct: l.pct_farelo, valor: l.comissao_farelo });
+  // Uma linha por secundário com venda no mês, e "Outros fornecedores".
+  for (const x of secundariosDaLinha(l)) {
+    if (x.venda || x.comissao) itens.push({ descricao: `Comissão sobre ${x.nome === 'Farelo' ? 'o Farelo' : x.nome}`, base: x.venda, pct: x.pct ?? 0, valor: x.comissao });
+  }
+  if (l.venda_outros || l.comissao_outros) itens.push({ descricao: 'Comissão sobre outros fornecedores', base: l.venda_outros, pct: l.pct_outros ?? 0, valor: l.comissao_outros });
   if (l.contrato_valor) {
     itens.push({ descricao: `Premiação Contrato de Resultado${contratoMes ? ` (meta de ${mesMinusculo(contratoMes)})` : ''}`, base: null, pct: null, valor: l.contrato_valor });
   }
@@ -153,60 +158,97 @@ export function modeloExcel(resultado, { parametros, cadastro = [], premiacoes =
   abas.push({ nome: ABA_CONTRATO, larguras: [38, 16, 16, 16, 9, 18, 22, 9, 36], linhas: contratoLinhas });
 
   // 3) Análise de comissões (CLT e PJ)
+  // Colunas: % principal, % de cada secundário (e de Outros), as vendas, as comissões e o que paga.
+  // Só com o Farelo, sai igual à planilha de outubro (G = % Farelo, I = venda Farelo, L = comissão Farelo).
   const temBase = Array.isArray(base) && base.length > 0;
   const nBase = temBase ? base.length + 1 : 0;
   const B = col => `${ref(nomeBase)}!$${col}$2:$${col}$${nBase}`;
-  const an = [[null, t('Cód. Fornecedor FARELO (parâmetro único da planilha):'), null, null, null, null, { v: Number(p.cod_farelo), z: 'int' }]];
+  const secs = [];
+  for (const l of resultado.linhas) for (const x of secundariosDaLinha(l)) if (!secs.some(y => y.codigo === x.codigo)) secs.push({ codigo: x.codigo, nome: x.nome });
+  const comOutros = resultado.linhas.some(l => l.venda_outros || l.comissao_outros);
+  const principalLista = resultado.regras?.principalModo === 'lista';
+  const letra = n => { let r = ''; for (let x = n; x > 0; x = Math.floor((x - 1) / 26)) r = String.fromCharCode(65 + ((x - 1) % 26)) + r; return r; };
+  let n = 6;   // F = % principal
+  const C = { pctP: letra(n) };
+  const pctS = secs.map(() => letra(++n));
+  if (comOutros) C.pctO = letra(++n);
+  C.vP = letra(++n);
+  const vS = secs.map(() => letra(++n));
+  if (comOutros) C.vO = letra(++n);
+  C.vT = letra(++n); C.cP = letra(++n);
+  const cS = secs.map(() => letra(++n));
+  if (comOutros) C.cO = letra(++n);
+  C.cT = letra(++n); C.prem = letra(++n); C.extra = letra(++n); C.aj = letra(++n); C.pagar = letra(++n);
+  const ultima = n;
+
+  const umFarelo = secs.length === 1 && secs[0].nome === 'Farelo' && !comOutros;
+  const topo = [null, t(umFarelo ? 'Cód. Fornecedor FARELO (parâmetro único da planilha):' : 'Cód. dos fornecedores secundários (acima do % de cada um):')];
+  secs.forEach((x, i) => { topo[colIndice(pctS[i])] = { v: Number(x.codigo), z: 'int' }; });
+  const an = [topo];
   if (!temBase) an.push([null, t('Sem a aba Base Qlik: as vendas abaixo são os valores consultados no app.')]);
-  const cabecalho = pj => [null, t('PERTENCIMENTO'), t('NOME'), t('IDENTIFICAÇÃO'), t('REGIME'), t('% PRINCIPAL'), t('% FARELO'),
-    t('Venda Principal'), t('Venda Farelo'), t('Venda Total'), t('Comissão Principal'), t('Comissão Farelo'), t('Comissão Total'),
+  if (principalLista) an.push([null, t('Principal em lista: venda principal e Outros vão como valor (a fórmula não separa a lista).')]);
+  const cabecalho = pj => [null, t('PERTENCIMENTO'), t('NOME'), t('IDENTIFICAÇÃO'), t('REGIME'), t('% PRINCIPAL'),
+    ...secs.map(x => t(`% ${x.nome.toUpperCase()}`)), ...(comOutros ? [t('% OUTROS')] : []),
+    t('Venda Principal'), ...secs.map(x => t(`Venda ${x.nome}`)), ...(comOutros ? [t('Venda Outros')] : []), t('Venda Total'),
+    t('Comissão Principal'), ...secs.map(x => t(`Comissão ${x.nome}`)), ...(comOutros ? [t('Comissão Outros')] : []), t('Comissão Total'),
     t('Campanha mensal'), t(pj ? 'Contrato Resultado' : 'Acordo mínimo'), t('Ajustes'), t('TOTAL A PAGAR')];
   const totais = [];
   const bloco = (titulo, ls, pj) => {
     an.push([], [null, null, null, null, t(titulo)], cabecalho(pj));
     const ini = an.length + 1;
+    const somaC = {};
+    const soma = (k, v) => { somaC[k] = (somaC[k] || 0) + centavos(v); };
     ls.forEach(l => {
       const r = an.length + 1;
       const c = porId.get(l.id) || {};
-      // ""&$G$1: compara como texto (a base traz o código do fornecedor como texto, igual à extração do Qlik).
-      const fareloF = temBase ? `SUMIFS(${B('I')},${B('G')},$D${r},${B('B')},""&$G$1)` : null;
-      const totalF = temBase ? `SUMIFS(${B('I')},${B('G')},$D${r})-I${r}` : null;
+      const sl = secs.map(x => secundariosDaLinha(l).find(y => y.codigo === x.codigo) || { venda: 0, pct: null, comissao: 0 });
+      // ""&X$1: compara como texto (a base traz o código do fornecedor como texto, igual à extração do Qlik).
+      const vendaSF = i => (temBase ? `SUMIFS(${B('I')},${B('G')},$D${r},${B('B')},""&$${pctS[i]}$1)` : null);
+      const principalF = temBase && !principalLista ? `SUMIFS(${B('I')},${B('G')},$D${r})${vS.map(x => `-${x}${r}`).join('')}` : null;
       const premF = `SUMIFS(${ref(ABA_PREMIACOES)}!$C:$C,${ref(ABA_PREMIACOES)}!$A:$A,$D${r})`;
       const extra = pj
         ? moeda(l.contrato_valor, linhaContrato.has(l.id) ? `IFERROR(SUMIFS(${ref(ABA_CONTRATO)}!$B:$B,${ref(ABA_CONTRATO)}!$A:$A,$D${r}),0)` : null)
         : (l.acordo ? moeda(l.acordo.valor) : null);
       const ajF = `SUMIFS(${ref(ABA_AJUSTES)}!$C:$C,${ref(ABA_AJUSTES)}!$A:$A,$D${r})`;
-      const somaF = `M${r}+N${r}+${pj ? `O${r}` : '0'}`;
+      const somaF = `${C.cT}${r}+${C.prem}${r}+${pj ? `${C.extra}${r}` : '0'}`;
       // Ajustes entram depois do acordo mínimo; o total nunca fica abaixo de zero.
-      const pagarF = pj ? `MAX(0,${somaF}+P${r})` : `MAX(0,IF(N(O${r})>0,MAX(${somaF},O${r}),${somaF})+P${r})`;
+      const pagarF = pj ? `MAX(0,${somaF}+${C.aj}${r})` : `MAX(0,IF(N(${C.extra}${r})>0,MAX(${somaF},${C.extra}${r}),${somaF})+${C.aj}${r})`;
+      const vendas = [C.vP, ...vS, ...(comOutros ? [C.vO] : [])];
+      const comissoes = [C.cP, ...cS, ...(comOutros ? [C.cO] : [])];
       an.push([
         null, t(c.equipe || l.equipe || ''), t(l.nome), t(qlikDe(l)),
         t(l.regime === 'TELEVENDAS' ? 'CLT · Televendas' : l.regime),
-        pctCel(l.pct_principal / 100), pctCel(l.pct_farelo / 100),
-        moeda(l.venda_principal, totalF), moeda(l.venda_farelo, fareloF), moeda(l.venda_total, `H${r}+I${r}`),
-        moeda(l.comissao_principal, `ROUND(H${r}*F${r},2)`), moeda(l.comissao_farelo, `ROUND(I${r}*G${r},2)`), moeda(l.comissao_total, `K${r}+L${r}`),
+        pctCel(l.pct_principal / 100), ...sl.map(x => pctCel((x.pct ?? 0) / 100)), ...(comOutros ? [pctCel((l.pct_outros ?? 0) / 100)] : []),
+        moeda(l.venda_principal, principalF), ...sl.map((x, i) => moeda(x.venda, vendaSF(i))), ...(comOutros ? [moeda(l.venda_outros || 0)] : []),
+        moeda(l.venda_total, vendas.map(x => `${x}${r}`).join('+')),
+        moeda(l.comissao_principal, `ROUND(${C.vP}${r}*${C.pctP}${r},2)`),
+        ...sl.map((x, i) => moeda(x.comissao, `ROUND(${vS[i]}${r}*${pctS[i]}${r},2)`)),
+        ...(comOutros ? [moeda(l.comissao_outros || 0, `ROUND(${C.vO}${r}*${C.pctO}${r},2)`)] : []),
+        moeda(l.comissao_total, comissoes.map(x => `${x}${r}`).join('+')),
         moeda(l.premiacoes, premF), extra, moeda(l.ajustes, ajF), moeda(l.valor_pagar, pagarF),
       ]);
+      soma('vP', l.venda_principal); sl.forEach((x, i) => { soma(`vS${i}`, x.venda); soma(`cS${i}`, x.comissao); });
+      soma('vO', l.venda_outros || 0); soma('cO', l.comissao_outros || 0); soma('vT', l.venda_total); soma('cP', l.comissao_principal);
+      soma('cT', l.comissao_total); soma('prem', l.premiacoes); soma('aj', l.ajustes); soma('pagar', l.valor_pagar);
+      soma('extra', pj ? l.contrato_valor : (l.acordo?.valor || 0));
     });
     const fim = an.length;
     const r = an.length + 1;
-    const soma = col => `SUM(${col}${ini}:${col}${Math.max(ini, fim)})`;
-    const tot = ls.reduce((o, l) => {
-      for (const k of ['venda_principal', 'venda_farelo', 'venda_total', 'comissao_principal', 'comissao_farelo', 'comissao_total', 'premiacoes', 'ajustes', 'valor_pagar']) o[k] += centavos(l[k]);
-      o.extra += centavos(pj ? l.contrato_valor : (l.acordo?.valor || 0));
-      return o;
-    }, { venda_principal: 0, venda_farelo: 0, venda_total: 0, comissao_principal: 0, comissao_farelo: 0, comissao_total: 0, premiacoes: 0, ajustes: 0, valor_pagar: 0, extra: 0 });
-    an.push([null, t('TOTAL'), null, null, null, null, null,
-      moeda(reais(tot.venda_principal), soma('H')), moeda(reais(tot.venda_farelo), soma('I')), moeda(reais(tot.venda_total), soma('J')),
-      moeda(reais(tot.comissao_principal), soma('K')), moeda(reais(tot.comissao_farelo), soma('L')), moeda(reais(tot.comissao_total), soma('M')),
-      moeda(reais(tot.premiacoes), soma('N')), pj ? moeda(reais(tot.extra), soma('O')) : null, moeda(reais(tot.ajustes), soma('P')), moeda(reais(tot.valor_pagar), soma('Q'))]);
-    totais.push(`Q${r}`);
+    const total = (k, col) => moeda(reais(somaC[k] || 0), `SUM(${col}${ini}:${col}${Math.max(ini, fim)})`);
+    an.push([null, t('TOTAL'), null, null, null, null, ...secs.map(() => null), ...(comOutros ? [null] : []),
+      total('vP', C.vP), ...secs.map((x, i) => total(`vS${i}`, vS[i])), ...(comOutros ? [total('vO', C.vO)] : []), total('vT', C.vT),
+      total('cP', C.cP), ...secs.map((x, i) => total(`cS${i}`, cS[i])), ...(comOutros ? [total('cO', C.cO)] : []), total('cT', C.cT),
+      total('prem', C.prem), pj ? total('extra', C.extra) : null, total('aj', C.aj), total('pagar', C.pagar)]);
+    totais.push(`${C.pagar}${r}`);
   };
   bloco('COMISSÃO DE VENDAS CLT', resultado.linhas.filter(l => !ehPJ(l)), false);
   bloco('COMISSÃO DE VENDAS PJ', pjs, true);
-  an.push([], [null, t('TOTAL GERAL A PAGAR'), null, null, null, null, null, null, null, null, null, null, null, null, null, null,
-    moeda(resultado.totais.geral.valor_pagar, totais.join('+'))]);
-  abas.push({ nome: ABA_ANALISE, larguras: [3, 22, 30, 38, 16, 12, 10, 16, 14, 16, 16, 14, 16, 15, 17, 14, 16], linhas: an });
+  const geral = [null, t('TOTAL GERAL A PAGAR')];
+  geral[ultima - 1] = moeda(resultado.totais.geral.valor_pagar, totais.join('+'));
+  an.push([], geral);
+  const larguras = [3, 22, 30, 38, 16, 12, ...secs.map(() => 10), ...(comOutros ? [10] : []),
+    16, ...secs.map(() => 14), ...(comOutros ? [14] : []), 16, 16, ...secs.map(() => 14), ...(comOutros ? [14] : []), 16, 15, 17, 14, 16];
+  abas.push({ nome: ABA_ANALISE, larguras, linhas: an });
 
   // 4) Base Qlik do período
   if (temBase) {

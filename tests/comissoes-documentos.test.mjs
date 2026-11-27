@@ -189,6 +189,64 @@ test('Excel: abas da planilha de outubro, fórmulas que recalculam igual à tela
   assert.equal(v2(ABA_ANALISE, `P${linhaAlex}`), -50);
 });
 
+// Toda fórmula do modelo recalcula para o valor que a tela mostra.
+function conferirFormulas(m) {
+  const { valor } = avaliar(m.abas);
+  let n = 0;
+  for (const aba of m.abas) aba.linhas.forEach((linha, i) => (linha || []).forEach((c, j) => {
+    if (!c?.f) return;
+    const ref = `${String.fromCharCode(65 + j)}${i + 1}`;
+    const v = valor(aba.nome, ref);
+    if (typeof c.v === 'number') assert.ok(Math.abs(v - c.v) < 0.006, `${aba.nome}!${ref}: ${c.f} = ${v}, esperado ${c.v}`);
+    else assert.equal(v, c.v, `${aba.nome}!${ref}`);
+    n++;
+  }));
+  return n;
+}
+
+test('Excel (v3.6): uma coluna por secundário, com as fórmulas da base', () => {
+  const forn = [
+    { id: 1, codigo: '6610', nome: 'Farelo', grupo: 'secundario', pct_clt: 1, pct_televendas: 1, pct_pj: 2, ativo: true },
+    { id: 2, codigo: '7064', nome: 'Ouro Fino', grupo: 'secundario', pct_clt: 0.5, pct_televendas: 0.5, pct_pj: 3, ativo: true },
+  ];
+  const vendas = [
+    { vendedor: 'ALEX REPRESENTAÇÕES', cod_fornecedor: '7064', fornecedor: 'OURO FINO', total: 18401.89 },
+    { vendedor: 'ALEX REPRESENTAÇÕES', cod_fornecedor: '21610', fornecedor: 'DBM', total: 100000 },
+    { vendedor: 'RAYANE CUNHA DOS ANJOS', cod_fornecedor: '6610', fornecedor: 'FARELO', total: 799.8 },
+    { vendedor: 'RAYANE CUNHA DOS ANJOS', cod_fornecedor: '21610', fornecedor: 'DBM', total: 70927.68 },
+  ];
+  const r = apurar({ vendas, fornecedores: forn, excecoes: [] });
+  const base = vendas.map((v, i) => ({ data: '2026-10-01', cod_fornecedor: v.cod_fornecedor, fornecedor: v.fornecedor, segmento: 'X', marca: 'X', cod_vendedor: String(i), vendedor: v.vendedor, produto: 'P', valor: v.total }));
+  const m = modeloExcel(r, { parametros: P, cadastro: [ALEX, RAYANE, SEM_DADOS], premiacoes: PREM, ajustes: AJUSTES, base });
+  const an = m.abas[3].linhas;
+  const cab = an.find(l => l?.[2]?.v === 'NOME').map(c => c?.v);
+  assert.deepEqual(cab.slice(5, 16), ['% PRINCIPAL', '% FARELO', '% OURO FINO', 'Venda Principal', 'Venda Farelo', 'Venda Ouro Fino', 'Venda Total',
+    'Comissão Principal', 'Comissão Farelo', 'Comissão Ouro Fino', 'Comissão Total']);
+  assert.deepEqual([an[0][6].v, an[0][7].v], [6610, 7064], 'código de cada secundário acima do % dele');
+  assert.ok(conferirFormulas(m) > 30);
+  const alex = an.find(l => l?.[2]?.v === 'Alex');
+  assert.equal(alex[10].v, 18401.89, 'venda Ouro Fino do Alex');
+  assert.equal(alex[14].v, 552.06, 'comissão Ouro Fino: 3% do PJ');
+});
+
+test('Excel e recibo (v3.6): principal em lista tem coluna e linha de Outros', () => {
+  const p = { ...P, principal_modo: 'lista', pct_outros_clt: 0.2, pct_outros_televendas: 0.2, pct_outros_pj: 0.5 };
+  const forn = [{ id: 1, codigo: '6610', nome: 'Farelo', grupo: 'secundario', pct_clt: 1, pct_televendas: 1, pct_pj: 2, ativo: true },
+    { id: 2, codigo: '7064', nome: 'Ouro Fino', grupo: 'principal', ativo: true }];
+  const vendas = [
+    { vendedor: 'ALEX REPRESENTAÇÕES', cod_fornecedor: '7064', fornecedor: 'OURO FINO', total: 18401.89 },
+    { vendedor: 'ALEX REPRESENTAÇÕES', cod_fornecedor: '21610', fornecedor: 'DBM', total: 1000 },
+  ];
+  const r = apurar({ vendas, fornecedores: forn, excecoes: [], parametros: p });
+  const m = modeloExcel(r, { parametros: p, cadastro: [ALEX, RAYANE, SEM_DADOS], premiacoes: PREM, ajustes: AJUSTES, base: null });
+  const cab = m.abas[3].linhas.find(l => l?.[2]?.v === 'NOME').map(c => c?.v);
+  assert.ok(cab.includes('% OUTROS') && cab.includes('Venda Outros') && cab.includes('Comissão Outros'));
+  conferirFormulas(m);
+  const alex = r.linhas.find(l => l.id === 5);
+  const itens = itensRecibo(alex);
+  assert.deepEqual(itens.find(i => i.descricao === 'Comissão sobre outros fornecedores'), { descricao: 'Comissão sobre outros fornecedores', base: 1000, pct: 0.5, valor: 5 });
+});
+
 // ---------- outubro/2026 com as decisões de nov/2026 ----------
 const ARQ = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'dados-privados', 'comissoes-outubro-2026.json');
 test('outubro/2026: um nome por pessoa, sem bônus de cliente novo; ADP sem a Alsimar', { skip: !fs.existsSync(ARQ) && 'sem dados-privados/comissoes-outubro-2026.json' }, () => {

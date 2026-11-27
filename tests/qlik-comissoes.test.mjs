@@ -2,13 +2,16 @@
 // Qlik de mentira em memória: sem rede e sem pacote.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { abrirEngine, consultarComissoes, consultarBaseComissoes, conjuntoPeriodo, codigoFornecedorSeguro, serialQlik, CONFIG_PADRAO } from '../worker/qlik-engine.js';
+import { abrirEngine, consultarComissoes, consultarBaseComissoes, conjuntoPeriodo, codigoFornecedorSeguro, serialQlik, CONFIG_PADRAO, MAX_LINHAS_COMISSAO } from '../worker/qlik-engine.js';
 import worker, { tratarComissoes } from '../worker/index.js';
 
-const VENDAS = [   // vendedor, total, farelo
-  ['ELIELSON SERPA MENDES', 211006.51, 26336.69],
-  ['SELDIANA ARAUJO BARROS', 125709.18, 16423.12],
-  ['TERRAZOO', 9999.9, 0],
+const VENDAS = [   // vendedor, cód. fornecedor, fornecedor, receita menos devolução (formato 2)
+  ['ELIELSON SERPA MENDES', '7064', 'OURO FINO', 184669.82],
+  ['ELIELSON SERPA MENDES', '6610', 'FARELO DO NORTE', 26336.69],
+  ['SELDIANA ARAUJO BARROS', '7064', 'OURO FINO', 109286.06],
+  ['SELDIANA ARAUJO BARROS', '6610', 'FARELO DO NORTE', 16423.12],
+  ['SELDIANA ARAUJO BARROS', '21610', 'DBM MINERAIS LTDA', -50],      // devolução maior que a venda
+  ['TERRAZOO', '-', '-', 9999.9],                                      // sem fornecedor no Qlik
 ];
 const CONTRATO = [  // vendedor, cliente, valor
   ['SELDIANA ARAUJO BARROS', '100', 1500],
@@ -21,7 +24,7 @@ const BASE = [  // data (série do Qlik), cód. fornecedor, fornecedor, segmento
   [46291, '7064', 'OURO FINO', 'PET FARMACIA', 'PROTEÇÃO', '12', 'SELDIANA ARAUJO BARROS', '-', 109286.06],
 ];
 
-function qlikFalso({ semVendedor = 0, campoInexistente = null } = {}) {
+function qlikFalso({ semVendedor = 0, campoInexistente = null, linhasVendas = null } = {}) {
   const defs = new Map();
   const ouvintes = { message: [], close: [], error: [] };
   const enviados = [];
@@ -41,9 +44,9 @@ function qlikFalso({ semVendedor = 0, campoInexistente = null } = {}) {
       const d = defs.get(m.handle);
       const nDims = d.qDimensions.length;
       if (m.method === 'GetLayout') {
-        const total = VENDAS.reduce((s, v) => s + v[1], 0) + semVendedor;
+        const total = VENDAS.reduce((s, v) => s + v[3], 0) + semVendedor;
         return responder({ qLayout: { qHyperCube: {
-          qSize: { qcx: nDims + d.qMeasures.length, qcy: nDims === 1 ? VENDAS.length : nDims === 8 ? BASE.length : CONTRATO.length },
+          qSize: { qcx: nDims + d.qMeasures.length, qcy: nDims === 3 ? (linhasVendas ?? VENDAS.length) : nDims === 8 ? BASE.length : CONTRATO.length },
           qDimensionInfo: d.qDimensions.map(x => (x.qDef.qFieldDefs[0] === campoInexistente ? { qError: { qErrorCode: 7 } } : {})),
           qMeasureInfo: d.qMeasures.map(() => ({})),
           qGrandTotalRow: [{ qNum: total }],
@@ -51,8 +54,8 @@ function qlikFalso({ semVendedor = 0, campoInexistente = null } = {}) {
       }
       if (m.method === 'GetHyperCubeData') {
         const p = m.params.qPages[0];
-        const fonte = nDims === 1
-          ? VENDAS.map(([v, t, f]) => [{ qText: v }, { qNum: t }, { qNum: f }])
+        const fonte = nDims === 3
+          ? VENDAS.map(([v, cod, f, t]) => [{ qText: v }, { qText: cod }, { qText: f }, { qNum: t }])
           : nDims === 8 ? BASE.map(l => [{ qNum: l[0], qText: '26/09/2026' }, ...l.slice(1, 8).map(x => ({ qText: x })), { qNum: l[8] }])
           : CONTRATO.map(([v, c, x]) => [{ qText: v }, { qText: c }, { qNum: x }]);
         return responder({ qDataPages: [{ qMatrix: fonte.slice(p.qTop, p.qTop + p.qHeight) }] });
@@ -74,21 +77,25 @@ test('conjunto do período: data por expressão, filtros fixos e {1} (ignora sel
   for (const ruim of ['', '66a', "6610'", '1'.repeat(11)]) assert.throws(() => codigoFornecedorSeguro(ruim));
 });
 
-test('consultarComissoes: vendas por vendedor (total e Farelo) e linhas do contrato', async () => {
+test('consultarComissoes (formato 2): vendas por vendedor × fornecedor e linhas do contrato', async () => {
   const q = qlikFalso({ semVendedor: 12.34 });
-  const r = await consultarComissoes(abrirEngine(q.soquete), { appId: 'app', ...PERIODOS, codFarelo: '6610' });
-  assert.deepEqual(r.apuracao.vendas[1], { vendedor: 'SELDIANA ARAUJO BARROS', total: 125709.18, farelo: 16423.12 });
-  assert.equal(r.apuracao.vendas.length, 3);
+  const r = await consultarComissoes(abrirEngine(q.soquete), { appId: 'app', ...PERIODOS });
+  assert.equal(r.formato, 2);
+  assert.deepEqual(r.apuracao.vendas[1], { vendedor: 'ELIELSON SERPA MENDES', cod_fornecedor: '6610', fornecedor: 'FARELO DO NORTE', total: 26336.69 });
+  assert.deepEqual(r.apuracao.vendas[4], { vendedor: 'SELDIANA ARAUJO BARROS', cod_fornecedor: '21610', fornecedor: 'DBM MINERAIS LTDA', total: -50 });
+  assert.deepEqual(r.apuracao.vendas[5], { vendedor: 'TERRAZOO', cod_fornecedor: '', fornecedor: '', total: 9999.9 }, 'traço do Qlik vira código vazio');
+  assert.equal(r.apuracao.vendas.length, 6);
   assert.equal(r.apuracao.sem_vendedor, 12.34);
   assert.deepEqual(r.contrato.linhas[1], { vendedor: 'SELDIANA ARAUJO BARROS', cliente: '101', valor: -20 });
   assert.deepEqual([r.contrato.inicio, r.contrato.fim], ['2026-09-01', '2026-09-30']);
 
   const [cuboVendas, cuboContrato] = [...q.defs.values()];
-  assert.equal(cuboVendas.qDimensions[0].qDef.qFieldDefs[0], 'Vendedor B2B');
-  const [total, farelo] = cuboVendas.qMeasures.map(x => x.qDef.qDef);
+  assert.deepEqual(cuboVendas.qDimensions.map(x => x.qDef.qFieldDefs[0]), ['Vendedor B2B', 'Cód. Fornecedor', 'Nome Fantasia Fornecedor']);
+  assert.deepEqual(cuboVendas.qDimensions.map(x => x.qNullSuppression), [true, false, false], 'venda sem fornecedor não some');
+  assert.equal(cuboVendas.qMeasures.length, 1, 'uma medida só');
+  const [total] = cuboVendas.qMeasures.map(x => x.qDef.qDef);
   assert.ok(total.startsWith('Sum({1<') && total.includes('[Valor Faturamento Bruto s/ Devolução Vendas]'));
-  assert.ok(!total.includes('Cód. Fornecedor'));
-  assert.ok(farelo.includes(`[Cód. Fornecedor]={'6610'}`));
+  assert.ok(!total.includes('Cód. Fornecedor'), 'o Worker não filtra fornecedor: a classificação é do app');
   assert.deepEqual(cuboContrato.qDimensions.map(x => x.qDef.qFieldDefs[0]), ['Vendedor B2B', 'Cód. Cliente']);
   assert.ok(cuboContrato.qMeasures[0].qDef.qDef.includes(`>=${serialQlik('2026-09-01')} and`));
   assert.equal(cuboVendas.qSuppressZero, true);
@@ -96,7 +103,13 @@ test('consultarComissoes: vendas por vendedor (total e Farelo) e linhas do contr
 
 test('campo do vendedor inexistente vira mensagem de configuração', async () => {
   const q = qlikFalso({ campoInexistente: 'Vendedor B2B' });
-  await assert.rejects(consultarComissoes(abrirEngine(q.soquete), { appId: 'app', ...PERIODOS, codFarelo: '6610' }), /QLIK_CAMPOS/);
+  await assert.rejects(consultarComissoes(abrirEngine(q.soquete), { appId: 'app', ...PERIODOS }), /QLIK_CAMPOS/);
+});
+
+test('consultarComissoes: acima do limite de linhas recusa com mensagem clara', async () => {
+  const q = qlikFalso({ linhasVendas: MAX_LINHAS_COMISSAO + 1 });
+  await assert.rejects(consultarComissoes(abrirEngine(q.soquete), { appId: 'app', ...PERIODOS }),
+    e => e.status === 422 && /20000/.test(e.message) && /TI/.test(e.message));
 });
 
 test('consultarBaseComissoes: vendas linha a linha com as colunas da extração manual', async () => {
@@ -126,9 +139,13 @@ test('rota: só administrador ativo consulta as comissões', async () => {
   const r = await chamar(req(OK), async () => ({ id: 'u3', papel: 'aprovador' }));
   assert.equal(r.status, 200);
   const corpo = await r.json();
-  assert.equal(corpo.apuracao.vendas.length, 3);
-  assert.equal(corpo.cod_farelo, '6610');
+  assert.equal(corpo.apuracao.vendas.length, 6);
+  assert.equal(corpo.formato, 2);
+  assert.equal(corpo.cod_farelo, undefined, 'o código do Farelo não volta mais');
   assert.ok(corpo.consultado_em);
+  const semFarelo = { ...OK }; delete semFarelo.cod_farelo;
+  assert.equal((await chamar(req(semFarelo), async () => ({ id: 'u3', papel: 'aprovador' }))).status, 200, 'cod_farelo é opcional');
+  assert.equal((await chamar(req({ ...OK, cod_farelo: '66;10' }), async () => ({ id: 'u3', papel: 'aprovador' }))).status, 200, 'cod_farelo da versão antiga é ignorado');
 });
 
 test('rota: { base: true } devolve só a base do período', async () => {
@@ -142,7 +159,6 @@ test('rota: { base: true } devolve só a base do período', async () => {
 test('rota: pedidos fora do formato são recusados antes de ir ao Qlik', async () => {
   const conectar = async () => { throw new Error('não devia conectar'); };
   for (const ruim of [
-    { ...OK, cod_farelo: '66;10' },
     { ...OK, apuracao_inicio: '2026-10-26' },                 // fim antes do início
     { ...OK, contrato_inicio: '2026-01-01' },                 // longo demais
     { ...OK, apuracao_fim: '2026-02-30' },                    // data que não existe

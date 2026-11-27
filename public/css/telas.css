@@ -496,3 +496,8 @@ a.det-empresa:hover { text-decoration-color: currentColor; }
   /* O mês escolhido já se explica: o rótulo fica só para o leitor de tela. */
   .cm-consulta .campo > label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 }
+
+/* Fornecedores (v3.6): linha de cada secundário no cadastro da pessoa. */
+.cm-sec-linha + .cm-sec-linha { border-top: 1px solid var(--line); padding-top: var(--e-3); }
+.cm-sec-padrao { margin: 0 0 var(--e-1); font-size: var(--t-14); }
+#cp-principal .pessoas { margin-bottom: var(--e-3); }

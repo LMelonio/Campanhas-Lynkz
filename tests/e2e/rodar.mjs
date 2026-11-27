@@ -2842,7 +2842,7 @@ teste('v3.4: comissões — novos no Qlik em lote: marcar dois e cadastrar como 
   await page.click('#cm-lote-ok');
   const dlg = page.locator('dialog', { hasText: 'Cadastrar 2 vendedores como CLT?' });
   const textoDlg = await dlg.innerText();
-  afirma(textoDlg.includes('SEM CADASTRO LTDA') && textoDlg.includes('TERRAZOO') && textoDlg.includes('Farelo'), 'confirmação com os nomes e os %: ' + textoDlg);
+  afirma(textoDlg.includes('SEM CADASTRO LTDA') && textoDlg.includes('TERRAZOO') && textoDlg.includes('2,5%') && textoDlg.includes('secundário'), 'confirmação com os nomes e os %: ' + textoDlg);
   await dlg.locator('button[type="submit"]').click();
   await toastCom(page, '2 vendedores entraram na comissão como CLT');
   await page.locator('.cm-sem').waitFor({ state: 'detached' });
@@ -3061,6 +3061,77 @@ teste('v3.5: comissões — mês reaberto calcula com o cadastro de quando foi f
   afirma(t.includes('Calculado com o cadastro de quando o mês foi fechado'), 'nota explica a regra');
 });
 
+teste('v3.6: comissões — secundário novo pelos Parâmetros vira coluna na Apuração; % só de uma pessoa no Cadastro', async ({ page }) => {
+  await previaOutubro(page);
+  afirma(/Elielson Serpa Mendes[\s\S]*R\$ 4\.880,12/.test(await page.locator('#cm-conteudo').innerText()), 'antes: R$ 4.880,12');
+  await page.click('[data-aba="parametros"]');
+  await page.locator('#cp-novo-sec').click();
+  const d = page.locator('dialog.dialogo'); await d.waitFor();
+  await d.locator('#cs-codigo').fill('6610');
+  await d.locator('#cs-pct_clt').fill('1'); await d.locator('#cs-pct_televendas').fill('1'); await d.locator('#cs-pct_pj').fill('1');
+  await d.locator('button[type="submit"]').click();
+  afirma((await erroDo(page, 'cs-codigo').innerText()).includes('já está cadastrado'), 'código repetido');
+  await d.locator('#cs-codigo').fill('');
+  await d.locator('#cs-codigo').type('21610', { delay: 10 });
+  igual(await d.locator('#cs-nome').inputValue(), 'Dbm Minerais Ltda', 'nome vem da última consulta');
+  await d.locator('#cs-pct_clt').fill('0,5'); await d.locator('#cs-pct_televendas').fill('0,5'); await d.locator('#cs-pct_pj').fill('1');
+  await d.locator('button[type="submit"]').click(); await d.waitFor({ state: 'detached' });
+  await toastCom(page, 'Dbm Minerais Ltda entrou nos secundários');
+  afirma((await page.locator('.cm-tabela-forn').innerText()).includes('21610'), 'na tabela de secundários');
+  const f = (await db(page)).comissao_fornecedores.find(x => x.codigo === '21610');
+  afirma(f && f.grupo === 'secundario' && f.pct_clt === 0.5 && f.pct_pj === 1, 'gravado: ' + JSON.stringify(f));
+  await page.click('[data-aba="apuracao"]');
+  await page.locator('#cm-t-clt').waitFor();
+  const cab = await page.locator('#cm-t-clt + .tabela-caixa thead').innerText();
+  afirma(/Farelo/i.test(cab) && /Dbm Minerais Ltda/i.test(cab), 'uma coluna por secundário com venda: ' + cab);
+  // Elielson: R$ 5.000 de DBM saem do principal (2,5%) e pagam 0,5%: 4.880,12 − 125 + 25.
+  afirma(/Elielson Serpa Mendes[\s\S]*0,5% no Dbm Minerais Ltda[\s\S]*R\$ 4\.780,12/.test(await page.locator('#cm-conteudo').innerText()), 'comissão com o secundário novo');
+
+  // % do Farelo só para o Elielson: 2% em vez de 1% (26.336,69 × 1% a mais = 263,36).
+  await page.click('[data-aba="cadastro"]');
+  await page.click('[data-editar="1"]');
+  const dc = page.locator('dialog.dialogo'); await dc.waitFor();
+  igual(await dc.locator('#dc-pct-farelo').count(), 0, 'sem o campo antigo do Farelo');
+  afirma((await dc.locator('#dc-secundarios').innerText()).includes('1% (padrão CLT)'), 'mostra o padrão do regime');
+  await dc.locator('#dc-sec-1').fill('2');
+  await dc.locator('button[type="submit"]').click(); await dc.waitFor({ state: 'detached' });
+  const e = (await db(page)).comissao_excecoes;
+  afirma(e.length === 1 && e[0].comissionado_id === 1 && e[0].pct === 2, 'exceção gravada: ' + JSON.stringify(e));
+  igual((await db(page)).comissionados.find(c => c.id === 1).pct_farelo, 2, 'pct_farelo (obsoleto) acompanha o Farelo');
+  afirma((await page.locator('#cm-lista').innerText()).includes('Farelo 2% (só desta pessoa)'), 'lista mostra o % próprio');
+  await page.click('[data-aba="apuracao"]');
+  afirma(/Elielson Serpa Mendes[\s\S]*R\$ 5\.043,48/.test(await page.locator('#cm-conteudo').innerText()), 'comissão com o % próprio');
+  // Em branco volta ao padrão (grava o padrão: ninguém apaga).
+  await page.click('[data-aba="cadastro"]');
+  await page.click('[data-editar="1"]');
+  await page.locator('#dc-sec-1').fill('');
+  await page.click('dialog button[type="submit"]'); await page.locator('dialog').waitFor({ state: 'detached' });
+  igual((await db(page)).comissao_excecoes[0].pct, 1, 'exceção volta ao padrão do regime');
+});
+
+teste('v3.6: comissões — principal em lista manda o resto para "Outros", com % por regime', async ({ page }) => {
+  await previaOutubro(page);
+  await page.click('[data-aba="parametros"]');
+  await page.locator('#cp-principal').waitFor();
+  afirma(await page.locator('#cp-lista').isHidden(), 'lista escondida com "Todos"');
+  await page.check('input[name="cp-principal_modo"][value="lista"]');
+  await page.click('#cm-form-param button[type="submit"]');
+  afirma((await erroDo(page, 'cp-codigos_principal').innerText()).includes('pelo menos um'), 'pede os códigos');
+  igual(await semErroVisivel(page), 4, 'códigos e os 3 % de Outros');
+  await page.fill('#cp-codigos_principal', '7064');
+  for (const k of ['clt', 'televendas', 'pj']) await page.fill(`#cp-pct_outros_${k}`, '0,2');
+  await page.click('#cm-form-param button[type="submit"]');
+  await toastCom(page, 'Parâmetros salvos');
+  const banco = await db(page);
+  afirma(banco.comissao_parametros[0].principal_modo === 'lista' && banco.comissao_fornecedores.some(f => f.codigo === '7064' && f.grupo === 'principal'), 'lista gravada');
+  await page.click('[data-aba="apuracao"]');
+  await page.click('#cm-buscar');
+  await page.locator('#cm-t-clt').waitFor();
+  afirma((await page.locator('#cm-t-clt + .tabela-caixa thead').innerText()).includes('OUTROS'), 'coluna Outros');
+  // Elielson: R$ 5.000 de DBM saem do principal e pagam 0,2%: 4.880,12 − 125 + 10.
+  afirma(/Elielson Serpa Mendes[\s\S]*0,2% em Outros[\s\S]*R\$ 4\.765,12/.test(await page.locator('#cm-conteudo').innerText()), 'comissão de Outros');
+});
+
 teste('v3.3: comissões — cadastro só edita quem veio do Qlik e avisa o que falta no PJ', async ({ page }) => {
   await abrir(page, { rota: '#/comissoes?aba=cadastro' });
   await page.locator('.usuarios-lista').first().waitFor();
@@ -3083,19 +3154,20 @@ teste('v3.3: comissões — parâmetros validam, gravam e pedem nova consulta', 
   await previaOutubro(page);
   await page.click('[data-aba="parametros"]');
   await page.locator('#cm-form-param').waitFor();
-  await page.fill('#cp-cod_farelo', '66a');
+  igual(await page.locator('#cp-cod_farelo, #cp-pct_clt_farelo').count(), 0, 'o Farelo saiu dos parâmetros soltos (está na linha dele)');
+  await page.fill('#cp-pct_clt_principal', '25');
   await page.fill('#cp-dia_corte', '31');
   await page.click('#cm-form-param button[type="submit"]');
   igual(await semErroVisivel(page), 2, 'dois erros na tela');
-  await page.fill('#cp-cod_farelo', '6611');
+  await page.fill('#cp-pct_clt_principal', '2,5');
   await page.fill('#cp-dia_corte', '20');
   await page.click('#cm-form-param button[type="submit"]');
   await page.locator('.cm-alterado').waitFor();
   const p = (await db(page)).comissao_parametros[0];
-  afirma(p.cod_farelo === '6611' && p.dia_corte === 20, 'parâmetros gravados');
+  afirma(p.dia_corte === 20 && p.principal_modo === 'todos', 'parâmetros gravados');
   await page.click('[data-aba="apuracao"]');
   const t = await page.locator('#cm-conteudo').innerText();
-  afirma(t.includes('fornecedor 6611') && t.includes('Vendas de 21/09/2026 a 20/10/2026') && !t.includes('A pagar em'), 'apuração usa o parâmetro novo e pede nova consulta');
+  afirma(t.includes('Secundário: Farelo (6610)') && t.includes('Vendas de 21/09/2026 a 20/10/2026') && !t.includes('A pagar em'), 'apuração usa o parâmetro novo e pede nova consulta');
 });
 
 teste('v3.2: comissões — erro do Qlik aparece com o que fazer', async ({ page }) => {

@@ -83,8 +83,19 @@ await new Promise((ok, falha) => {
 const engine = abrirEngine(ws, { tempoMs: 120000 });
 let r;
 try {
-  r = await consultarComissoes(engine, { appId: env.QLIK_APP_ID, config: CONFIG_PADRAO, apuracao, contrato, codFarelo: farelo });
+  r = await consultarComissoes(engine, { appId: env.QLIK_APP_ID, config: CONFIG_PADRAO, apuracao, contrato });
 } finally { engine.fechar(); }
+// A consulta vem por vendedor × fornecedor (formato 2): junta por vendedor, com o Farelo à parte, como na planilha.
+{
+  const porVendedor = new Map();
+  for (const v of r.apuracao.vendas) {
+    const a = porVendedor.get(v.vendedor) || { vendedor: v.vendedor, totalC: 0, fareloC: 0 };
+    a.totalC += cent(v.total);
+    if (v.cod_fornecedor === farelo) a.fareloC += cent(v.total);
+    porVendedor.set(v.vendedor, a);
+  }
+  r.apuracao.vendas = [...porVendedor.values()].map(a => ({ vendedor: a.vendedor, total: a.totalC / 100, farelo: a.fareloC / 100 }));
+}
 
 console.log(`\nApuração ${args.mes}: ${apuracao.inicio} a ${apuracao.fim} · Farelo ${farelo} · Contrato: ${contrato.inicio} a ${contrato.fim}`);
 console.log(`Qlik: ${r.apuracao.vendas.length} vendedores · total R$ ${brl(r.apuracao.total)}${r.apuracao.sem_vendedor ? ` · sem vendedor R$ ${brl(r.apuracao.sem_vendedor)}` : ''}`);

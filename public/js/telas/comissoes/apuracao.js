@@ -3,7 +3,7 @@
 // Os documentos e o fechamento do mês ficam em documentos.js.
 import { html, pintar, $, $$, ao } from '../../lib/dom.js';
 import { dataBR, horaBR } from '../../lib/regras.js';
-import { REGIMES, ROTULO_REGIME, ehPJ, pctPadrao, errosComissionado, novoDoQlik } from '../../lib/comissoes.js';
+import { REGIMES, ROTULO_REGIME, ehPJ, pctPadrao, errosComissionado, novoDoQlik, secundariosDaLinha } from '../../lib/comissoes.js';
 import { comissoes } from '../../dados/comissoes.js';
 import { detalhar } from '../../dados/erros.js';
 import { icone } from '../../ui/icones.js';
@@ -49,8 +49,8 @@ function resultadoHtml(r) {
     ${r.semCadastro.length ? novosHtml(r) : ''}
     ${desativadosHtml(r)}
 
-    ${tabela('Vendedores CLT', clt, false, t.clt.valor_pagar)}
-    ${tabela('Representantes PJ', pj, true, t.pj.valor_pagar)}
+    ${tabela('Vendedores CLT', clt, false, t.clt.valor_pagar, colunasFornecedor(r.linhas))}
+    ${tabela('Representantes PJ', pj, true, t.pj.valor_pagar, colunasFornecedor(r.linhas))}
     ${r.consulta.sem_vendedor || r.ignorados.length ? html`<p class="secao-nota cm-rodape">${[
       r.consulta.sem_vendedor ? `${r$(r.consulta.sem_vendedor)} em vendas sem vendedor no Qlik ficaram de fora.` : '',
       r.ignorados.length ? `Não comissionam: ${r.ignorados.map(x => `${x.vendedor} (${r$(x.total)})`).join(', ')}. Para mudar, vá em Parâmetros.` : '',
@@ -70,20 +70,31 @@ function contratoHtml(c) {
 
 // Até 600 px a tabela dá lugar a um cartão por pessoa (o CSS mostra um ou outro):
 // nome, regime e "A pagar" à vista; "Ver conta" abre as linhas; alertas sempre visíveis.
-function tabela(titulo, ls, pj, total) {
+// Colunas de venda além da principal: um secundário por coluna (só os que tiveram venda no mês) e "Outros".
+// As mesmas colunas nas duas tabelas (CLT e PJ), na ordem das regras.
+function colunasFornecedor(linhas) {
+  const sec = new Map();
+  for (const l of linhas) for (const x of secundariosDaLinha(l)) if (x.venda && !sec.has(x.codigo)) sec.set(x.codigo, x.nome);
+  return { secundarios: [...sec].map(([codigo, nome]) => ({ codigo, nome })), outros: linhas.some(l => l.venda_outros) };
+}
+const vendaSec = (l, codigo) => secundariosDaLinha(l).find(x => x.codigo === codigo)?.venda || 0;
+
+function tabela(titulo, ls, pj, total, cols) {
   if (!ls.length) return '';
   const id = pj ? 'cm-t-pj' : 'cm-t-clt';
   return html`<section aria-labelledby="${id}">
     <h2 class="secao-titulo cm-grupo" id="${id}"><span>${titulo} <span class="contador-texto">${ls.length}</span></span><span class="cm-grupo-total tabular">${r$(total)}</span></h2>
     <div class="tabela-caixa cm-caixa-pessoas"><table class="tabela cm-tabela">
-      <thead><tr><th scope="col">${pj ? 'Representante' : 'Vendedor'}</th><th scope="col" class="num">Venda principal</th><th scope="col" class="num">Farelo</th>
+      <thead><tr><th scope="col">${pj ? 'Representante' : 'Vendedor'}</th><th scope="col" class="num">Venda principal</th>
+        ${cols.secundarios.map(x => html`<th scope="col" class="num">${x.nome}</th>`)}${cols.outros ? html`<th scope="col" class="num">Outros</th>` : ''}
         <th scope="col" class="num">Comissão</th><th scope="col" class="num">Prêmios</th><th scope="col" class="num">${pj ? 'Contrato de Resultado' : 'Acordo mínimo'}</th><th scope="col" class="num">A pagar</th></tr></thead>
       <tbody>${ls.map(l => html`<tr>
         <td data-rotulo="${pj ? 'Representante' : 'Vendedor'}" class="principal"><strong>${l.nome}</strong>
           <small class="cm-sub">${regimeTxt(l)}</small>${alertasHtml(l)}
           ${botaoRecibo(l, pj)}</td>
         <td data-rotulo="Venda principal" class="num tabular">${r$(l.venda_principal)}</td>
-        <td data-rotulo="Farelo" class="num tabular">${r$(l.venda_farelo)}</td>
+        ${cols.secundarios.map(x => html`<td data-rotulo="${x.nome}" class="num tabular">${r$(vendaSec(l, x.codigo))}</td>`)}
+        ${cols.outros ? html`<td data-rotulo="Outros" class="num tabular">${r$(l.venda_outros || 0)}</td>` : ''}
         <td data-rotulo="Comissão" class="num tabular">${r$(l.comissao_total)}</td>
         <td data-rotulo="Prêmios" class="num tabular">${l.premiacoes ? r$(l.premiacoes) : '—'}${l.ajustes ? html`<small class="cm-sub">Ajustes ${sinal(l.ajustes)}</small>` : ''}</td>
         <td data-rotulo="${pj ? 'Contrato de Resultado' : 'Acordo mínimo'}" class="num tabular">${pj ? contratoHtml(l.contrato)
@@ -95,7 +106,14 @@ function tabela(titulo, ls, pj, total) {
 }
 
 const sinal = v => `${v > 0 ? '+' : '−'}${r$(Math.abs(v))}`;
-const regimeTxt = l => `${l.regime === 'TELEVENDAS' ? 'Televendas, ' : ''}${pctTxt(l.pct_principal)} e ${pctTxt(l.pct_farelo)} no Farelo${l.equipe ? `, ${l.equipe}` : ''}`;
+// "2,5% no principal e 1% no Farelo": só os secundários com venda no mês (e Outros, se houver).
+function regimeTxt(l) {
+  const pcts = [`${pctTxt(l.pct_principal)} no principal`,
+    ...secundariosDaLinha(l).filter(x => x.venda).map(x => (x.pct == null ? `${x.nome} sem %` : `${pctTxt(x.pct)} no ${x.nome}`)),
+    ...(l.venda_outros ? [l.pct_outros == null ? 'Outros sem %' : `${pctTxt(l.pct_outros)} em Outros`] : [])];
+  const lista = pcts.length > 1 ? `${pcts.slice(0, -1).join(', ')} e ${pcts.at(-1)}` : pcts[0];
+  return `${l.regime === 'TELEVENDAS' ? 'Televendas, ' : ''}${lista}${l.equipe ? `, ${l.equipe}` : ''}`;
+}
 const botaoRecibo = (l, pj) => (pj && l.valor_pagar > 0
   ? html`<button type="button" class="btn btn-texto btn-pequeno cm-recibo" data-recibo="${l.id}" aria-label="Baixar recibo de ${l.nome}">${icone('baixar')} Recibo</button>` : '');
 
@@ -118,7 +136,8 @@ function cartao(l, pj) {
       <dl class="cm-conta">
         ${linha('Regime', regimeTxt(l))}
         ${linha('Venda principal', r$(l.venda_principal))}
-        ${linha('Farelo', r$(l.venda_farelo))}
+        ${secundariosDaLinha(l).filter(x => x.venda).map(x => linha(x.nome, r$(x.venda)))}
+        ${l.venda_outros ? linha('Outros', r$(l.venda_outros)) : ''}
         ${linha('Comissão', r$(l.comissao_total))}
         ${linha('Prêmios', l.premiacoes ? r$(l.premiacoes) : '—')}
         ${l.ajustes ? linha('Ajustes', sinal(l.ajustes)) : ''}
@@ -264,7 +283,7 @@ async function aplicarLote() {
   const p = pctPadrao(acao, comissoes.parametros());
   const ok = await confirmar(acao === 'ignorar'
     ? { titulo: `${lista} não ${nomes.length === 1 ? 'comissiona' : 'comissionam'}?`, descricao: `${nomes.join(', ')}. As vendas com estes nomes deixam de aparecer como novas. Dá para desfazer em Parâmetros.`, confirmar: 'Não comissiona' }
-    : { titulo: `Cadastrar ${lista} como ${ROTULO_REGIME[acao]}?`, descricao: `${nomes.join(', ')}. Com ${pctTxt(p.principal)} na venda principal e ${pctTxt(p.farelo)} no Farelo.${acao === 'PJ' ? ' Razão social, CNPJ e PIX ficam para completar em Cadastro antes do recibo e da ADP.' : ''}`, confirmar: 'Cadastrar' });
+    : { titulo: `Cadastrar ${lista} como ${ROTULO_REGIME[acao]}?`, descricao: `${nomes.join(', ')}. Com ${pctTxt(p.principal)} na venda principal${comissoes.temFornecedores() ? ' e o % de cada secundário pelo regime' : ` e ${pctTxt(p.farelo)} no Farelo`}.${acao === 'PJ' ? ' Razão social, CNPJ e PIX ficam para completar em Cadastro antes do recibo e da ADP.' : ''}`, confirmar: 'Cadastrar' });
   if (!ok || !s) return;
   const meu = s;
   await ocupar('lote', async () => {

@@ -85,8 +85,18 @@ Tela: `export function montar(el, ctx, params) → desmontar`. `ctx`: `perfil`, 
 ## Comissões (só administrador)
 
 - Cálculo puro em `lib/comissoes.js`; a interface que importa é `apurarMes()` (o resto é usado por ela e pelos testes).
-  Vendas do dia 26 ao 25 (`periodoApuracao`), receita menos devolução; Farelo = fornecedor do parâmetro (6610);
-  % do cadastro de cada pessoa; premiações do mês; Contrato de Resultado só PJ, do mês anterior fechado
+  Vendas do dia 26 ao 25 (`periodoApuracao`), receita menos devolução, por vendedor × fornecedor. Fornecedores
+  (migração 21, `regrasFornecedores()` / `classificarVendas()` / `pctSecundario()`): o **principal** é "todos menos os
+  secundários" (padrão) ou uma lista (`principal_modo = 'lista'`); os **secundários** (`comissao_fornecedores`, hoje só o
+  Farelo 6610) têm % por regime e `vale_de`; uma pessoa pode ter % próprio num secundário (`comissao_excecoes`; para tirar,
+  grava o % do padrão: ninguém apaga). Com a lista, venda fora das listas vai para **Outros** (`pct_outros_*` por regime).
+  Principal × `pct_principal` do cadastro; falta de % vira alerta (nunca 0% em silêncio). Consulta antiga (formato 1,
+  `{ total, farelo }`) é convertida na entrada (`vendasFormato2`). A linha mantém `venda_farelo`, `pct_farelo` e
+  `comissao_farelo` (o secundário Farelo) para o Excel e as cópias antigas; `secundariosDaLinha()` lê os dois formatos.
+  Regra de ouro: com os parâmetros padrão, outubro/2026 não muda nenhum centavo (testes com `dados-privados`).
+  Obsoletos desde a 21 (o app não lê; saem numa migração futura): `comissao_parametros.cod_farelo` e `pct_*_farelo`,
+  `comissionados.pct_farelo` (o app grava nele o % efetivo do Farelo, para o rollback).
+  Premiações do mês; Contrato de Resultado só PJ, do mês anterior fechado
   (`mesAnteriorFechado`): faturamento ≥ 100% e positivação ≥ 80% da meta → 1,0% do realizado, 1,2% acima de 105%.
   Metas do mês na aba Contrato (`comissao_mes_pj`; sem elas, as do cadastro); realizado do Qlik ou informado à mão com
   motivo (`entradaContrato`). Positivado = cliente com receita líquida > 0 no mês. Acordo mínimo só CLT, na vigência:
@@ -121,9 +131,12 @@ Tela: `export function montar(el, ctx, params) → desmontar`. `ctx`: `perfil`, 
   gravado no mês com o valor da NF (aviso quando não bate com o valor a pagar). Textos fixos em `config.js` → `COMISSOES` (empresa pagadora e CNPJ = tomador das NF dos PJ; a loja vem de `ADP`).
   Nomes de arquivo sem acento (alguns navegadores trocam por "download").
 - Banco: migração 16 (`comissionados`, `comissao_parametros`, `comissao_auditoria`), 17 (`comissao_premiacoes`,
-  `comissao_ajustes`, `comissao_mes_pj`, `comissao_fechamentos`) e 19 (`comissao_consultas`). RLS `eh_aprovador()` em todas; ninguém apaga (premiação sai desativada); tudo na auditoria.
-- Worker: `/api/qlik/comissoes` só para `papel = 'aprovador'` (`ROTAS_QLIK[...].soAdmin`). Cubos `[Vendedor B2B]` (total e
-  Farelo) e `[Vendedor B2B] × [Cód. Cliente]` (contrato), com os mesmos `{1<…>}`, filtros e medida das compras.
+  `comissao_ajustes`, `comissao_mes_pj`, `comissao_fechamentos`), 19 (`comissao_consultas`) e 21 (`comissao_fornecedores`,
+  `comissao_excecoes`). O fechamento grava as regras usadas (`resultado.regras`, `fornecedores`, `excecoes`); reabrir calcula com elas. RLS `eh_aprovador()` em todas; ninguém apaga (premiação sai desativada); tudo na auditoria.
+- Worker: `/api/qlik/comissoes` só para `papel = 'aprovador'` (`ROTAS_QLIK[...].soAdmin`). Cubos `[Vendedor B2B] × [Cód.
+  Fornecedor] × [Nome Fantasia Fornecedor]` (formato 2, até `MAX_LINHAS_COMISSAO`) e `[Vendedor B2B] × [Cód. Cliente]`
+  (contrato), com os mesmos `{1<…>}`, filtros e medida das compras. O Worker não sabe quem é secundário: `cod_farelo` no
+  pedido é ignorado.
   Com `{ base: true }`, devolve só a base linha a linha (campos `segmento`, `codigoVendedor` e `produto` em `QLIK_CAMPOS`).
 - O teste "outubro/2026" refaz a planilha real com `dados-privados/comissoes-outubro-2026.json` (fora do Git; sem ele, é pulado).
   `npm run qlik:comissoes -- --mes AAAA-MM --planilha arquivo.xlsx` compara o Qlik com a planilha do mês.

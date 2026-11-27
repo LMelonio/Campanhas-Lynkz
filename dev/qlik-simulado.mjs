@@ -101,10 +101,24 @@ export function qlikComissoesSimulado(rq, rs) {
       return responder(200, { base: { inicio: p.apuracao_inicio, fim: p.apuracao_fim, linhas: base }, consultado_em: new Date().toISOString() });
     }
     const total = Math.round(vendas.reduce((s, v) => s + v.total, 0) * 100) / 100 + 87.5;
+    // Formato 2 (v3.6): uma linha por vendedor × fornecedor. O total de cada vendedor é o mesmo de antes.
+    // Elielson vende também DBM (21610); Seldiana tem um fornecedor com devolução maior que a venda.
+    const r2 = n => Math.round(n * 100) / 100;
+    const extras = { 'ELIELSON SERPA MENDES': [['21610', 'DBM MINERAIS LTDA', 5000]], 'SELDIANA ARAUJO BARROS': [['30001', 'PET SHOP DEVOLVIDO', -50]] };
+    const porFornecedor = vendas.flatMap(v => {
+      const outros = extras[v.vendedor] || [];
+      const resto = r2(v.total - v.farelo - outros.reduce((s, x) => s + x[2], 0));
+      return [
+        { vendedor: v.vendedor, cod_fornecedor: '7064', fornecedor: 'OURO FINO', total: resto },
+        ...(v.farelo ? [{ vendedor: v.vendedor, cod_fornecedor: '6610', fornecedor: 'FARELO DO NORTE', total: v.farelo }] : []),
+        ...outros.map(([cod, nome, t]) => ({ vendedor: v.vendedor, cod_fornecedor: cod, fornecedor: nome, total: t })),
+      ];
+    });
     responder(200, {
-      apuracao: { inicio: p.apuracao_inicio, fim: p.apuracao_fim, vendas, total, sem_vendedor: 87.5 },
+      formato: 2,
+      apuracao: { inicio: p.apuracao_inicio, fim: p.apuracao_fim, vendas: porFornecedor, total, sem_vendedor: 87.5 },
       contrato: { inicio: p.contrato_inicio, fim: p.contrato_fim, linhas },
-      cod_farelo: p.cod_farelo, consultado_em: new Date().toISOString(),
+      consultado_em: new Date().toISOString(),
     });
   }, 300));
 }

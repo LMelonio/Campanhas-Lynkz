@@ -43,12 +43,46 @@ function itemCadastro(c) {
     <div class="usuario-avatar" aria-hidden="true">${c.nome.trim().charAt(0).toUpperCase()}</div>
     <div class="usuario-dados">
       <strong>${c.nome}${c.regime === 'TELEVENDAS' ? html` ${seloNeutro('Televendas')}` : ''}${c.ativo === false ? html` ${seloNeutro('Desativado')}` : ''}</strong>
-      <small>${pctTxt(c.pct_principal)} e ${pctTxt(c.pct_farelo)} no Farelo${c.equipe ? `, ${c.equipe}` : ''}${ehPJ(c) && c.pj_razao_social ? `. Recebe como ${c.pj_razao_social}` : ''}</small>
+      <small>${textoPcts(c)}${c.equipe ? `, ${c.equipe}` : ''}${ehPJ(c) && c.pj_razao_social ? `. Recebe como ${c.pj_razao_social}` : ''}</small>
       <small>No Qlik: ${c.nomes_qlik.join(', ')}</small>
       ${linhaExtra}
     </div>
     <div class="acoes"><button type="button" class="btn btn-fantasma btn-pequeno" data-editar="${c.id}" aria-label="Editar ${c.nome}">${icone('editar')} Editar</button></div>
   </li>`;
+}
+
+// "2,5% no principal" e, quando a pessoa tem % próprio em algum secundário, "Farelo 1,5% (só desta pessoa)".
+// Sem a tabela de fornecedores (migração 21), o pct_farelo do cadastro, como antes.
+function textoPcts(c) {
+  if (!comissoes.temFornecedores()) return `${pctTxt(c.pct_principal)} e ${pctTxt(c.pct_farelo)} no Farelo`;
+  const proprios = secundariosAtivos().map(f => ({ f, pct: excecaoDe(c, f) })).filter(x => x.pct != null);
+  return [`${pctTxt(c.pct_principal)} no principal`, ...proprios.map(x => `${x.f.nome} ${pctTxt(x.pct)} (só desta pessoa)`)].join(', ');
+}
+const secundariosAtivos = () => comissoes.fornecedores().filter(f => f.grupo === 'secundario' && f.ativo !== false);
+const padraoDe = (f, regime) => (f[{ CLT: 'pct_clt', TELEVENDAS: 'pct_televendas', PJ: 'pct_pj' }[regime] || 'pct_clt'] ?? null);
+// % próprio da pessoa num secundário, só quando difere do padrão do regime (igual ao padrão = sem exceção).
+function excecaoDe(c, f) {
+  if (c?.id == null) return null;
+  const e = comissoes.excecoes(c.id).find(x => x.fornecedor_id === f.id);
+  return e && Number(e.pct) !== Number(padraoDe(f, c.regime)) ? Number(e.pct) : null;
+}
+const textoPadrao = (f, regime) => {
+  const p = padraoDe(f, regime);
+  return p == null ? `sem % para ${ROTULO_REGIME[regime]}` : `${pctTxt(p)} (padrão ${ROTULO_REGIME[regime]})`;
+};
+
+// Secundários no diálogo: o padrão do regime e, opcional, um % só para esta pessoa.
+function secundariosHtml(base) {
+  const lista = secundariosAtivos();
+  if (!lista.length) return '';
+  return html`<fieldset class="cm-bloco" id="dc-secundarios">
+    <legend>Secundários</legend>
+    <p class="campo-dica">Em branco, vale o % do regime (definido em Parâmetros).</p>
+    ${lista.map(f => html`<div class="cm-sec-linha">
+      <p class="cm-sec-padrao"><strong>${f.nome}:</strong> <span data-padrao-sec="${f.id}">${textoPadrao(f, base.regime)}</span></p>
+      ${campo({ id: `dc-sec-${f.id}`, rotulo: `% só para esta pessoa no ${f.nome}`, opcional: true, valor: valorPct(excecaoDe(base, f)), mascara: 'decimal', depois: sufixo })}
+    </div>`)}
+  </fieldset>`;
 }
 
 const ID = k => `dc-${k.replace(/_/g, '-')}`;
@@ -58,6 +92,7 @@ const pctPadraoObj = regime => { const p = pctPadrao(regime, comissoes.parametro
 export async function editar(c, nomeDoQlik = null) {
   const novo = !c;
   const base = c || novoDoQlik(nomeDoQlik, 'CLT', comissoes.parametros());
+  const comTabela = comissoes.temFornecedores();
   const dv = k => (base[k] ?? '');
   const corpo = html`
     <p class="cm-qlik"><span class="cm-discreto">Nome no Qlik</span> <strong>${base.nomes_qlik.join(', ')}</strong></p>
@@ -68,8 +103,9 @@ export async function editar(c, nomeDoQlik = null) {
     </div>
     <div class="cm-duas">
       ${campo({ id: ID('pct_principal'), rotulo: '% sobre a venda principal', valor: valorPct(base.pct_principal), obrigatorio: true, mascara: 'decimal', depois: sufixo })}
-      ${campo({ id: ID('pct_farelo'), rotulo: '% sobre o Farelo', valor: valorPct(base.pct_farelo), obrigatorio: true, mascara: 'decimal', depois: sufixo })}
+      ${comTabela ? '' : campo({ id: ID('pct_farelo'), rotulo: '% sobre o Farelo', valor: valorPct(base.pct_farelo), obrigatorio: true, mascara: 'decimal', depois: sufixo })}
     </div>
+    ${comTabela ? secundariosHtml(base) : ''}
     ${campo({ id: ID('email'), rotulo: 'E-mail', tipo: 'email', opcional: true, valor: dv('email'), dica: 'Para mandar o recibo direto, quando essa opção existir.', atributos: { maxlength: 120, autocomplete: 'off' } })}
 
     <fieldset class="cm-bloco" data-so="clt"${ehPJ(base) ? html` hidden` : ''}>
@@ -116,8 +152,9 @@ export async function editar(c, nomeDoQlik = null) {
         const depois = pctPadraoObj(regime);
         for (const k of ['pct_principal', 'pct_farelo']) {
           const inp = $(`#${ID(k)}`, d);
-          if (!inp.value.trim() || lerValor(inp.value) === antes[k]) inp.value = valorPct(depois[k]);
+          if (inp && (!inp.value.trim() || lerValor(inp.value) === antes[k])) inp.value = valorPct(depois[k]);
         }
+        for (const f of secundariosAtivos()) { const el = $(`[data-padrao-sec="${f.id}"]`, d); if (el) el.textContent = textoPadrao(f, regime); }
         anterior = regime;
       });
     },
@@ -131,7 +168,7 @@ export async function editar(c, nomeDoQlik = null) {
         regime: val('regime'),
         equipe: val('equipe').trim(),
         pct_principal: num('pct_principal'),
-        pct_farelo: num('pct_farelo'),
+        ...(comTabela ? {} : { pct_farelo: num('pct_farelo') }),
         nomes_qlik: base.nomes_qlik,
         email: val('email').trim(),
         acordo_minimo: num('acordo_minimo'),
@@ -148,19 +185,29 @@ export async function editar(c, nomeDoQlik = null) {
       const erros = errosComissionado(dados, comissoes.cadastro());
       if (dados.pj_documento && !/^(\d{11}|\d{14})$/.test(dados.pj_documento)) erros.pj_documento = 'CNPJ com 14 números ou CPF com 11.';
       if (erros.nomes_qlik) { erroNoDialogo(d, erros.nomes_qlik); delete erros.nomes_qlik; if (!Object.keys(erros).length) return false; }
-      if (Object.keys(erros).length) {
-        aplicarErros(d, Object.fromEntries(Object.entries(erros).map(([k, m]) => [ID(k), m])));
-        return false;
+      // % próprio em cada secundário: vazio = o padrão do regime.
+      const proprios = comTabela ? secundariosAtivos().map(f => ({ f, pct: num(`sec-${f.id}`) })) : [];
+      const errosTela = Object.fromEntries(Object.entries(erros).map(([k, m]) => [ID(k), m]));
+      for (const x of proprios) if (x.pct != null && !(x.pct >= 0 && x.pct <= 20)) errosTela[`dc-sec-${x.f.id}`] = 'De 0 a 20.';
+      if (Object.keys(errosTela).length) { aplicarErros(d, errosTela); return false; }
+      if (comTabela) {
+        // pct_farelo (obsoleto) acompanha o % efetivo do Farelo, para o rollback da 21.
+        const farelo = proprios.find(x => x.f.codigo === comissoes.parametros().cod_farelo);
+        dados.pct_farelo = farelo ? (farelo.pct ?? padraoDe(farelo.f, dados.regime) ?? 0) : (c?.pct_farelo ?? pctPadraoObj(dados.regime).pct_farelo);
       }
-      try { salvo = await comissoes.salvar(dados, c?.id ?? null); return true; }
-      catch (e) { erroNoDialogo(d, detalhar(e).mensagem); return false; }
+      try {
+        salvo = await comissoes.salvar(dados, c?.id ?? null);
+        for (const x of proprios) await comissoes.salvarExcecao(salvo.id, x.f.id, x.pct);
+        return true;
+      } catch (e) { erroNoDialogo(d, detalhar(e).mensagem); return false; }
     },
   });
   if (desligar) desligar();
-  if (!salvo || !s) return;
+  if (!salvo || !s) return salvo;
   await recalcular();
   redesenhar();
   s.ctx.toast(novo ? `${salvo.nome} entrou na comissão.` : 'Cadastro salvo.', { tom: 'sucesso' });
+  return salvo;
 }
 
 export function ligar(el) {

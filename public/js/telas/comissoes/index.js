@@ -4,7 +4,7 @@
 //   ?aba=premiacoes   lancamentos.js premiações de campanha e ajustes (com motivo) do mês
 //   ?aba=contrato     contrato.js   Contrato de Resultado dos PJ: metas do mês anterior e realizado
 //   ?aba=cadastro     cadastro.js   comissionados: as pessoas vêm do Qlik; aqui só se completa regime, %, acordo e dados da PJ
-//   ?aba=parametros   parametros.js código do Farelo, dia de corte, % padrão, Contrato de Resultado, nomes que não comissionam
+//   ?aba=parametros   parametros.js dia de corte, fornecedor principal e secundários, % padrão, Contrato de Resultado, nomes que não comissionam
 //   ?aba=historico    historico.js  meses fechados (cópia do que foi pago)
 //   &mes=AAAA-MM      mês das abas do mês (Apuração, Premiações e Contrato)
 //   ?aba=previa é o nome antigo da Apuração: links antigos continuam abrindo.
@@ -73,6 +73,13 @@ function desenhar() {
   </div>`);
 }
 
+// "Secundários: Farelo (6610)." e, com o principal em lista, que o resto vai para Outros.
+function textoFornecedores() {
+  const r = comissoes.regras(s.mes);
+  const sec = r.secundarios.map(x => `${x.nome} (${x.codigo})`);
+  return `${sec.length ? `Secundário${sec.length > 1 ? 's' : ''}: ${sec.join(', ')}.` : 'Sem fornecedor secundário.'}${r.principalModo === 'lista' ? ' Fornecedor fora das listas vai para Outros.' : ''}`;
+}
+
 function seletorMes() {
   const p = comissoes.parametros();
   const ap = periodoApuracao(s.mes, p.dia_corte);
@@ -86,7 +93,7 @@ function seletorMes() {
       ${selecao({ id: 'cm-mes', rotulo: 'Mês da apuração', opcoes: meses.map(m => ({ valor: m, rotulo: rotuloMesComissao(m) })), valor: s.mes, vazio: 'Escolha o mês' })}
       ${fechado() || !naApuracao ? '' : html`<button type="button" class="btn ${r ? 'btn-fantasma' : 'btn-primario'}" id="cm-buscar"${s.buscando ? html` aria-busy="true" disabled` : ''}>${icone('repetir')} ${s.buscando ? 'Buscando no Qlik…' : r ? 'Atualizar do Qlik' : 'Buscar vendas no Qlik'}</button>`}
     </div>
-    ${naApuracao ? html`<p class="secao-nota cm-periodo">Vendas de ${dataBR(ap.inicio)} a ${dataBR(ap.fim)}<span class="cm-so-largo">, receita menos devolução, atacado regular</span>. Farelo é o fornecedor ${p.cod_farelo}.
+    ${naApuracao ? html`<p class="secao-nota cm-periodo">Vendas de ${dataBR(ap.inicio)} a ${dataBR(ap.fim)}<span class="cm-so-largo">, receita menos devolução, atacado regular</span>. ${textoFornecedores()}
       O Contrato de Resultado olha ${mesMinusculo(ct.mes)} inteiro.</p>` : ''}</div>`;
 }
 

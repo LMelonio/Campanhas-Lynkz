@@ -5,8 +5,12 @@
 //  Regras (revisão nov/2026, decididas com a gestão):
 //   - Base: receita menos devolução no Qlik (atacado, regular), do dia seguinte ao
 //     corte do mês anterior até o dia do corte (padrão 26 a 25).
-//   - Venda Farelo = fornecedor do código do parâmetro (6610). Venda Principal = o resto.
-//   - Comissão = venda × % do cadastro de cada pessoa (CLT 2,5 · Televendas 1 · PJ 5 · Farelo 1 / 2).
+//   - Fornecedores (migração 21): grupo principal e secundários. O principal é "todos menos os
+//     secundários" (padrão) ou "só estes" (lista); venda de fornecedor fora das listas vai para
+//     "Outros fornecedores". Cada secundário (hoje: Farelo 6610) tem % por regime e pode ter % próprio
+//     por pessoa (exceção). Sem a tabela de fornecedores, o Farelo vem dos Parâmetros (como antes).
+//   - Comissão = principal × % principal do cadastro + cada secundário × % dele + Outros × % de Outros.
+//     Nunca 0% em silêncio: falta de % vira alerta na linha.
 //   - Premiações: lançadas à mão, para CLT e PJ.
 //   - Contrato de Resultado (só PJ): mês anterior fechado (01 ao último dia). Paga se
 //     faturamento ≥ 100% da meta E positivação ≥ 80% da meta; 1,0% do realizado até 105%,
@@ -129,13 +133,88 @@ export function acordoVigente(c, mes) {
   return { valor: arred(valor), inicio: c.acordo_inicio, fim: c.acordo_fim || null };
 }
 
+// ---------- fornecedores: principal, secundários e "Outros" ----------
+const pctOuNulo = v => (v === null || v === undefined || v === '' ? null : Number(v));
+export const ROTULO_REGIME_CURTO = Object.freeze({ CLT: 'CLT', TELEVENDAS: 'Televendas', PJ: 'PJ' });
+
+// O Farelo de antes da migração 21: código e % dos Parâmetros. Vale quando não há tabela de fornecedores.
+export function fornecedoresLegado(p = PARAMETROS_PADRAO) {
+  return [{ id: 'farelo', codigo: String(p.cod_farelo ?? PARAMETROS_PADRAO.cod_farelo), nome: 'Farelo', grupo: 'secundario',
+    pct_clt: Number(p.pct_clt_farelo), pct_televendas: Number(p.pct_televendas_farelo), pct_pj: Number(p.pct_pj_farelo), vale_de: '2000-01', ativo: true }];
+}
+
+// Regras do mês: fornecedores ativos com vale_de <= mes. fornecedores = null → o Farelo dos Parâmetros.
+// → { principalModo, principal: Set<codigo>, secundarios: [{ id, codigo, nome, pct: { CLT, TELEVENDAS, PJ }, vale_de }],
+//     outros: { CLT, TELEVENDAS, PJ } | null, codFarelo }
+export function regrasFornecedores(parametros = PARAMETROS_PADRAO, fornecedores = null, mes = '9999-12') {
+  const lista = (fornecedores ?? fornecedoresLegado(parametros))
+    .filter(f => f.ativo !== false && String(f.vale_de || '2000-01') <= String(mes));
+  const principalModo = parametros.principal_modo === 'lista' ? 'lista' : 'todos';
+  return {
+    principalModo,
+    principal: new Set(lista.filter(f => f.grupo === 'principal').map(f => String(f.codigo))),
+    secundarios: lista.filter(f => f.grupo === 'secundario').map(f => ({
+      id: f.id, codigo: String(f.codigo), nome: f.nome, vale_de: f.vale_de || '2000-01',
+      pct: { CLT: pctOuNulo(f.pct_clt), TELEVENDAS: pctOuNulo(f.pct_televendas), PJ: pctOuNulo(f.pct_pj) },
+    })),
+    outros: principalModo === 'lista'
+      ? { CLT: pctOuNulo(parametros.pct_outros_clt), TELEVENDAS: pctOuNulo(parametros.pct_outros_televendas), PJ: pctOuNulo(parametros.pct_outros_pj) }
+      : null,
+    codFarelo: String(parametros.cod_farelo ?? PARAMETROS_PADRAO.cod_farelo),
+  };
+}
+// As regras como vão para a cópia do fechamento (JSON, sem Set).
+export const regrasParaCopia = r => ({ ...r, principal: [...r.principal] });
+export const regrasDaCopia = r => ({ ...r, principal: new Set(r.principal || []) });
+
+// Consulta antiga (formato 1: { vendedor, total, farelo }) vira o formato 2 na entrada:
+// o principal é total − farelo e o Farelo, o secundário de código codFarelo.
+export function vendasFormato2(vendas, codFarelo = PARAMETROS_PADRAO.cod_farelo) {
+  return (vendas || []).flatMap(v => ('cod_fornecedor' in v ? [v] : [
+    { vendedor: v.vendedor, cod_fornecedor: null, fornecedor: '', total: reais(centavos(v.total) - centavos(v.farelo)), principal: true },
+    ...(centavos(v.farelo) ? [{ vendedor: v.vendedor, cod_fornecedor: String(codFarelo), fornecedor: 'Farelo', total: arred(v.farelo) }] : []),
+  ]));
+}
+
+// Separa as vendas de cada vendedor em principal, secundários e "Outros".
+// → [{ vendedor, principalC, secundarios: { codigo: centavos }, outrosC, totalC }]
+export function classificarVendas(vendas, regras) {
+  const sec = new Set(regras.secundarios.map(x => x.codigo));
+  const por = new Map();
+  for (const v of vendasFormato2(vendas, regras.codFarelo)) {
+    const k = String(v.vendedor ?? '');
+    const a = por.get(k) || por.set(k, { vendedor: v.vendedor, principalC: 0, secundarios: {}, outrosC: 0, totalC: 0 }).get(k);
+    const c = centavos(v.total);
+    const cod = v.cod_fornecedor == null ? null : String(v.cod_fornecedor);
+    a.totalC += c;
+    if (cod != null && sec.has(cod)) a.secundarios[cod] = (a.secundarios[cod] || 0) + c;
+    else if (v.principal || regras.principalModo === 'todos' || regras.principal.has(cod)) a.principalC += c;
+    else a.outrosC += c;
+  }
+  return [...por.values()];
+}
+
+// % de um secundário para uma pessoa: a exceção dela, senão o % do regime (null = sem regra).
+// excecoes: [{ comissionado_id, codigo, pct }]
+export function pctSecundario(c, sec, excecoes = []) {
+  const e = (excecoes || []).find(x => String(x.comissionado_id) === String(c.id) && String(x.codigo) === sec.codigo);
+  if (e && e.pct != null && e.pct !== '') return Number(e.pct);
+  const p = sec.pct?.[c.regime];
+  return p == null ? null : Number(p);
+}
+
+// Exceções de antes da 21: o pct_farelo de cada pessoa vale para o Farelo.
+export const excecoesLegado = (comissionados, codFarelo = PARAMETROS_PADRAO.cod_farelo) => comissionados
+  .filter(c => c.pct_farelo != null && c.pct_farelo !== '')
+  .map(c => ({ comissionado_id: c.id, codigo: String(codFarelo), pct: Number(c.pct_farelo) }));
+
 // ---------- casamento das vendas do Qlik com o cadastro ----------
-// vendas: [{ vendedor, total, farelo }] (uma linha por "Vendedor B2B").
+// vendas: formato 2 [{ vendedor, cod_fornecedor, fornecedor, total }] ou o antigo [{ vendedor, total, farelo }].
 // Nome de cadastro desativado não entra na comissão nem em "Novos no Qlik": vai para `desativados`
 // (senão "Completar cadastro" criava um segundo cadastro para a mesma pessoa).
-// → { porId: Map(id → { totalC, fareloC, nomes:[] }), semCadastro: [{ vendedor, total, farelo }],
-//     desativados: [{ id, nome, vendedor, total, farelo }], ignorados: [...] }
-export function juntarVendas(vendas, comissionados, nomesIgnorados = []) {
+// → { porId: Map(id → { principalC, secundarios, outrosC, totalC, nomes:[] }), semCadastro: [{ vendedor, total, farelo }],
+//     desativados: [{ id, nome, vendedor, total, farelo }], ignorados: [...] }   (farelo: a venda do secundário Farelo)
+export function juntarVendas(vendas, comissionados, nomesIgnorados = [], regras = regrasFornecedores()) {
   const dono = new Map();
   const inativo = new Map();
   for (const c of comissionados) {
@@ -146,19 +225,21 @@ export function juntarVendas(vendas, comissionados, nomesIgnorados = []) {
   const semCadastro = [];
   const desativados = [];
   const ignorados = [];
-  for (const v of vendas || []) {
+  for (const v of classificarVendas(vendas, regras)) {
     const k = chaveNome(v.vendedor);
     const id = dono.get(k)?.id;
     if (id == null) {
-      const linha = { vendedor: v.vendedor, total: arred(v.total), farelo: arred(v.farelo) };
+      const linha = { vendedor: v.vendedor, total: reais(v.totalC), farelo: reais(v.secundarios[regras.codFarelo] || 0) };
       const c = inativo.get(k);
       if (c) desativados.push({ id: c.id, nome: c.nome, ...linha });
       else (ignorar.has(k) ? ignorados : semCadastro).push(linha);
       continue;
     }
-    const a = porId.get(id) || { totalC: 0, fareloC: 0, nomes: [] };
-    a.totalC += centavos(v.total);
-    a.fareloC += centavos(v.farelo);
+    const a = porId.get(id) || { principalC: 0, secundarios: {}, outrosC: 0, totalC: 0, nomes: [] };
+    a.principalC += v.principalC;
+    a.outrosC += v.outrosC;
+    a.totalC += v.totalC;
+    for (const [cod, c] of Object.entries(v.secundarios)) a.secundarios[cod] = (a.secundarios[cod] || 0) + c;
     a.nomes.push(v.vendedor);
     porId.set(id, a);
   }
@@ -246,16 +327,39 @@ export function entradaContrato(c, mesPj = null, realizado = null) {
 }
 
 // ---------- uma pessoa ----------
-// c: cadastro · venda: { totalC, fareloC } · realizado: { faturamento, positivados } do Qlik (PJ)
-// mesPj: metas, realizado informado e NF do PJ no mês · premiacoes / ajustes: [{ valor, descricao|motivo }] desta pessoa.
-export function calcularLinha(c, { venda = null, realizado = null, mesPj = null, premiacoes = [], ajustes = [], mes, parametros = PARAMETROS_PADRAO } = {}) {
-  const totalC = venda?.totalC ?? 0;
-  const fareloC = venda?.fareloC ?? 0;
-  const principalC = totalC - fareloC;
+// c: cadastro · venda: { principalC, secundarios, outrosC, totalC } (ou o antigo { totalC, fareloC })
+// regras: regrasFornecedores() · excecoes: [{ comissionado_id, codigo, pct }] (null = o pct_farelo do cadastro vale para o Farelo)
+// realizado: { faturamento, positivados } do Qlik (PJ) · mesPj: metas, realizado informado e NF do PJ no mês
+// premiacoes / ajustes: [{ valor, descricao|motivo }] desta pessoa.
+export function calcularLinha(c, { venda = null, realizado = null, mesPj = null, premiacoes = [], ajustes = [], mes, parametros = PARAMETROS_PADRAO,
+  regras = regrasFornecedores(parametros), excecoes = null } = {}) {
+  const v = venda && 'fareloC' in venda
+    ? { principalC: venda.totalC - venda.fareloC, secundarios: { [regras.codFarelo]: venda.fareloC }, outrosC: 0, totalC: venda.totalC, nomes: venda.nomes }
+    : venda;
+  const totalC = v?.totalC ?? 0;
+  const principalC = v?.principalC ?? 0;
+  const outrosC = v?.outrosC ?? 0;
+  const exc = excecoes ?? excecoesLegado([c], regras.codFarelo);
+  const regime = ROTULO_REGIME_CURTO[c.regime] || c.regime;
+  const alertas = [];
   const pctP = Number(c.pct_principal);
-  const pctF = Number(c.pct_farelo);
   const comPrincipalC = aplicar(reais(principalC), pctP);
-  const comFareloC = aplicar(reais(fareloC), pctF);
+
+  const secundarios = regras.secundarios.map(sec => {
+    const vendaC = v?.secundarios?.[sec.codigo] || 0;
+    const pct = pctSecundario(c, sec, exc);
+    if (vendaC && pct == null) alertas.push({ tipo: 'sem_pct', texto: `Fornecedor ${sec.nome} sem % para ${regime}: a venda dele ficou sem comissão.` });
+    const comC = aplicar(reais(vendaC), pct ?? 0);
+    return { codigo: sec.codigo, nome: sec.nome, venda: reais(vendaC), pct, comissao: reais(comC), vendaC, comC };
+  });
+  const pctOutros = regras.outros ? regras.outros[c.regime] ?? null : null;
+  if (outrosC && pctOutros == null) alertas.push({ tipo: 'sem_pct', texto: `Outros fornecedores sem % para ${regime}: a venda deles ficou sem comissão.` });
+  const comOutrosC = aplicar(reais(outrosC), pctOutros ?? 0);
+  const comSecC = secundarios.reduce((s, x) => s + x.comC, 0);
+  const comissaoC = comPrincipalC + comSecC + comOutrosC;
+  // Farelo: os campos antigos (Excel, recibo e Histórico ainda os leem) são a soma do secundário Farelo.
+  const farelo = secundarios.find(x => x.codigo === regras.codFarelo);
+
   const premC = premiacoes.reduce((s, x) => s + centavos(x.valor), 0);
   const ajC = ajustes.reduce((s, x) => s + centavos(x.valor), 0);
 
@@ -269,25 +373,26 @@ export function calcularLinha(c, { venda = null, realizado = null, mesPj = null,
     };
   }
   const contratoC = centavos(contrato?.valor || 0);
-  const somaC = comPrincipalC + comFareloC + premC + contratoC;
+  const somaC = comissaoC + premC + contratoC;
   const acordo = acordoVigente(c, mes);
   const pisoAplicado = !!acordo && centavos(acordo.valor) > somaC;
   const antesDoAjusteC = pisoAplicado ? centavos(acordo.valor) : somaC;
   const brutoC = antesDoAjusteC + ajC;
   const pagarC = Math.max(0, brutoC);
 
-  const alertas = [];
-  if (!venda) alertas.push({ tipo: 'sem_venda', texto: 'Nenhuma venda no Qlik no período.' });
-  if (principalC < 0 || fareloC < 0) alertas.push({ tipo: 'base_negativa', texto: 'Devoluções maiores que as vendas no período.' });
+  if (!venda) alertas.unshift({ tipo: 'sem_venda', texto: 'Nenhuma venda no Qlik no período.' });
+  if (principalC < 0 || outrosC < 0 || secundarios.some(x => x.vendaC < 0)) alertas.push({ tipo: 'base_negativa', texto: 'Devoluções maiores que as vendas no período.' });
   if (brutoC < 0) alertas.push({ tipo: 'total_negativo', texto: `O total deu ${brlSimples(reais(brutoC))}; paga R$ 0,00 e o saldo não passa para o mês seguinte.` });
 
   return {
     id: c.id, nome: c.nome, regime: c.regime, equipe: c.equipe || '',
-    nome_qlik: (c.nomes_qlik || [])[0] || '', nomes_qlik: venda?.nomes || [],
-    pct_principal: pctP, pct_farelo: pctF,
-    venda_total: reais(totalC), venda_farelo: reais(fareloC), venda_principal: reais(principalC),
-    comissao_principal: reais(comPrincipalC), comissao_farelo: reais(comFareloC),
-    comissao_total: reais(comPrincipalC + comFareloC),
+    nome_qlik: (c.nomes_qlik || [])[0] || '', nomes_qlik: v?.nomes || [],
+    pct_principal: pctP, pct_farelo: farelo ? farelo.pct ?? 0 : 0,
+    venda_total: reais(totalC), venda_principal: reais(principalC),
+    secundarios: secundarios.map(({ vendaC, comC, ...x }) => x),
+    venda_outros: reais(outrosC), pct_outros: pctOutros, comissao_outros: reais(comOutrosC),
+    venda_farelo: farelo ? farelo.venda : 0, comissao_farelo: farelo ? farelo.comissao : 0,
+    comissao_principal: reais(comPrincipalC), comissao_total: reais(comissaoC),
     premiacoes: reais(premC), premiacoes_lista: premiacoes.map(x => ({ descricao: x.descricao || '', valor: arred(x.valor) })),
     ajustes_lista: ajustes.map(x => ({ motivo: x.motivo || x.descricao || '', valor: arred(x.valor) })),
     contrato, contrato_valor: reais(contratoC), nf_numero: mesPj?.nf_numero || '', nf_valor: mesPj?.nf_valor ?? null,
@@ -296,22 +401,34 @@ export function calcularLinha(c, { venda = null, realizado = null, mesPj = null,
   };
 }
 
+// Secundários de uma linha, inclusive das cópias de meses fechados antes da 3.6 (só com o Farelo).
+export function secundariosDaLinha(l) {
+  if (Array.isArray(l.secundarios)) return l.secundarios;
+  return l.venda_farelo || l.comissao_farelo
+    ? [{ codigo: PARAMETROS_PADRAO.cod_farelo, nome: 'Farelo', venda: l.venda_farelo || 0, pct: l.pct_farelo ?? null, comissao: l.comissao_farelo || 0 }]
+    : [];
+}
+
 const brlSimples = n => (n < 0 ? '−' : '') + 'R$ ' + Math.abs(n).toFixed(2).replace('.', ',').replace(/\B(?=(\d{3})+(?!\d))/g, '.');
 
 // ---------- o mês inteiro ----------
 // Entrada:
 //   mes: "2026-10" · comissionados (cadastro) · parametros
-//   vendas: [{ vendedor, total, farelo }] do período de apuração
+//   vendas: do período de apuração, formato 2 [{ vendedor, cod_fornecedor, fornecedor, total }] ou o antigo
+//   fornecedores: linhas de comissao_fornecedores (null = o Farelo dos Parâmetros) · excecoes: [{ comissionado_id, codigo, pct }]
 //   realizados: Map(id → { faturamento, positivados }) do mês anterior (ou contratoLinhas para calcular aqui)
 //   premiacoes / ajustes: [{ comissionado_id, valor, descricao|motivo, ativo }] (desativadas ficam de fora)
 //   mesPj: [{ comissionado_id, meta_*, realizado_*, realizado_motivo, nf_numero }] do mês (aba Contrato e NF)
-// Saída: { mes, linhas (CLT primeiro, depois PJ, por nome), semCadastro, desativados, lancamentosOrfaos, ignorados, totais }
+// Saída: { mes, linhas (CLT primeiro, depois PJ, por nome), semCadastro, desativados, lancamentosOrfaos, ignorados, totais,
+//          regras (as regras de fornecedor usadas, para a cópia do fechamento) }
 //   desativados: nomes do Qlik com venda que são de cadastros desativados (fora da comissão)
 //   lancamentosOrfaos: premiações e ajustes ativos do mês de quem está desativado (fora do total)
 //     [{ tipo: 'premiacao' | 'ajuste', id, comissionado_id, nome, valor, descricao }]
-export function apurarMes({ mes, comissionados = [], parametros = PARAMETROS_PADRAO, vendas = [], realizados = null, contratoLinhas = null, premiacoes = [], ajustes = [], mesPj = [] }) {
+export function apurarMes({ mes, comissionados = [], parametros = PARAMETROS_PADRAO, vendas = [], realizados = null, contratoLinhas = null, premiacoes = [], ajustes = [], mesPj = [],
+  fornecedores = null, excecoes = null, regras: regrasProntas = null }) {
   const ativos = comissionados.filter(c => c.ativo !== false);
-  const { porId, semCadastro, desativados, ignorados } = juntarVendas(vendas, comissionados, parametros.nomes_ignorados);
+  const regras = regrasProntas || regrasFornecedores(parametros, fornecedores, mes);
+  const { porId, semCadastro, desativados, ignorados } = juntarVendas(vendas, comissionados, parametros.nomes_ignorados, regras);
   const real = realizados || realizadosContrato(contratoLinhas || [], ativos);
   const doId = (lista, id) => lista.filter(x => String(x.comissionado_id) === String(id) && x.ativo !== false && (!x.mes || x.mes === mes));
   const lancamentosOrfaos = comissionados.filter(c => c.ativo === false).flatMap(c => [
@@ -327,12 +444,13 @@ export function apurarMes({ mes, comissionados = [], parametros = PARAMETROS_PAD
       realizado: real.get(c.id) || null,
       premiacoes: doId(premiacoes, c.id), ajustes: doId(ajustes, c.id),
       mesPj: doId(mesPj, c.id)[0] || null,
-      mes, parametros,
+      mes, parametros, regras, excecoes: excecoes ?? excecoesLegado([c], regras.codFarelo),
     }));
   const somar = (ls, k) => reais(ls.reduce((s, l) => s + centavos(l[k]), 0));
   const grupo = ls => ({
     pessoas: ls.length,
     venda_total: somar(ls, 'venda_total'), venda_farelo: somar(ls, 'venda_farelo'), venda_principal: somar(ls, 'venda_principal'),
+    venda_outros: somar(ls, 'venda_outros'),
     comissao_total: somar(ls, 'comissao_total'), premiacoes: somar(ls, 'premiacoes'), contrato: somar(ls, 'contrato_valor'),
     ajustes: somar(ls, 'ajustes'), valor_pagar: somar(ls, 'valor_pagar'),
   });
@@ -342,6 +460,7 @@ export function apurarMes({ mes, comissionados = [], parametros = PARAMETROS_PAD
     mes, periodo: periodoApuracao(mes, parametros.dia_corte), contrato_periodo: mesAnteriorFechado(mes),
     linhas, semCadastro, desativados, lancamentosOrfaos, ignorados,
     totais: { clt: grupo(clt), pj: grupo(pj), geral: grupo(linhas) },
+    regras: regrasParaCopia(regras),
   };
 }
 
@@ -363,6 +482,7 @@ export function errosComissionado(d, outros = []) {
   if (nome.length < 2 || nome.length > 80) e.nome = 'Informe o nome (2 a 80 letras).';
   if (!REGIMES.includes(d.regime)) e.regime = 'Escolha o regime.';
   for (const [k, rot] of [['pct_principal', '% principal'], ['pct_farelo', '% Farelo']]) {
+    if (k === 'pct_farelo' && !(k in d)) continue;   // obsoleto desde a 21: o % do Farelo é por secundário
     const v = Number(d[k]);
     if (d[k] === '' || d[k] == null || !Number.isFinite(v) || v < 0 || v > 20) e[k] = `${rot}: de 0 a 20.`;
   }
