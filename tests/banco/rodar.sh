@@ -54,6 +54,9 @@ rodar -d campanhas_teste_novo -f testes-18.sql 2>&1 | sed -n 's/^psql.*NOTICE:  
 rodar -d campanhas_teste_novo -f $SQL/migracoes/19-validacao.sql -t -A -F' ' | tee /tmp/val19a.txt
 if grep -q '^[0-9]* f ' /tmp/val19a.txt; then echo "FALHOU: validação 19 com linha false"; exit 1; fi
 rodar -d campanhas_teste_novo -f testes-19.sql 2>&1 | sed -n 's/^psql.*NOTICE:  \(ok.*\)/\1/p; /PASSARAM/p; /ERROR/p; /FALHOU/p'
+rodar -d campanhas_teste_novo -f $SQL/migracoes/20-validacao.sql -t -A -F' ' | tee /tmp/val20a.txt
+if grep -q '^[0-9]* f ' /tmp/val20a.txt; then echo "FALHOU: validação 20 com linha false"; exit 1; fi
+rodar -d campanhas_teste_novo -f testes-20.sql 2>&1 | sed -n 's/^psql.*NOTICE:  \(ok.*\)/\1/p; /PASSARAM/p; /ERROR/p; /FALHOU/p'
 
 echo "== 2. Migração v1.3.1 → v2 (04 e 05 sobre o schema antigo)"
 banco campanhas_teste_mig
@@ -121,6 +124,10 @@ rodar -d campanhas_teste_mig -f $SQL/migracoes/19-consulta-qlik-do-mes.sql >/dev
 rodar -d campanhas_teste_mig -f $SQL/migracoes/19-validacao.sql -t -A -F' ' | tee /tmp/val19b.txt
 if grep -q '^[0-9]* f ' /tmp/val19b.txt; then echo "FALHOU: validação 19 com linha false"; exit 1; fi
 rodar -d campanhas_teste_mig -f testes-19.sql 2>&1 | sed -n 's/^psql.*NOTICE:  \(ok.*\)/\1/p; /PASSARAM/p; /ERROR/p; /FALHOU/p'
+rodar -d campanhas_teste_mig -f $SQL/migracoes/20-total-do-fechamento.sql >/dev/null
+rodar -d campanhas_teste_mig -f $SQL/migracoes/20-validacao.sql -t -A -F' ' | tee /tmp/val20b.txt
+if grep -q '^[0-9]* f ' /tmp/val20b.txt; then echo "FALHOU: validação 20 com linha false"; exit 1; fi
+rodar -d campanhas_teste_mig -f testes-20.sql 2>&1 | sed -n 's/^psql.*NOTICE:  \(ok.*\)/\1/p; /PASSARAM/p; /ERROR/p; /FALHOU/p'
 
 echo "== 2b. Migração a partir do banco de produção: v1 SEM a parte B (02) → só 04 + 05"
 banco campanhas_teste_semb
@@ -156,10 +163,14 @@ rodar -d campanhas_teste_mig -f $SQL/migracoes/16-comissoes.sql >/dev/null
 rodar -d campanhas_teste_mig -f $SQL/migracoes/17-comissoes-mes.sql >/dev/null
 rodar -d campanhas_teste_mig -f $SQL/migracoes/18-excluir-balconista.sql >/dev/null
 rodar -d campanhas_teste_mig -f $SQL/migracoes/19-consulta-qlik-do-mes.sql >/dev/null
+rodar -d campanhas_teste_mig -f $SQL/migracoes/20-total-do-fechamento.sql >/dev/null
 test "$(rodar -d campanhas_teste_mig -t -A -c "select count(*) from comissao_parametros")" = 1
-echo "ok  04, 05, 07, 08, 09, 10, 11, 12, 13, 14, 15, 16, 17, 18 e 19 rodam duas vezes"
+echo "ok  04, 05, 07, 08, 09, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19 e 20 rodam duas vezes"
 
-echo "== 4. Rollback (19, 18, 17, 16, 15, 14, 13, 12, 11, 10, 09, 08, 07, 05 e 04) volta ao formato da v1"
+echo "== 4. Rollback (20, 19, 18, 17, 16, 15, 14, 13, 12, 11, 10, 09, 08, 07, 05 e 04) volta ao formato da v1"
+rodar -d campanhas_teste_mig -f $SQL/migracoes/20-rollback.sql >/dev/null
+test "$(rodar -d campanhas_teste_mig -t -A -c "select to_regprocedure('public.validar_total_fechamento()') is null and not exists (select 1 from pg_trigger where tgname = 'ao_validar_total_fechamento') and exists (select 1 from comissao_fechamentos)")" = t
+echo "ok  rollback da 20 tira a conferência do total e mantém o histórico"
 rodar -d campanhas_teste_mig -f $SQL/migracoes/19-rollback.sql >/dev/null
 test "$(rodar -d campanhas_teste_mig -t -A -c "select to_regclass('public.comissao_consultas') is null and to_regprocedure('public.preparar_comissao_consulta()') is null and to_regclass('public.comissao_fechamentos') is not null")" = t
 echo "ok  rollback da 19 tira a consulta gravada e mantém o histórico"

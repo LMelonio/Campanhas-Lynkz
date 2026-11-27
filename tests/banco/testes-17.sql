@@ -78,7 +78,7 @@ update comissao_mes_pj set nf_valor = 5658.89;
 select t17.falha($$update comissao_mes_pj set nf_valor = 0$$, 'comissao_mes_pj_nf_valor', 'valor da NF acima de zero');
 
 -- ---------- 4. histórico: fechar trava o mês; reabrir pede motivo ----------
-insert into comissao_fechamentos (mes, dados, total, total_clt, total_pj, fechado_em) values ('2026-10', '{"resultado": {}}', 26192.96, 11804.58, 14388.38, '2020-01-01');
+insert into comissao_fechamentos (mes, dados, total, total_clt, total_pj, fechado_em) values ('2026-10', '{"resultado": {"linhas": [{"regime": "CLT", "valor_pagar": 11804.58}, {"regime": "PJ", "valor_pagar": 14388.38}]}}', 26192.96, 11804.58, 14388.38, '2020-01-01');
 select t17.ok((select status = 'fechado' and fechado_em > '2026-01-01' and fechado_por = '22222222-2222-2222-2222-222222222222' from comissao_fechamentos),
   'fechar grava quem e quando (pelo banco)');
 select t17.falha($$insert into comissao_premiacoes (mes, comissionado_id, descricao, valor) select '2026-10', clt, 'Depois', 10 from t17_ids$$,
@@ -93,7 +93,7 @@ update comissao_fechamentos set status = 'reaberto', motivo_reabertura = 'NF do 
 select t17.ok((select status = 'reaberto' and total = 26192.96 and dados ? 'resultado' and reaberto_por is not null from comissao_fechamentos),
   'reabrir mantém a cópia e grava quem reabriu');
 update comissao_mes_pj set nf_numero = '19';
-update comissao_fechamentos set status = 'fechado', dados = '{"resultado": {"novo": true}}', total = 26000;
+update comissao_fechamentos set status = 'fechado', dados = '{"resultado": {"novo": true, "linhas": [{"regime": "CLT", "valor_pagar": 11611.62}, {"regime": "PJ", "valor_pagar": 14388.38}]}}', total = 26000, total_clt = 11611.62;
 select t17.ok((select status = 'fechado' and total = 26000 and dados->'resultado' ? 'novo' and motivo_reabertura = 'NF do Alex errada' from comissao_fechamentos),
   'fechar de novo troca a cópia e guarda o motivo da última reabertura');
 select t17.ok((select count(*) = 3 from comissao_auditoria where tabela = 'comissao_fechamentos'), 'fechar, reabrir e fechar ficam na auditoria');

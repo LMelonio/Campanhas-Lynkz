@@ -139,10 +139,21 @@ const mesFechado = mes => db.comissao_fechamentos.some(f => f.mes === mes && f.s
 function prepararFechamento(r, antigo) {
   const u = usuario(), agora = new Date().toISOString();
   r.motivo_reabertura = String(r.motivo_reabertura ?? '').replace(/\s+/g, ' ').trim() || null;
+  // Migração 20: ao fechar, os totais têm de ser a soma das linhas (centavo a centavo).
+  const conferirTotal = () => {
+    const c = x => Math.round(Number(x) * 100);
+    const linhas = Array.isArray(r.dados?.resultado?.linhas) ? r.dados.resultado.linhas : [];
+    const clt = linhas.filter(l => l.regime !== 'PJ').reduce((t, l) => t + c(l.valor_pagar), 0);
+    const pj = linhas.filter(l => l.regime === 'PJ').reduce((t, l) => t + c(l.valor_pagar), 0);
+    if (c(r.total_clt) !== clt || c(r.total_pj) !== pj || c(r.total) !== clt + pj) {
+      return erro(`O total do fechamento não confere com as linhas da apuração (CLT ${clt / 100}, PJ ${pj / 100}). Busque as vendas de novo e feche outra vez.`);
+    }
+    return null;
+  };
   if (!antigo) {
     if (db.comissao_fechamentos.some(f => f.mes === r.mes)) return erro('duplicate key value violates unique constraint "comissao_fechamentos_mes_unico"', '23505');
     Object.assign(r, { status: 'fechado', fechado_em: agora, fechado_por: u.id, reaberto_em: null, reaberto_por: null, motivo_reabertura: null });
-    return null;
+    return conferirTotal();
   }
   r.mes = antigo.mes;
   if (antigo.status === 'fechado' && r.status === 'fechado') return erro(`O mês ${antigo.mes} já está fechado. Reabra antes de fechar de novo.`);
@@ -152,6 +163,7 @@ function prepararFechamento(r, antigo) {
       fechado_em: antigo.fechado_em, fechado_por: antigo.fechado_por, reaberto_em: agora, reaberto_por: u.id });
   } else {
     Object.assign(r, { fechado_em: agora, fechado_por: u.id, reaberto_em: antigo.reaberto_em, reaberto_por: antigo.reaberto_por, motivo_reabertura: antigo.motivo_reabertura });
+    return conferirTotal();
   }
   return null;
 }

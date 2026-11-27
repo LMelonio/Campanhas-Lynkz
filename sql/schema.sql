@@ -1943,6 +1943,34 @@ create policy comissao_consultas_admin_altera on public.comissao_consultas for u
   using (public.eh_aprovador()) with check (public.eh_aprovador());
 
 -- ============================================================
+--  TOTAL DO FECHAMENTO CONFERIDO NO BANCO (v3.5.0) — mesmo conteúdo de
+--  migracoes/20-total-do-fechamento.sql. Se mudar aqui, mude lá também.
+-- ============================================================
+create or replace function public.validar_total_fechamento()
+returns trigger language plpgsql security definer set search_path = public as $$
+declare
+  v_linhas jsonb := new.dados->'resultado'->'linhas';
+  v_clt    numeric;
+  v_pj     numeric;
+begin
+  if new.status <> 'fechado' then return new; end if;
+  if jsonb_typeof(v_linhas) is distinct from 'array' then v_linhas := '[]'::jsonb; end if;
+  select coalesce(sum((l->>'valor_pagar')::numeric) filter (where coalesce(l->>'regime', '') <> 'PJ'), 0),
+         coalesce(sum((l->>'valor_pagar')::numeric) filter (where l->>'regime' = 'PJ'), 0)
+    into v_clt, v_pj
+  from jsonb_array_elements(v_linhas) l;
+  if new.total_clt <> v_clt or new.total_pj <> v_pj or new.total <> v_clt + v_pj then
+    raise exception 'O total do fechamento não confere com as linhas da apuração (CLT %, PJ %). Busque as vendas de novo e feche outra vez.', v_clt, v_pj;
+  end if;
+  return new;
+end $$;
+revoke execute on function public.validar_total_fechamento() from public, anon, authenticated;
+
+drop trigger if exists ao_validar_total_fechamento on public.comissao_fechamentos;
+create trigger ao_validar_total_fechamento before insert or update on public.comissao_fechamentos
+  for each row execute function public.validar_total_fechamento();
+
+-- ============================================================
 --  DEPOIS DE FAZER SEU PRIMEIRO LOGIN NO APP, rode a linha abaixo
 --  trocando pelo seu e-mail, para virar o primeiro administrador:
 --
