@@ -124,10 +124,17 @@ teste('acesso: login valida campos, recusa usuário errado e entra', async ({ pa
   await deslogado(page);
   igual(await page.locator('#acesso h1').innerText(), 'Bem-vindo de volta', 'título do login');
   await page.click('#l-entrar');
+  igual((await page.locator('#l-email-erro').innerText()).trim(), 'Informe o e-mail.', 'e-mail vazio');
+  igual((await page.locator('#l-senha-erro').innerText()).trim(), 'Informe a senha.', 'senha vazia marcada junto');
+  igual(await page.evaluate(() => document.activeElement.id), 'l-email', 'foco no primeiro');
+  await page.fill('#l-email', 'carlos@');
+  await page.click('#l-entrar');
   afirma((await page.locator('#l-email-erro').innerText()).includes('e-mail válido'), 'pede e-mail válido (no campo)');
   await page.fill('#l-email', 'carlos@lynkz.com.br');
   await page.click('#l-entrar');
-  afirma((await page.locator('#l-senha-erro').innerText()).includes('senha'), 'pede senha (no campo)');
+  afirma((await page.locator('#l-senha-erro').innerText()).includes('Informe a senha'), 'pede senha (no campo)');
+  igual(await page.locator('#l-email-erro').isVisible(), false, 'e-mail certo sai do erro');
+  igual(await page.evaluate(() => document.activeElement.id), 'l-senha', 'foco na senha');
   await page.fill('#l-email', 'ninguem@lynkz.com.br'); await page.fill('#l-senha', 'x'); await page.press('#l-senha', 'Enter');
   await page.locator('#l-senha-erro', { hasText: 'inválidos' }).waitFor();
   await page.fill('#l-email', 'carlos@lynkz.com.br'); await page.fill('#l-senha', 'qualquer'); await page.click('#l-entrar');

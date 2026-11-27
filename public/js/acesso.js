@@ -109,8 +109,12 @@ function mostrarLogin(msgOk = '', email = '') {
     const senha = $('#l-senha').value;
     msg('l-msg', '');
     limparErro(raiz, 'l-email'); limparErro(raiz, 'l-senha');
-    if (!emailValido(email)) { marcarErro(raiz, 'l-email', 'Digite um e-mail válido.'); $('#l-email').focus(); return; }
-    if (!senha) { marcarErro(raiz, 'l-senha', 'Digite sua senha.'); $('#l-senha').focus(); return; }
+    // Marca os dois campos de uma vez; o foco vai para o primeiro com erro.
+    const erroEmail = !email ? 'Informe o e-mail.' : !emailValido(email) ? 'Digite um e-mail válido.' : '';
+    const erroSenha = senha ? '' : 'Informe a senha.';
+    if (erroEmail) marcarErro(raiz, 'l-email', erroEmail);
+    if (erroSenha) marcarErro(raiz, 'l-senha', erroSenha);
+    if (erroEmail || erroSenha) { $(erroEmail ? '#l-email' : '#l-senha').focus(); return; }
     const liberar = ocupar($('#l-entrar'), 'Entrando…');
     const { error } = await sb.auth.signInWithPassword({ email, password: senha });
     if (error) {
