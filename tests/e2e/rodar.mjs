@@ -3086,6 +3086,31 @@ teste('v3.2: comissões no celular (360 px) e no tema escuro — sem rolagem lat
   }
 }, { largura: 360, altura: 740, toque: true, escuro: true });
 
+// Uma palavra do título de coluna não pode ir parar em duas linhas sem hífen ("PREMIAÇ / ÕES").
+async function palavrasPartidas(page) {
+  return page.evaluate(() => [...document.querySelectorAll('.cm-tabela th')].filter(th => th.offsetParent).flatMap(th => {
+    const partidas = [];
+    const walker = document.createTreeWalker(th, NodeFilter.SHOW_TEXT);
+    for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+      for (const m of n.data.matchAll(/\S+/g)) {
+        const r = document.createRange();
+        r.setStart(n, m.index); r.setEnd(n, m.index + m[0].length);
+        const linhas = new Set([...r.getClientRects()].map(x => Math.round(x.top)));
+        if (linhas.size > 1) partidas.push(m[0]);
+      }
+    }
+    return partidas;
+  }));
+}
+
+for (const largura of [1024, 1280]) {
+  teste(`v3.5: comissões em ${largura} px — títulos das colunas não quebram no meio da palavra`, async ({ page }) => {
+    await previaOutubro(page);
+    const partidas = await palavrasPartidas(page);
+    afirma(!partidas.length, 'palavras partidas: ' + partidas.join(', '));
+  }, { largura, altura: 800 });
+}
+
 // As tabelas de comissões têm 7 colunas: entre 700 e 1100 px rolam na própria caixa, sem empurrar a página nem cortar colunas.
 teste('v3.3: comissões em 1024 px com as vendas buscadas — Apuração e Contrato sem rolagem lateral', async ({ page }) => {
   await previaOutubro(page);

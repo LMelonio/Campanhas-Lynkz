@@ -365,6 +365,8 @@ a.det-empresa:hover { text-decoration-color: currentColor; }
    se ainda não couber, a caixa rola sozinha (nunca corta a tabela nem empurra a página). */
 .comissoes .tabela-caixa { overflow-x: auto; }
 .cm-tabela th.num, .cm-tabela .cm-sub { white-space: normal; }
+/* Título de coluna quebra só entre palavras ("PREMIAÇ / ÕES" não); sem espaço, a tabela rola na própria caixa. */
+.cm-tabela th { hyphens: manual; overflow-wrap: normal; word-break: keep-all; }
 @media (max-width: 1100px) { .cm-tabela th, .cm-tabela td { padding-left: var(--e-3); padding-right: var(--e-3); } }
 .cm-tabela tfoot th, .cm-tabela tfoot td { padding-top: var(--e-3); border-top: 1px solid var(--line); text-align: left; }
 .cm-tabela tfoot td.num { text-align: right; }
