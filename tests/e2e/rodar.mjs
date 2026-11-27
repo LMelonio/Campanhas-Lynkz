@@ -3269,6 +3269,28 @@ teste('v3.6: comissões — o Contrato diz que é o mês anterior de calendário
   igual(await page.locator('#cm-t-contrato').innerText(), 'Metas e realizado de dezembro de 2026 (mês anterior fechado, 01/12 a 31/12)', 'janeiro olha dezembro do ano anterior');
 });
 
+teste('v3.6: comissões — botões dos documentos com um espaço só (1280 px)', async ({ page }) => {
+  await previaOutubro(page);
+  igual(await page.locator('#cm-excel').innerText(), 'Baixar Excel', 'Excel');
+  igual(await page.locator('#cm-adp').innerText(), 'Gerar ADP dos PJ', 'ADP');
+}, { largura: 1280, altura: 800 });
+
+teste('v3.6: comissões no celular (390 px) — a aba ativa fica à vista e a borda esmaece quando há mais abas', async ({ page }) => {
+  await abrir(page, { rota: '#/comissoes?aba=apuracao&mes=2026-10' });
+  await page.locator('.cm-abas').waitFor();
+  afirma(await page.locator('.cm-abas').evaluate(f => f.classList.contains('cm-abas-mais')), 'esmaece com abas escondidas à direita');
+  await page.goto(`${BASE}/?papel=aprovador#/comissoes?aba=historico`);
+  await page.locator('[data-aba="historico"][aria-pressed="true"]').waitFor();
+  const visivel = await page.locator('.cm-abas').evaluate(f => {
+    const a = f.querySelector('[data-aba="historico"]').getBoundingClientRect(), r = f.getBoundingClientRect();
+    return a.left >= r.left - 1 && a.right <= r.right + 1;
+  });
+  afirma(visivel, 'a aba Histórico está visível');
+  // A rolagem pode ser suave: espera ela terminar.
+  const semEsmaecer = await page.waitForFunction(() => !document.querySelector('.cm-abas').classList.contains('cm-abas-mais'), null, { timeout: 3000 }).then(() => true, () => false);
+  afirma(semEsmaecer, 'no fim da faixa, sem esmaecer');
+}, { largura: 390, altura: 844, toque: true });
+
 teste('v3.3: comissões — cadastro só edita quem veio do Qlik e avisa o que falta no PJ', async ({ page }) => {
   await abrir(page, { rota: '#/comissoes?aba=cadastro' });
   await page.locator('.usuarios-lista').first().waitFor();

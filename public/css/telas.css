@@ -521,3 +521,6 @@ a.det-empresa:hover { text-decoration-color: currentColor; }
 
 /* Cadastro (v3.6): o que falta no PJ como selo. */
 .selo-falta { background: var(--amber-soft); color: var(--amber); }
+
+/* Abas (v3.6): enquanto há mais abas à direita, a borda direita esmaece (máscara: só a transparência conta). */
+.cm-abas.cm-abas-mais { -webkit-mask-image: linear-gradient(to right, var(--ink) calc(100% - 40px), transparent); mask-image: linear-gradient(to right, var(--ink) calc(100% - 40px), transparent); }

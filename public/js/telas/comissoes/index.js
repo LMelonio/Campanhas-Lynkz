@@ -71,7 +71,25 @@ function desenhar() {
     </div>
     <div id="cm-conteudo">${ABAS_DO_MES.includes(s.aba) ? seletorMes() : ''}${aba.tela.desenhar()}</div>
   </div>`);
+  ajustarAbas();
 }
+
+// Abas no celular: a ativa fica à vista (ex.: abrir em ?aba=historico) e a borda direita esmaece enquanto há mais abas.
+function ajustarAbas() {
+  const faixa = s.el.querySelector('.cm-abas');
+  if (!faixa) return;
+  const ativa = faixa.querySelector('[aria-pressed="true"]');
+  if (ativa && faixa.scrollWidth > faixa.clientWidth) {
+    const fim = ativa.offsetLeft + ativa.offsetWidth;
+    if (ativa.offsetLeft < faixa.scrollLeft || fim > faixa.scrollLeft + faixa.clientWidth) ativa.scrollIntoView({ inline: 'nearest', block: 'nearest' });
+  }
+  marcarMaisAbas(faixa);
+}
+// Esmaece enquanto a última aba não está inteira à vista.
+const marcarMaisAbas = faixa => {
+  const ultima = faixa.lastElementChild;
+  faixa.classList.toggle('cm-abas-mais', !!ultima && ultima.getBoundingClientRect().right > faixa.getBoundingClientRect().right + 1);
+};
 
 // "Secundários: Farelo (6610)." e, com o principal em lista, que o resto vai para Outros.
 function textoFornecedores() {
@@ -135,6 +153,15 @@ async function carregar() {
   if (s === meu) { desenhar(); if (s.pronto) buscarSeFaltar(); }
 }
 
+// "scroll" não sobe pelo DOM: escuta na captura, e também quando a janela muda de largura.
+function ouvirRolagemAbas(el) {
+  const rolou = e => { if (e.target?.classList?.contains('cm-abas')) marcarMaisAbas(e.target); };
+  const mudou = () => { const f = el.querySelector('.cm-abas'); if (f) marcarMaisAbas(f); };
+  el.addEventListener('scroll', rolou, true);
+  window.addEventListener('resize', mudou);
+  return () => { el.removeEventListener('scroll', rolou, true); window.removeEventListener('resize', mudou); };
+}
+
 export function montar(el, ctx, params) {
   const meu = iniciar({
     el, ctx, aba: abaDe(params), pronto: false, erro: null, mes: mesDe(params) || mesLembrado, resultado: null,
@@ -146,6 +173,7 @@ export function montar(el, ctx, params) {
     ao(el, 'click', '[data-aba]', (e, b) => ctx.navegar(rotaDe(b.dataset.aba, s.mes), { substituir: true })),
     ao(el, 'click', '#cm-tentar', () => { s.erro = null; desenhar(); carregar(); }),
     ao(el, 'change', '#cm-mes', (e, sel) => { if (sel.value) trocarMes(sel.value); }),
+    ouvirRolagemAbas(el),
     ...ABAS.flatMap(a => a.tela.ligar(el)),
     ...documentos.ligar(el),
     ligarBusca(el),
