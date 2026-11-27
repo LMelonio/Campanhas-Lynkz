@@ -224,16 +224,20 @@ export function avaliarContrato({ meta_faturamento, realizado_faturamento, meta_
 
 // Metas e realizado do Contrato de um PJ no mês.
 // mesPj: linha da aba Contrato (comissao_mes_pj) ou null · realizado: do Qlik ({ faturamento, positivados }) ou null.
-// Meta: a do mês; sem ela, a do cadastro. Realizado: o informado (com motivo) vence o do Qlik.
+// Meta: a do mês; sem ela, a do cadastro, campo a campo (o mês pode trazer só o faturamento).
+// meta_origem: 'mes' (tudo do mês) · 'misto' (parte do mês, parte do cadastro) · 'cadastro' · null (sem meta).
+// Realizado: o informado (com motivo) vence o do Qlik.
 export function entradaContrato(c, mesPj = null, realizado = null) {
-  const temMetaMes = mesPj && (mesPj.meta_faturamento != null || mesPj.meta_positivacao != null);
+  const doMes = k => mesPj?.[k] != null;
+  const origens = ['meta_faturamento', 'meta_positivacao']
+    .map(k => (doMes(k) ? 'mes' : c[k] != null ? 'cadastro' : null)).filter(Boolean);
   const informado = !!mesPj && (mesPj.realizado_faturamento != null || mesPj.realizado_positivacao != null);
   const qlikFat = realizado?.faturamento ?? 0;
   const qlikPos = realizado?.positivados ?? 0;
   return {
-    meta_faturamento: temMetaMes ? mesPj.meta_faturamento : c.meta_faturamento,
-    meta_positivacao: temMetaMes ? mesPj.meta_positivacao : c.meta_positivacao,
-    meta_origem: temMetaMes ? 'mes' : (c.meta_faturamento != null || c.meta_positivacao != null ? 'cadastro' : null),
+    meta_faturamento: mesPj?.meta_faturamento ?? c.meta_faturamento,
+    meta_positivacao: mesPj?.meta_positivacao ?? c.meta_positivacao,
+    meta_origem: !origens.length ? null : origens.every(o => o === 'mes') ? 'mes' : origens.every(o => o === 'cadastro') ? 'cadastro' : 'misto',
     realizado_faturamento: informado && mesPj.realizado_faturamento != null ? mesPj.realizado_faturamento : qlikFat,
     positivados: informado && mesPj.realizado_positivacao != null ? mesPj.realizado_positivacao : qlikPos,
     qlik_faturamento: arred(qlikFat), qlik_positivados: qlikPos,

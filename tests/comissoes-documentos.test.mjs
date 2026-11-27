@@ -51,6 +51,16 @@ test('contrato: meta do mês vence a do cadastro; realizado informado vence o do
   assert.equal(entradaContrato({ ...ALEX, meta_faturamento: null, meta_positivacao: null }, null, qlik).meta_origem, null);
 });
 
+test('contrato (v3.5): meta do mês só de faturamento usa a positivação do cadastro', () => {
+  const qlik = { faturamento: 211223.09, positivados: 37 };
+  const so = { mes: '2026-10', comissionado_id: 5, meta_faturamento: 199360.26, meta_positivacao: null };
+  const e = entradaContrato(ALEX, so, qlik);
+  assert.deepEqual([e.meta_faturamento, e.meta_positivacao, e.meta_origem], [199360.26, ALEX.meta_positivacao, 'misto']);
+  const r = apurar({ mesPj: [so] }).linhas.find(l => l.id === 5);
+  assert.notEqual(r.contrato.motivo, 'Sem meta cadastrada', 'não cai em "Sem meta"');
+  assert.equal(entradaContrato({ ...ALEX, meta_positivacao: null }, so, qlik).meta_origem, 'mes', 'o que existe é só do mês');
+});
+
 test('apuração do mês: premiações ativas do mês e contrato com a meta do mês', () => {
   const r = apurar();
   const a = r.linhas.find(l => l.id === 5);
