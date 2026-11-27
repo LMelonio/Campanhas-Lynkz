@@ -1296,6 +1296,7 @@ teste('lote S: sem CDN de terceiros, CSP fechada no Supabase do config e service
   const csp = cab.match(/Content-Security-Policy: (.+)/)[1];
   afirma(nginx.includes(csp), 'CSP do nginx igual à do _headers');
   afirma(/script-src 'self';/.test(csp), 'scripts só do próprio site');
+  afirma(/style-src 'self';/.test(csp) && !csp.includes("'unsafe-inline'"), "estilos só do próprio site, sem 'unsafe-inline'");
   const host = new URL(fs.readFileSync(path.join(RAIZ, 'config.js'), 'utf8').match(/SUPABASE_URL:\s*"([^"]+)"/)[1]).host;
   afirma(csp.includes(`https://${host}`) && csp.includes(`wss://${host}`) && !csp.includes('*.supabase.co'), 'connect-src só no projeto do config.js');
   for (const h of ['Strict-Transport-Security', 'Cross-Origin-Opener-Policy', 'X-Frame-Options', 'X-Content-Type-Options']) afirma(cab.includes(h), h);
@@ -1342,6 +1343,31 @@ teste('lote S: versão que continua misturada não entra em loop de recarga', as
   await page.waitForTimeout(800);
   igual(cargas(), 2, 'recarregou uma vez e parou');
   afirma(avisos.some(a => /Versão misturada/.test(a)), 'registra no console');
+});
+
+teste('v3.5: CSP de verdade (sem unsafe-inline): a régua de custo desenha e nenhum estilo é bloqueado', async ({ page, contexto, erros }) => {
+  const csp = fs.readFileSync(path.join(RAIZ, '_headers'), 'utf8').match(/Content-Security-Policy: (.+)/)[1];
+  // O servidor de teste não manda cabeçalhos: a página de entrada ganha a mesma CSP do _headers.
+  await contexto.route(url => new URL(url).pathname === '/', async r => {
+    const resp = await r.fetch();
+    await r.fulfill({ response: resp, headers: { ...resp.headers(), 'content-security-policy': csp } });
+  });
+  const violacoes = [];
+  await contexto.addInitScript(() => document.addEventListener('securitypolicyviolation', e => console.error(`CSP bloqueou ${e.violatedDirective}: ${e.sample || e.blockedURI}`)));
+  page.on('console', m => { if (/CSP bloqueou|Content Security Policy/.test(m.text())) violacoes.push(m.text()); });
+  await abrir(page, { rota: '#/campanhas/1' });
+  await page.locator('.regua-trilho .faixa-verde').waitFor();
+  const medidas = await page.evaluate(() => ({
+    verde: document.querySelector('.regua-trilho .faixa-verde').style.width,
+    marca: document.querySelector('.regua-marca')?.style.left || '',
+    comp: [...document.querySelectorAll('.regua-comp i')].map(i => i.style.width),
+    comStyle: document.querySelectorAll('[data-largura]:not([style]), [data-esquerda]:not([style])').length,
+  }));
+  afirma(/%$/.test(medidas.verde) && medidas.comp.length && medidas.comp.every(w => /%$/.test(w)) && !medidas.comStyle, 'medidas aplicadas: ' + JSON.stringify(medidas));
+  await page.goto(`${BASE}/?papel=aprovador#/nova`);
+  await page.locator('#n-cliente, #app').first().waitFor();
+  igual(violacoes.length, 0, 'violações de CSP: ' + violacoes.join(' | '));
+  erros.length = 0;
 });
 
 teste('lote G: todo módulo de public/js tem modulepreload no index.html', async ({ page }) => {

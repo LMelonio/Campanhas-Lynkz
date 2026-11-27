@@ -45,6 +45,14 @@ export function mostrarFiltroAtivo(grupo) {
 
 export function pintar(el, conteudo) {
   el.innerHTML = conteudo instanceof Html ? conteudo.s : esc(conteudo);
+  aplicarMedidas(el);
+}
+
+// A CSP não tem 'unsafe-inline' em style-src: nada de style="" no HTML. Largura e posição em %
+// (régua de custo) vêm em data-largura / data-esquerda e viram estilo pelo CSSOM, que a CSP permite.
+function aplicarMedidas(raiz) {
+  for (const e of raiz.querySelectorAll('[data-largura]')) e.style.width = `${e.dataset.largura}%`;
+  for (const e of raiz.querySelectorAll('[data-esquerda]')) e.style.left = `${e.dataset.esquerda}%`;
 }
 
 export const $  = (sel, raiz = document) => raiz.querySelector(sel);

@@ -143,6 +143,9 @@ Tela: `export function montar(el, ctx, params) → desmontar`. `ctx`: `perfil`, 
 - Conta nova sem convite entra desativada (e o cadastro aberto fica desligado no Supabase: só entra quem é convidado).
   RLS e grants por coluna; dados `swile_*` só para administrador e solicitante.
 - Rascunho da Nova fica no aparelho sem CPF/dados pessoais, marcado com a conta: outra conta no mesmo aparelho não o vê.
+- CSP sem `'unsafe-inline'` em `style-src` (`_headers` e `deploy/lynkz-seguranca.conf`): nada de `style=""` no HTML.
+  Largura/posição em % vão em `data-largura`/`data-esquerda` e `pintar()` aplica pelo CSSOM.
+- Comissões: o banco confere o total do fechamento com as linhas da cópia (migração 20).
 - Segredos só no Worker (`npx wrangler secret put QLIK_API_KEY` e `SUPABASE_SERVICE_ROLE_KEY`) e no `.env` dos scripts.
   Nunca em `public/`, `wrangler.jsonc` ou no Git.
 - `connect-src` só para o projeto Supabase do `config.js`. Trocou de projeto: atualize `_headers`, `deploy/lynkz-seguranca.conf`
