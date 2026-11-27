@@ -2677,6 +2677,24 @@ teste('v3.5: comissões — desativado com venda no Qlik não vira "novo"; premi
   igual((await db(page)).comissionados.find(c => c.id === 4).ativo, true, 'reativado no banco');
 });
 
+teste('v3.5: comissões — a consulta do Qlik fica gravada: recarregar a página traz a Apuração sem buscar de novo', async ({ page }) => {
+  await previaOutubro(page);
+  const antes = await page.locator('.cm-total').innerText();
+  igual((await page.locator('#cm-buscar').innerText()).trim(), 'Atualizar do Qlik', 'botão para atualizar');
+  const c = (await db(page)).comissao_consultas;
+  afirma(c.length === 1 && c[0].mes === '2026-10' && c[0].dados.apuracao.vendas.length > 0 && c[0].consultado_por === 'u-aprov', 'consulta gravada no banco');
+  let consultas = 0;
+  page.on('request', rq => { if (rq.url().includes('/api/qlik/comissoes')) consultas++; });
+  await page.goto(`${BASE}/?papel=aprovador#/comissoes?aba=previa&mes=2026-10`);
+  await page.locator('.cm-destaque').waitFor();
+  igual(await page.locator('.cm-total').innerText(), antes, 'mesmo total, da consulta gravada');
+  afirma(/Consulta ao Qlik de \d{2}\/\d{2}\/\d{4} às \d{2}:\d{2}/.test(await page.locator('#cm-consultado').innerText()), 'data e hora da consulta');
+  await page.click('[data-aba="contrato"]');
+  await page.locator('[data-contrato]').first().waitFor();
+  afirma(/Alex[\s\S]*R\$ \d/.test(await page.locator('#cm-conteudo').innerText()), 'Contrato PJ mostra o realizado sem buscar');
+  igual(consultas, 0, 'nenhuma consulta ao Qlik depois de recarregar');
+});
+
 teste('v3.4: comissões — o mês escolhido fica no endereço e volta com a apuração', async ({ page }) => {
   await previaOutubro(page);
   afirma(page.url().endsWith('#/comissoes?aba=previa&mes=2026-10'), 'mês no endereço: ' + page.url());

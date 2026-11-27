@@ -104,7 +104,7 @@ if (!db.comissao_premiacoes) {
     realizado_faturamento: null, realizado_positivacao: null, realizado_motivo: null, nf_numero: '300', atualizado_em: null, atualizado_por: null }];
   db.seq.comissao_premiacoes = 1; db.seq.comissao_mes_pj = 1;
 }
-db.comissao_ajustes ||= []; db.comissao_fechamentos ||= [];
+db.comissao_ajustes ||= []; db.comissao_fechamentos ||= []; db.comissao_consultas ||= [];
 db.perfis ||= JSON.parse(JSON.stringify(USUARIOS));
 const gravarDb = () => { try { sessionStorage.setItem(CHAVE, JSON.stringify(db)); } catch { /* cheio */ } };
 gravarDb();
@@ -132,7 +132,7 @@ function verView(c) {
 
 // ---------- comissões (migração 16) ----------
 const nomeQlikSim = t => String(t ?? '').replace(/\s+/g, ' ').trim().toUpperCase();
-const TABELAS_MES = ['comissao_premiacoes', 'comissao_ajustes', 'comissao_mes_pj', 'comissao_fechamentos'];
+const TABELAS_MES = ['comissao_premiacoes', 'comissao_ajustes', 'comissao_mes_pj', 'comissao_fechamentos', 'comissao_consultas'];
 const TABELAS_COMISSAO = ['comissionados', 'comissao_parametros', 'comissao_auditoria', ...TABELAS_MES];
 const mesFechado = mes => db.comissao_fechamentos.some(f => f.mes === mes && f.status === 'fechado');
 // Fechar, reabrir e fechar de novo (trigger preparar_comissao_fechamento).
@@ -156,10 +156,28 @@ function prepararFechamento(r, antigo) {
   return null;
 }
 const MES_RE = /^\d{4}-(0[1-9]|1[0-2])$/;
+// Consulta do Qlik do mês (migração 19, trigger preparar_comissao_consulta).
+function prepararConsulta(r, antigo) {
+  const u = usuario(), agora = new Date().toISOString();
+  if (antigo) r.mes = antigo.mes;
+  if (!MES_RE.test(r.mes || '')) return erro('violates check constraint "comissao_consultas_mes"', '23514');
+  if (mesFechado(r.mes)) return erro(`O mês ${r.mes} está fechado. Reabra o mês para consultar o Qlik de novo.`);
+  if (!antigo) {
+    if (db.comissao_consultas.some(x => x.mes === r.mes)) return erro('duplicate key value violates unique constraint "comissao_consultas_mes_unico"', '23505');
+    Object.assign(r, { consultado_em: agora, consultado_por: u.id, conferido_em: null, conferido_por: null });
+    return null;
+  }
+  if (JSON.stringify(r.dados) !== JSON.stringify(antigo.dados)) Object.assign(r, { consultado_em: agora, consultado_por: u.id, conferido_em: null, conferido_por: null });
+  else if (r.conferido_em == null) Object.assign(r, { consultado_em: antigo.consultado_em, consultado_por: antigo.consultado_por, conferido_por: null });
+  else if (antigo.conferido_em == null) Object.assign(r, { consultado_em: antigo.consultado_em, consultado_por: antigo.consultado_por, conferido_em: agora, conferido_por: u.id });
+  else Object.assign(r, { consultado_em: antigo.consultado_em, consultado_por: antigo.consultado_por, conferido_em: antigo.conferido_em, conferido_por: antigo.conferido_por });
+  return null;
+}
 // Regras das tabelas da migração 17 (constraints e trigger preparar_comissao_mes).
 function prepararMes(tabela, r, antigo) {
   const u = usuario();
   if (tabela === 'comissao_fechamentos') return prepararFechamento(r, antigo);
+  if (tabela === 'comissao_consultas') return prepararConsulta(r, antigo);
   if (!MES_RE.test(r.mes || '')) return erro(`violates check constraint "${tabela}_mes"`, '23514');
   if (mesFechado(r.mes) || (antigo && mesFechado(antigo.mes))) return erro(`O mês ${r.mes} está fechado. Reabra o mês para mudar premiações, ajustes, contrato ou nota fiscal.`);
   if (tabela === 'comissao_ajustes') {
@@ -229,7 +247,7 @@ function inserir(tabela, d) {
     if (!ehAprovador()) return { error: erro(`new row violates row-level security policy for table "${tabela}"`, '42501') };
     const base = tabela === 'comissao_mes_pj'
       ? { meta_faturamento: null, meta_positivacao: null, realizado_faturamento: null, realizado_positivacao: null, realizado_motivo: null, nf_numero: null, nf_valor: null }
-      : tabela === 'comissao_fechamentos' ? { status: 'fechado' } : { ativo: true, atualizado_em: null, atualizado_por: null };
+      : tabela === 'comissao_fechamentos' ? { status: 'fechado' } : tabela === 'comissao_consultas' ? {} : { ativo: true, atualizado_em: null, atualizado_por: null };
     const r = { ...base, ...d, id: (db.seq[tabela] || 0) + 1 };
     const e = prepararMes(tabela, r, null);
     if (e) return { error: e };

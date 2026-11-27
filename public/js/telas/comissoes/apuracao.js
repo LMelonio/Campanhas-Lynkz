@@ -33,7 +33,7 @@ function resultadoHtml(r) {
     <section class="destaque cm-destaque" aria-labelledby="cm-total-t">
       <p class="destaque-rotulo" id="cm-total-t">${f ? 'Pago' : 'A pagar'} em ${mesMinusculo(r.mes)}</p>
       <p class="cm-total num-display">${r$(t.geral.valor_pagar)}</p>
-      <p class="destaque-sub">${f ? `Consulta ao Qlik de ${dataBR(r.consulta.consultado_em)} às ${horaBR(r.consulta.consultado_em)}, gravada no fechamento.` : `Consulta ao Qlik às ${horaBR(r.consulta.consultado_em)}. Premiações, ajustes e metas vêm do que está gravado.`}</p>
+      <p class="destaque-sub" id="cm-consultado">${f ? `Consulta ao Qlik de ${dataBR(r.consulta.consultado_em)} às ${horaBR(r.consulta.consultado_em)}, gravada no fechamento.` : `Consulta ao Qlik de ${dataBR(r.consulta.consultado_em)} às ${horaBR(r.consulta.consultado_em)}. Premiações, ajustes e metas vêm do que está gravado.`}</p>
     </section>
     <dl class="numeros numeros-3 cm-numeros">
       <div class="numero"><dt>CLT (folha)</dt><dd class="num-display">${r$(t.clt.valor_pagar)}</dd></div>

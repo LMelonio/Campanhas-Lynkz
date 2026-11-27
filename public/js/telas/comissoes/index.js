@@ -80,7 +80,7 @@ function seletorMes() {
   const r = s.resultado;
   return html`<div class="cm-cabeca"><div class="cm-consulta">
       ${selecao({ id: 'cm-mes', rotulo: 'Mês da apuração', opcoes: meses.map(m => ({ valor: m, rotulo: rotuloMesComissao(m) })), valor: s.mes, vazio: 'Escolha o mês' })}
-      ${fechado() ? '' : html`<button type="button" class="btn ${r ? 'btn-fantasma' : 'btn-primario'}" id="cm-buscar"${s.buscando ? html` aria-busy="true" disabled` : ''}>${icone('repetir')} ${s.buscando ? 'Buscando no Qlik…' : r ? 'Buscar de novo' : 'Buscar vendas no Qlik'}</button>`}
+      ${fechado() ? '' : html`<button type="button" class="btn ${r ? 'btn-fantasma' : 'btn-primario'}" id="cm-buscar"${s.buscando ? html` aria-busy="true" disabled` : ''}>${icone('repetir')} ${s.buscando ? 'Buscando no Qlik…' : r ? 'Atualizar do Qlik' : 'Buscar vendas no Qlik'}</button>`}
     </div>
     <p class="secao-nota cm-periodo">Vendas de ${dataBR(ap.inicio)} a ${dataBR(ap.fim)}, receita menos devolução, atacado regular. Farelo é o fornecedor ${p.cod_farelo}.
       O Contrato de Resultado olha ${mesMinusculo(ct.mes)} inteiro.</p></div>`;

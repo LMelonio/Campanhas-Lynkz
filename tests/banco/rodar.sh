@@ -51,6 +51,9 @@ rodar -d campanhas_teste_novo -f testes-17.sql 2>&1 | sed -n 's/^psql.*NOTICE:  
 rodar -d campanhas_teste_novo -f $SQL/migracoes/18-validacao.sql -t -A -F' ' | tee /tmp/val18a.txt
 if grep -q '^[0-9]* f ' /tmp/val18a.txt; then echo "FALHOU: validação 18 com linha false"; exit 1; fi
 rodar -d campanhas_teste_novo -f testes-18.sql 2>&1 | sed -n 's/^psql.*NOTICE:  \(ok.*\)/\1/p; /PASSARAM/p; /ERROR/p; /FALHOU/p'
+rodar -d campanhas_teste_novo -f $SQL/migracoes/19-validacao.sql -t -A -F' ' | tee /tmp/val19a.txt
+if grep -q '^[0-9]* f ' /tmp/val19a.txt; then echo "FALHOU: validação 19 com linha false"; exit 1; fi
+rodar -d campanhas_teste_novo -f testes-19.sql 2>&1 | sed -n 's/^psql.*NOTICE:  \(ok.*\)/\1/p; /PASSARAM/p; /ERROR/p; /FALHOU/p'
 
 echo "== 2. Migração v1.3.1 → v2 (04 e 05 sobre o schema antigo)"
 banco campanhas_teste_mig
@@ -114,6 +117,10 @@ rodar -d campanhas_teste_mig -f $SQL/migracoes/18-excluir-balconista.sql >/dev/n
 rodar -d campanhas_teste_mig -f $SQL/migracoes/18-validacao.sql -t -A -F' ' | tee /tmp/val18b.txt
 if grep -q '^[0-9]* f ' /tmp/val18b.txt; then echo "FALHOU: validação 18 com linha false"; exit 1; fi
 rodar -d campanhas_teste_mig -f testes-18.sql 2>&1 | sed -n 's/^psql.*NOTICE:  \(ok.*\)/\1/p; /PASSARAM/p; /ERROR/p; /FALHOU/p'
+rodar -d campanhas_teste_mig -f $SQL/migracoes/19-consulta-qlik-do-mes.sql >/dev/null
+rodar -d campanhas_teste_mig -f $SQL/migracoes/19-validacao.sql -t -A -F' ' | tee /tmp/val19b.txt
+if grep -q '^[0-9]* f ' /tmp/val19b.txt; then echo "FALHOU: validação 19 com linha false"; exit 1; fi
+rodar -d campanhas_teste_mig -f testes-19.sql 2>&1 | sed -n 's/^psql.*NOTICE:  \(ok.*\)/\1/p; /PASSARAM/p; /ERROR/p; /FALHOU/p'
 
 echo "== 2b. Migração a partir do banco de produção: v1 SEM a parte B (02) → só 04 + 05"
 banco campanhas_teste_semb
@@ -148,10 +155,14 @@ rodar -d campanhas_teste_mig -f $SQL/migracoes/15-excluir-campanha.sql >/dev/nul
 rodar -d campanhas_teste_mig -f $SQL/migracoes/16-comissoes.sql >/dev/null
 rodar -d campanhas_teste_mig -f $SQL/migracoes/17-comissoes-mes.sql >/dev/null
 rodar -d campanhas_teste_mig -f $SQL/migracoes/18-excluir-balconista.sql >/dev/null
+rodar -d campanhas_teste_mig -f $SQL/migracoes/19-consulta-qlik-do-mes.sql >/dev/null
 test "$(rodar -d campanhas_teste_mig -t -A -c "select count(*) from comissao_parametros")" = 1
-echo "ok  04, 05, 07, 08, 09, 10, 11, 12, 13, 14, 15, 16, 17 e 18 rodam duas vezes"
+echo "ok  04, 05, 07, 08, 09, 10, 11, 12, 13, 14, 15, 16, 17, 18 e 19 rodam duas vezes"
 
-echo "== 4. Rollback (18, 17, 16, 15, 14, 13, 12, 11, 10, 09, 08, 07, 05 e 04) volta ao formato da v1"
+echo "== 4. Rollback (19, 18, 17, 16, 15, 14, 13, 12, 11, 10, 09, 08, 07, 05 e 04) volta ao formato da v1"
+rodar -d campanhas_teste_mig -f $SQL/migracoes/19-rollback.sql >/dev/null
+test "$(rodar -d campanhas_teste_mig -t -A -c "select to_regclass('public.comissao_consultas') is null and to_regprocedure('public.preparar_comissao_consulta()') is null and to_regclass('public.comissao_fechamentos') is not null")" = t
+echo "ok  rollback da 19 tira a consulta gravada e mantém o histórico"
 rodar -d campanhas_teste_mig -f $SQL/migracoes/18-rollback.sql >/dev/null
 test "$(rodar -d campanhas_teste_mig -t -A -c "select to_regprocedure('public.excluir_balconista(bigint,text)') is null and to_regclass('public.balconistas_excluidos') is not null and position('Edite um deles' in pg_get_functiondef('public.limitar_balconistas_empresa()'::regprocedure)) > 0 and exists (select 1 from campanhas where campanha = '18 Swile sem dados' and balconista_id is null and swile_cpf = '86288366757')")" = t
 echo "ok  rollback da 18 tira a função, volta a mensagem do limite e mantém o registro e as campanhas"

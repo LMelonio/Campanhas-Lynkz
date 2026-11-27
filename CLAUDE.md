@@ -92,14 +92,17 @@ Tela: `export function montar(el, ctx, params) → desmontar`. `ctx`: `perfil`, 
   paga o maior entre a soma e o acordo. Parcelas podem ser negativas; o total pago nunca fica abaixo de zero; nada passa
   para o mês seguinte. Dinheiro em centavos inteiros por dentro, cada parcela arredondada. Sem bônus de cliente novo.
 - As pessoas vêm do Qlik: um nome do Qlik (Vendedor B2B) por pessoa. Nome novo aparece em "Novos no Qlik" na Apuração,
-  com "Completar cadastro" (regime, %, acordo, dados da PJ) ou "Não comissiona". Com 2 ou mais, dá para marcar vários e
+  com "Completar cadastro" (regime, %, acordo, dados da PJ) ou "Não comissiona". Nome de cadastro desativado vai para
+  "Desativados com venda no Qlik" (com Reativar), nunca para os novos; premiação ou ajuste dele fica fora do total e avisa. Com 2 ou mais, dá para marcar vários e
   aplicar de uma vez ("Não comissiona" ou cadastrar como CLT, Televendas ou PJ com os % padrão: `novoDoQlik()`). Não há botão de cadastro novo nem
   "ligar a alguém"; o nome do Qlik não se edita.
 - `dados/comissoes.js` junta banco + Qlik + cálculo: `carregar()`, `carregarMes(mes)`, `apurar(mes, { buscar })`,
   `salvar()`, `salvarParametros()`, `ignorarNome()`/`ignorarNomes()`, `lancarPremiacao()`/`lancarAjuste()` e `removerPremiacao()`/`removerAjuste()`
   (desativam), `salvarMesPj(mes, id, campos)` (metas, realizado informado, número e valor da NF), `buscarBase(mes)` (vendas linha
   a linha, só para o Excel), `fecharMes(resultado)`, `reabrirMes(mes, motivo)`, `historico()` e `contextoDocumentos(mes)`.
-  `apurar(mes, { buscar: false })` recalcula com a última consulta do mês e devolve `null` se o Farelo ou o corte mudaram.
+  `apurar(mes, { buscar: false })` recalcula com a última consulta do mês (da memória ou a gravada em `comissao_consultas`,
+  migração 19: cada busca grava a do mês) e devolve `null` se o Farelo ou o corte mudaram. Mês reaberto calcula com o
+  cadastro da cópia do fechamento (`cadastroDoMes()`, `cadastroDaCopia()`), completado só com quem é novo.
   Mês fechado: `apurar()` devolve a cópia do histórico (`resultado.fechado`), sem Qlik nem recálculo.
 - Ajustes: acréscimo ou desconto com motivo, por pessoa e mês; entram depois do acordo mínimo; aparecem no recibo
   (uma linha por ajuste) e no Excel (aba Ajustes e coluna Ajustes).
@@ -113,8 +116,8 @@ Tela: `export function montar(el, ctx, params) → desmontar`. `ctx`: `perfil`, 
   recibo por PJ (A4 em pé, uma página por PJ); ADP dos PJ "documentos diversos / NF" com o número da NF obrigatório,
   gravado no mês com o valor da NF (aviso quando não bate com o valor a pagar). Textos fixos em `config.js` → `COMISSOES` (empresa pagadora e CNPJ = tomador das NF dos PJ; a loja vem de `ADP`).
   Nomes de arquivo sem acento (alguns navegadores trocam por "download").
-- Banco: migração 16 (`comissionados`, `comissao_parametros`, `comissao_auditoria`) e 17 (`comissao_premiacoes`,
-  `comissao_ajustes`, `comissao_mes_pj`, `comissao_fechamentos`). RLS `eh_aprovador()` em todas; ninguém apaga (premiação sai desativada); tudo na auditoria.
+- Banco: migração 16 (`comissionados`, `comissao_parametros`, `comissao_auditoria`), 17 (`comissao_premiacoes`,
+  `comissao_ajustes`, `comissao_mes_pj`, `comissao_fechamentos`) e 19 (`comissao_consultas`). RLS `eh_aprovador()` em todas; ninguém apaga (premiação sai desativada); tudo na auditoria.
 - Worker: `/api/qlik/comissoes` só para `papel = 'aprovador'` (`ROTAS_QLIK[...].soAdmin`). Cubos `[Vendedor B2B]` (total e
   Farelo) e `[Vendedor B2B] × [Cód. Cliente]` (contrato), com os mesmos `{1<…>}`, filtros e medida das compras.
   Com `{ base: true }`, devolve só a base linha a linha (campos `segmento`, `codigoVendedor` e `produto` em `QLIK_CAMPOS`).
