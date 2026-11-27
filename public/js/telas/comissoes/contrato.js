@@ -21,7 +21,8 @@ export function desenhar() {
   const ct = mesAnteriorFechado(s.mes);
   const travado = fechado();
   const pjs = travado ? (s.resultado?.linhas || []).filter(ehPJ) : ativos().filter(ehPJ);
-  const origem = c => (c.meta_origem === 'mes' ? '' : c.meta_origem === 'cadastro' ? html`<small class="cm-sub">Meta do cadastro</small>` : '');
+  const origem = c => (c.meta_origem === 'cadastro' ? html`<small class="cm-sub">Meta do cadastro</small>`
+    : c.meta_origem === 'misto' ? html`<small class="cm-sub">Parte da meta vem do cadastro</small>` : '');
   return html`
     ${travado ? avisoFechado() : ''}
     <p class="nota">${icone('info')}<span>Metas e realizado de ${mesMinusculo(ct.mes)}, pagos na comissão de ${mesMinusculo(s.mes)}.

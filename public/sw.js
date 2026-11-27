@@ -1,7 +1,7 @@
 // Service worker: guarda todos os arquivos da versão (ARQUIVOS) para abrir rápido e sem rede.
 // Página e config.js: rede primeiro. Demais: cópia guardada e atualização em segundo plano. Supabase e /api/ não passam pelo cache.
 // VERSAO igual à de config.js e app.js; módulo novo entra em ARQUIVOS (o teste confere).
-const VERSAO = '3.4.1';
+const VERSAO = '3.5.0';
 const CACHE = 'campanhas-' + VERSAO;
 const ARQUIVOS = [
   './', 'config.js', 'tema-inicial.js', 'manifest.json',          // './' e não 'index.html': o Cloudflare redireciona /index.html → /

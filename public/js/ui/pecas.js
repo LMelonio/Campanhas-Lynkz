@@ -16,8 +16,10 @@ const ICONE_STATUS = { [STATUS.PENDENTE]: 'historico', [STATUS.APROVADA]: 'check
 export const selo = status => html`<span class="selo ${CLASSE_STATUS[status] || 'selo-neutro'}">${ICONE_STATUS[status] ? icone(ICONE_STATUS[status]) : ''}${status}</span>`;
 export const seloNeutro = texto => html`<span class="selo selo-neutro">${texto}</span>`;
 
-const largura = p => bruto(`style="width:${Math.max(0, Math.min(100, p)).toFixed(2)}%"`);
-const esquerda = p => bruto(`style="left:${Math.max(0, Math.min(100, p)).toFixed(2)}%"`);
+// Sem style="" (a CSP não deixa): pintar() aplica estes valores pelo CSSOM (lib/dom.js).
+const pctSeguro = p => Math.max(0, Math.min(100, Number(p) || 0)).toFixed(2);
+const largura = p => bruto(`data-largura="${pctSeguro(p)}"`);
+const esquerda = p => bruto(`data-esquerda="${pctSeguro(p)}"`);
 
 // Régua: composição do custo (LYNKZ + indústria + rebate) e o custo sobre a
 // meta num trilho com as faixas do config.js. c = campanha (ou campos do form).

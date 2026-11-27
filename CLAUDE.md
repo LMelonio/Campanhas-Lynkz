@@ -37,7 +37,8 @@ tests/    *.test.mjs (unidade, Worker)  banco/ (PostgreSQL)  e2e/rodar.mjs (nave
 ```
 
 Rotas: `#/inicio` `#/campanhas` `#/campanhas/:id` `#/nova` `#/nova/de/:id` `#/historico` `#/gestao`
-`#/gestao/empresas/:id` `#/usuarios` e `#/comissoes?aba=previa|premiacoes|contrato|cadastro|parametros|historico&mes=AAAA-MM`
+`#/gestao/empresas/:id` `#/usuarios` e `#/comissoes?aba=apuracao|premiacoes|contrato|cadastro|parametros|historico&mes=AAAA-MM`
+(`aba=previa` é apelido de `apuracao` para links antigos)
 (administrador; o mês fica no endereço e lembrado na memória ao sair e voltar) `#/perfil`.
 
 Tela: `export function montar(el, ctx, params) → desmontar`. `ctx`: `perfil`, `ehAprovador`, `campanhas`, `cadastros`,
@@ -64,7 +65,9 @@ Tela: `export function montar(el, ctx, params) → desmontar`. `ctx`: `perfil`, 
   Com 2 ou mais, a divisão opcional grava `fornecedores` (`[{nome, meta, investimento_industria}]`) e os totais em `meta` e
   `investimento_industria`. Rebate com um % e um teto; `partilha()` reparte pela meta de cada fornecedor.
 - Marcas da consulta do Qlik: até 10 (`MAX_MARCAS`), gravadas em `compras_marca` separadas por "; ".
-- Até 2 balconistas por empresa, contando desativados. Empresas vêm do Qlik (o app só edita telefone e observações).
+- Até 2 balconistas por empresa, contando desativados. Para liberar vaga, administrador exclui pela ficha: `excluir_balconista()`
+  (migração 18) barra campanha pendente, grava quem recebe nas Swile decididas e guarda a cópia em `balconistas_excluidos`.
+  Empresas vêm do Qlik (o app só edita telefone e observações).
 - Decisão: `ui/decisao.js` é a única lógica de aprovar/recusar (aprovação com 5 s para desfazer).
 - Exclusão: só administrador, pelo detalhe, com motivo. `campanhas.excluir()` → função `excluir_campanha()` (migração 15),
   que guarda a campanha e as notas em `campanhas_excluidas` antes de apagar. O app não tem DELETE direto em nenhuma tabela.
@@ -90,17 +93,23 @@ Tela: `export function montar(el, ctx, params) → desmontar`. `ctx`: `perfil`, 
   paga o maior entre a soma e o acordo. Parcelas podem ser negativas; o total pago nunca fica abaixo de zero; nada passa
   para o mês seguinte. Dinheiro em centavos inteiros por dentro, cada parcela arredondada. Sem bônus de cliente novo.
 - As pessoas vêm do Qlik: um nome do Qlik (Vendedor B2B) por pessoa. Nome novo aparece em "Novos no Qlik" na Apuração,
-  com "Completar cadastro" (regime, %, acordo, dados da PJ) ou "Não comissiona". Com 2 ou mais, dá para marcar vários e
+  com "Completar cadastro" (regime, %, acordo, dados da PJ) ou "Não comissiona". Nome de cadastro desativado vai para
+  "Desativados com venda no Qlik" (com Reativar), nunca para os novos; premiação ou ajuste dele fica fora do total e avisa. Com 2 ou mais, dá para marcar vários e
   aplicar de uma vez ("Não comissiona" ou cadastrar como CLT, Televendas ou PJ com os % padrão: `novoDoQlik()`). Não há botão de cadastro novo nem
   "ligar a alguém"; o nome do Qlik não se edita.
 - `dados/comissoes.js` junta banco + Qlik + cálculo: `carregar()`, `carregarMes(mes)`, `apurar(mes, { buscar })`,
   `salvar()`, `salvarParametros()`, `ignorarNome()`/`ignorarNomes()`, `lancarPremiacao()`/`lancarAjuste()` e `removerPremiacao()`/`removerAjuste()`
   (desativam), `salvarMesPj(mes, id, campos)` (metas, realizado informado, número e valor da NF), `buscarBase(mes)` (vendas linha
   a linha, só para o Excel), `fecharMes(resultado)`, `reabrirMes(mes, motivo)`, `historico()` e `contextoDocumentos(mes)`.
-  `apurar(mes, { buscar: false })` recalcula com a última consulta do mês e devolve `null` se o Farelo ou o corte mudaram.
+  `apurar(mes, { buscar: false })` recalcula com a última consulta do mês (da memória ou a gravada em `comissao_consultas`,
+  migração 19: cada busca grava a do mês) e devolve `null` se o Farelo ou o corte mudaram. Mês reaberto calcula com o
+  cadastro da cópia do fechamento (`cadastroDoMes()`, `cadastroDaCopia()`), completado só com quem é novo.
   Mês fechado: `apurar()` devolve a cópia do histórico (`resultado.fechado`), sem Qlik nem recálculo.
 - Ajustes: acréscimo ou desconto com motivo, por pessoa e mês; entram depois do acordo mínimo; aparecem no recibo
   (uma linha por ajuste) e no Excel (aba Ajustes e coluna Ajustes).
+- Apuração: o total (fixo no topo até 600 px, com as pendências), Novos e Desativados, as pessoas (tabela; até 600 px um
+  cartão por pessoa com "Ver conta") e, no fim, documentos junto de "Fechar mês". Buscar no Qlik e o período só na Apuração.
+  Premiações até 600 px: lista primeiro e "Lançar premiação / ajuste" num diálogo.
 - Histórico: "Fechar mês" fica numa faixa própria no fim da Apuração, com o que falta (Novos no Qlik, cadastro dos PJ,
   NF de todos pela ADP); o botão só fica em destaque quando nada falta. Grava em `comissao_fechamentos` a cópia (cálculo, cadastro usado, premiações, ajustes, parâmetros).
   Mês fechado trava premiações, ajustes, contrato e NF (trigger no banco); documentos saem da cópia (o Excel sem a aba
@@ -111,8 +120,8 @@ Tela: `export function montar(el, ctx, params) → desmontar`. `ctx`: `perfil`, 
   recibo por PJ (A4 em pé, uma página por PJ); ADP dos PJ "documentos diversos / NF" com o número da NF obrigatório,
   gravado no mês com o valor da NF (aviso quando não bate com o valor a pagar). Textos fixos em `config.js` → `COMISSOES` (empresa pagadora e CNPJ = tomador das NF dos PJ; a loja vem de `ADP`).
   Nomes de arquivo sem acento (alguns navegadores trocam por "download").
-- Banco: migração 16 (`comissionados`, `comissao_parametros`, `comissao_auditoria`) e 17 (`comissao_premiacoes`,
-  `comissao_ajustes`, `comissao_mes_pj`, `comissao_fechamentos`). RLS `eh_aprovador()` em todas; ninguém apaga (premiação sai desativada); tudo na auditoria.
+- Banco: migração 16 (`comissionados`, `comissao_parametros`, `comissao_auditoria`), 17 (`comissao_premiacoes`,
+  `comissao_ajustes`, `comissao_mes_pj`, `comissao_fechamentos`) e 19 (`comissao_consultas`). RLS `eh_aprovador()` em todas; ninguém apaga (premiação sai desativada); tudo na auditoria.
 - Worker: `/api/qlik/comissoes` só para `papel = 'aprovador'` (`ROTAS_QLIK[...].soAdmin`). Cubos `[Vendedor B2B]` (total e
   Farelo) e `[Vendedor B2B] × [Cód. Cliente]` (contrato), com os mesmos `{1<…>}`, filtros e medida das compras.
   Com `{ base: true }`, devolve só a base linha a linha (campos `segmento`, `codigoVendedor` e `produto` em `QLIK_CAMPOS`).
@@ -134,6 +143,9 @@ Tela: `export function montar(el, ctx, params) → desmontar`. `ctx`: `perfil`, 
 - Conta nova sem convite entra desativada (e o cadastro aberto fica desligado no Supabase: só entra quem é convidado).
   RLS e grants por coluna; dados `swile_*` só para administrador e solicitante.
 - Rascunho da Nova fica no aparelho sem CPF/dados pessoais, marcado com a conta: outra conta no mesmo aparelho não o vê.
+- CSP sem `'unsafe-inline'` em `style-src` (`_headers` e `deploy/lynkz-seguranca.conf`): nada de `style=""` no HTML.
+  Largura/posição em % vão em `data-largura`/`data-esquerda` e `pintar()` aplica pelo CSSOM.
+- Comissões: o banco confere o total do fechamento com as linhas da cópia (migração 20).
 - Segredos só no Worker (`npx wrangler secret put QLIK_API_KEY` e `SUPABASE_SERVICE_ROLE_KEY`) e no `.env` dos scripts.
   Nunca em `public/`, `wrangler.jsonc` ou no Git.
 - `connect-src` só para o projeto Supabase do `config.js`. Trocou de projeto: atualize `_headers`, `deploy/lynkz-seguranca.conf`

@@ -1,5 +1,5 @@
 // Comissões (#/comissoes, só administrador). Casca: abas, mês e estado; cada aba é um arquivo desta pasta.
-//   ?aba=previa       apuracao.js   vendas do mês no Qlik, cálculo de cada pessoa e Novos no Qlik
+//   ?aba=apuracao     apuracao.js   vendas do mês no Qlik, cálculo de cada pessoa e Novos no Qlik
 //                     documentos.js Excel, recibos e ADP dos PJ; fechar e reabrir o mês
 //   ?aba=premiacoes   lancamentos.js premiações de campanha e ajustes (com motivo) do mês
 //   ?aba=contrato     contrato.js   Contrato de Resultado dos PJ: metas do mês anterior e realizado
@@ -7,6 +7,7 @@
 //   ?aba=parametros   parametros.js código do Farelo, dia de corte, % padrão, Contrato de Resultado, nomes que não comissionam
 //   ?aba=historico    historico.js  meses fechados (cópia do que foi pago)
 //   &mes=AAAA-MM      mês das abas do mês (Apuração, Premiações e Contrato)
+//   ?aba=previa é o nome antigo da Apuração: links antigos continuam abrindo.
 // Cada aba exporta desenhar() (o HTML) e ligar(el) (os eventos); o estado `s` fica em comum.js.
 // A tela só organiza: banco, Qlik e cálculo ficam em dados/comissoes.js e lib/comissoes.js;
 // o que vai no recibo, na ADP e no Excel, em lib/comissoes-documentos.js.
@@ -28,14 +29,15 @@ import * as parametros from './parametros.js';
 import * as historico from './historico.js';
 
 const ABAS = [
-  { valor: 'previa', rotulo: 'Apuração', tela: apuracao },
+  { valor: 'apuracao', rotulo: 'Apuração', tela: apuracao },
   { valor: 'premiacoes', rotulo: 'Premiações', tela: lancamentos },
   { valor: 'contrato', rotulo: 'Contrato PJ', tela: contrato },
   { valor: 'cadastro', rotulo: 'Cadastro', tela: cadastro },
   { valor: 'parametros', rotulo: 'Parâmetros', tela: parametros },
   { valor: 'historico', rotulo: 'Histórico', tela: historico },
 ];
-const ABAS_DO_MES = ['previa', 'premiacoes', 'contrato'];
+const ABAS_DO_MES = ['apuracao', 'premiacoes', 'contrato'];
+const APELIDOS = { previa: 'apuracao' };
 
 // O mês vai no endereço (#/comissoes?aba=previa&mes=2026-10) e fica lembrado aqui:
 // quem sai pelo menu e volta continua no mesmo mês, com a consulta ao Qlik que está na memória.
@@ -78,15 +80,20 @@ function seletorMes() {
   const meses = [0, -1, -2, -3, -4, -5].map(n => somaMes(mesPadrao(), n));
   if (!meses.includes(s.mes)) meses.unshift(s.mes);
   const r = s.resultado;
+  // Buscar no Qlik e o período ficam só na Apuração; Premiações e Contrato só trocam o mês.
+  const naApuracao = s.aba === 'apuracao';
   return html`<div class="cm-cabeca"><div class="cm-consulta">
       ${selecao({ id: 'cm-mes', rotulo: 'Mês da apuração', opcoes: meses.map(m => ({ valor: m, rotulo: rotuloMesComissao(m) })), valor: s.mes, vazio: 'Escolha o mês' })}
-      ${fechado() ? '' : html`<button type="button" class="btn ${r ? 'btn-fantasma' : 'btn-primario'}" id="cm-buscar"${s.buscando ? html` aria-busy="true" disabled` : ''}>${icone('repetir')} ${s.buscando ? 'Buscando no Qlik…' : r ? 'Buscar de novo' : 'Buscar vendas no Qlik'}</button>`}
+      ${fechado() || !naApuracao ? '' : html`<button type="button" class="btn ${r ? 'btn-fantasma' : 'btn-primario'}" id="cm-buscar"${s.buscando ? html` aria-busy="true" disabled` : ''}>${icone('repetir')} ${s.buscando ? 'Buscando no Qlik…' : r ? 'Atualizar do Qlik' : 'Buscar vendas no Qlik'}</button>`}
     </div>
-    <p class="secao-nota cm-periodo">Vendas de ${dataBR(ap.inicio)} a ${dataBR(ap.fim)}, receita menos devolução, atacado regular. Farelo é o fornecedor ${p.cod_farelo}.
-      O Contrato de Resultado olha ${mesMinusculo(ct.mes)} inteiro.</p></div>`;
+    ${naApuracao ? html`<p class="secao-nota cm-periodo">Vendas de ${dataBR(ap.inicio)} a ${dataBR(ap.fim)}<span class="cm-so-largo">, receita menos devolução, atacado regular</span>. Farelo é o fornecedor ${p.cod_farelo}.
+      O Contrato de Resultado olha ${mesMinusculo(ct.mes)} inteiro.</p>` : ''}</div>`;
 }
 
-const abaDe = params => (ABAS.some(a => a.valor === params?.query?.aba) ? params.query.aba : 'previa');
+const abaDe = params => {
+  const aba = APELIDOS[params?.query?.aba] || params?.query?.aba;
+  return ABAS.some(a => a.valor === aba) ? aba : 'apuracao';
+};
 const mesDe = params => (MES_RE.test(params?.query?.mes || '') ? params.query.mes : null);
 const rotaDe = (aba, mes) => `#/comissoes?aba=${aba}${mes ? `&mes=${mes}` : ''}`;
 // Põe o mês no endereço sem criar entrada no histórico do navegador.

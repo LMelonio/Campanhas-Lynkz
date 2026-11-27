@@ -108,7 +108,7 @@ export async function dialogoBalconista(empresaId, balconista = null) {
     $('#db-dados', d).disabled = !empresaAtual || cheia;
     // Depois do "change" que o combo dispara (ele limpa o erro do campo).
     setTimeout(() => {
-      if (cheia) aplicarErros(d, { 'db-empresa': `Esta empresa já tem ${LIMITES.balconistas_por_empresa} balconistas, que é o limite. Para trocar, edite um deles na ficha da empresa.` });
+      if (cheia) aplicarErros(d, { 'db-empresa': `Esta empresa já tem ${LIMITES.balconistas_por_empresa} balconistas, que é o limite. Para trocar a pessoa, um administrador exclui um dos cadastros na ficha da empresa.` });
       else { aplicarErros(d, {}); if (empresaAtual) $('#db-nome_completo', d)?.focus(); }
     }, 0);
   };
@@ -141,7 +141,7 @@ export async function dialogoBalconista(empresaId, balconista = null) {
       if (escolher && !empresaAtual) { aplicarErros(d, { 'db-empresa': 'Escolha a empresa primeiro.' }); return false; }
       if (!balconista && empresaCheia(empresaAtual)) {
         if (escolher) aplicarErros(d, { 'db-empresa': `Esta empresa já tem ${LIMITES.balconistas_por_empresa} balconistas, que é o limite.` });
-        else erroNoDialogo(d, `Esta empresa já tem ${LIMITES.balconistas_por_empresa} balconistas, que é o limite. Para trocar, edite um deles.`);
+        else erroNoDialogo(d, `Esta empresa já tem ${LIMITES.balconistas_por_empresa} balconistas, que é o limite. Para trocar a pessoa, um administrador exclui um dos cadastros.`);
         return false;
       }
       const dadosB = {

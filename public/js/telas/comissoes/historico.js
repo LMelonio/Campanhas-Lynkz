@@ -29,5 +29,5 @@ export function desenhar() {
 }
 
 export function ligar(el) {
-  return [ao(el, 'click', '[data-abrir-mes]', (e, b) => { s.aba = 'previa'; s.trocarMes(b.dataset.abrirMes); })];
+  return [ao(el, 'click', '[data-abrir-mes]', (e, b) => { s.aba = 'apuracao'; s.trocarMes(b.dataset.abrirMes); })];
 }

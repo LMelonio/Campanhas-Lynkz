@@ -131,23 +131,29 @@ export function acordoVigente(c, mes) {
 
 // ---------- casamento das vendas do Qlik com o cadastro ----------
 // vendas: [{ vendedor, total, farelo }] (uma linha por "Vendedor B2B").
-// → { porId: Map(id → { totalC, fareloC, nomes:[] }), semCadastro: [{ vendedor, total, farelo }], ignorados: [...] }
+// Nome de cadastro desativado não entra na comissão nem em "Novos no Qlik": vai para `desativados`
+// (senão "Completar cadastro" criava um segundo cadastro para a mesma pessoa).
+// → { porId: Map(id → { totalC, fareloC, nomes:[] }), semCadastro: [{ vendedor, total, farelo }],
+//     desativados: [{ id, nome, vendedor, total, farelo }], ignorados: [...] }
 export function juntarVendas(vendas, comissionados, nomesIgnorados = []) {
   const dono = new Map();
+  const inativo = new Map();
   for (const c of comissionados) {
-    if (c.ativo === false) continue;
-    for (const n of c.nomes_qlik || []) dono.set(chaveNome(n), c.id);
+    for (const n of c.nomes_qlik || []) (c.ativo === false ? inativo : dono).set(chaveNome(n), c);
   }
   const ignorar = new Set((nomesIgnorados || []).map(chaveNome));
   const porId = new Map();
   const semCadastro = [];
+  const desativados = [];
   const ignorados = [];
   for (const v of vendas || []) {
     const k = chaveNome(v.vendedor);
-    const id = dono.get(k);
+    const id = dono.get(k)?.id;
     if (id == null) {
       const linha = { vendedor: v.vendedor, total: arred(v.total), farelo: arred(v.farelo) };
-      (ignorar.has(k) ? ignorados : semCadastro).push(linha);
+      const c = inativo.get(k);
+      if (c) desativados.push({ id: c.id, nome: c.nome, ...linha });
+      else (ignorar.has(k) ? ignorados : semCadastro).push(linha);
       continue;
     }
     const a = porId.get(id) || { totalC: 0, fareloC: 0, nomes: [] };
@@ -157,7 +163,7 @@ export function juntarVendas(vendas, comissionados, nomesIgnorados = []) {
     porId.set(id, a);
   }
   const porValor = (x, y) => Math.abs(y.total) - Math.abs(x.total) || String(x.vendedor).localeCompare(String(y.vendedor), 'pt-BR');
-  return { porId, semCadastro: semCadastro.sort(porValor), ignorados: ignorados.sort(porValor) };
+  return { porId, semCadastro: semCadastro.sort(porValor), desativados: desativados.sort(porValor), ignorados: ignorados.sort(porValor) };
 }
 
 // Realizados do Contrato de Resultado a partir das linhas vendedor × cliente do mês anterior.
@@ -218,16 +224,20 @@ export function avaliarContrato({ meta_faturamento, realizado_faturamento, meta_
 
 // Metas e realizado do Contrato de um PJ no mês.
 // mesPj: linha da aba Contrato (comissao_mes_pj) ou null · realizado: do Qlik ({ faturamento, positivados }) ou null.
-// Meta: a do mês; sem ela, a do cadastro. Realizado: o informado (com motivo) vence o do Qlik.
+// Meta: a do mês; sem ela, a do cadastro, campo a campo (o mês pode trazer só o faturamento).
+// meta_origem: 'mes' (tudo do mês) · 'misto' (parte do mês, parte do cadastro) · 'cadastro' · null (sem meta).
+// Realizado: o informado (com motivo) vence o do Qlik.
 export function entradaContrato(c, mesPj = null, realizado = null) {
-  const temMetaMes = mesPj && (mesPj.meta_faturamento != null || mesPj.meta_positivacao != null);
+  const doMes = k => mesPj?.[k] != null;
+  const origens = ['meta_faturamento', 'meta_positivacao']
+    .map(k => (doMes(k) ? 'mes' : c[k] != null ? 'cadastro' : null)).filter(Boolean);
   const informado = !!mesPj && (mesPj.realizado_faturamento != null || mesPj.realizado_positivacao != null);
   const qlikFat = realizado?.faturamento ?? 0;
   const qlikPos = realizado?.positivados ?? 0;
   return {
-    meta_faturamento: temMetaMes ? mesPj.meta_faturamento : c.meta_faturamento,
-    meta_positivacao: temMetaMes ? mesPj.meta_positivacao : c.meta_positivacao,
-    meta_origem: temMetaMes ? 'mes' : (c.meta_faturamento != null || c.meta_positivacao != null ? 'cadastro' : null),
+    meta_faturamento: mesPj?.meta_faturamento ?? c.meta_faturamento,
+    meta_positivacao: mesPj?.meta_positivacao ?? c.meta_positivacao,
+    meta_origem: !origens.length ? null : origens.every(o => o === 'mes') ? 'mes' : origens.every(o => o === 'cadastro') ? 'cadastro' : 'misto',
     realizado_faturamento: informado && mesPj.realizado_faturamento != null ? mesPj.realizado_faturamento : qlikFat,
     positivados: informado && mesPj.realizado_positivacao != null ? mesPj.realizado_positivacao : qlikPos,
     qlik_faturamento: arred(qlikFat), qlik_positivados: qlikPos,
@@ -295,12 +305,19 @@ const brlSimples = n => (n < 0 ? '−' : '') + 'R$ ' + Math.abs(n).toFixed(2).re
 //   realizados: Map(id → { faturamento, positivados }) do mês anterior (ou contratoLinhas para calcular aqui)
 //   premiacoes / ajustes: [{ comissionado_id, valor, descricao|motivo, ativo }] (desativadas ficam de fora)
 //   mesPj: [{ comissionado_id, meta_*, realizado_*, realizado_motivo, nf_numero }] do mês (aba Contrato e NF)
-// Saída: { mes, linhas (CLT primeiro, depois PJ, por nome), semCadastro, ignorados, totais }
+// Saída: { mes, linhas (CLT primeiro, depois PJ, por nome), semCadastro, desativados, lancamentosOrfaos, ignorados, totais }
+//   desativados: nomes do Qlik com venda que são de cadastros desativados (fora da comissão)
+//   lancamentosOrfaos: premiações e ajustes ativos do mês de quem está desativado (fora do total)
+//     [{ tipo: 'premiacao' | 'ajuste', id, comissionado_id, nome, valor, descricao }]
 export function apurarMes({ mes, comissionados = [], parametros = PARAMETROS_PADRAO, vendas = [], realizados = null, contratoLinhas = null, premiacoes = [], ajustes = [], mesPj = [] }) {
   const ativos = comissionados.filter(c => c.ativo !== false);
-  const { porId, semCadastro, ignorados } = juntarVendas(vendas, ativos, parametros.nomes_ignorados);
+  const { porId, semCadastro, desativados, ignorados } = juntarVendas(vendas, comissionados, parametros.nomes_ignorados);
   const real = realizados || realizadosContrato(contratoLinhas || [], ativos);
   const doId = (lista, id) => lista.filter(x => String(x.comissionado_id) === String(id) && x.ativo !== false && (!x.mes || x.mes === mes));
+  const lancamentosOrfaos = comissionados.filter(c => c.ativo === false).flatMap(c => [
+    ...doId(premiacoes, c.id).map(x => ({ tipo: 'premiacao', id: x.id, comissionado_id: c.id, nome: c.nome, valor: arred(x.valor), descricao: x.descricao || '' })),
+    ...doId(ajustes, c.id).map(x => ({ tipo: 'ajuste', id: x.id, comissionado_id: c.id, nome: c.nome, valor: arred(x.valor), descricao: x.motivo || x.descricao || '' })),
+  ]);
   const ordem = c => (ehPJ(c) ? 1 : 0);
   const linhas = ativos
     .slice()
@@ -323,9 +340,19 @@ export function apurarMes({ mes, comissionados = [], parametros = PARAMETROS_PAD
   const pj = linhas.filter(l => l.regime === 'PJ');
   return {
     mes, periodo: periodoApuracao(mes, parametros.dia_corte), contrato_periodo: mesAnteriorFechado(mes),
-    linhas, semCadastro, ignorados,
+    linhas, semCadastro, desativados, lancamentosOrfaos, ignorados,
     totais: { clt: grupo(clt), pj: grupo(pj), geral: grupo(linhas) },
   };
+}
+
+// ---------- mês reaberto ----------
+// Cadastro de um mês reaberto: o da cópia do fechamento para quem estava nela (o %, o acordo e o
+// regime daquele mês), completado com o cadastro atual só para quem não estava (gente nova).
+// copia: dados.cadastro do fechamento · atual: cadastro de hoje.
+export function cadastroDaCopia(copia, atual = []) {
+  if (!Array.isArray(copia)) return atual;
+  const ids = new Set(copia.map(c => String(c.id)));
+  return [...copia, ...atual.filter(c => !ids.has(String(c.id)))];
 }
 
 // ---------- conferência do cadastro (antes de salvar) ----------
@@ -346,6 +373,11 @@ export function errosComissionado(d, outros = []) {
   for (const o of outros) if (o.ativo !== false && String(o.id) !== String(d.id)) for (const n of o.nomes_qlik || []) usados.set(chaveNome(n), o.nome);
   const repetido = nomes.find(n => usados.has(chaveNome(n)));
   if (repetido && d.ativo !== false) e.nomes_qlik = `"${repetido}" já está ligado a ${usados.get(chaveNome(repetido))}.`;
+  // Nome de quem foi desativado: reativar, para não ficar a mesma pessoa em dois cadastros.
+  const deInativo = new Map();
+  for (const o of outros) if (o.ativo === false && String(o.id) !== String(d.id)) for (const n of o.nomes_qlik || []) deInativo.set(chaveNome(n), o.nome);
+  const deDesativado = nomes.find(n => deInativo.has(chaveNome(n)));
+  if (!e.nomes_qlik && deDesativado && d.ativo !== false) e.nomes_qlik = `"${deDesativado}" é de ${deInativo.get(chaveNome(deDesativado))}, que está desativado. Reative o cadastro em vez de criar outro.`;
   if (d.regime === 'PJ') {
     if (d.acordo_minimo) e.acordo_minimo = 'Acordo mínimo é só para CLT.';
     const mf = d.meta_faturamento, mp = d.meta_positivacao;

@@ -3,7 +3,7 @@
 // este módulo junta banco + Qlik + cálculo para a tela pedir só "apure este mês".
 import { sb } from '../lib/supabase.js';
 import { exigir, ErroApp } from './erros.js';
-import { PARAMETROS_PADRAO, periodoApuracao, mesAnteriorFechado, nomeQlik, chaveNome, apurarMes } from '../lib/comissoes.js';
+import { PARAMETROS_PADRAO, periodoApuracao, mesAnteriorFechado, nomeQlik, chaveNome, apurarMes, cadastroDaCopia } from '../lib/comissoes.js';
 
 const NUMEROS_PARAMETROS = Object.keys(PARAMETROS_PADRAO).filter(k => typeof PARAMETROS_PADRAO[k] === 'number');
 const NUMEROS_CADASTRO = ['pct_principal', 'pct_farelo', 'acordo_minimo', 'meta_faturamento', 'meta_positivacao'];
@@ -41,8 +41,8 @@ export function camposComissionado(d) {
 const porNome = (a, b) => a.nome.localeCompare(b.nome, 'pt-BR', { sensitivity: 'base' });
 let lista = null;            // cadastro em memória
 let params = null;           // parâmetros em memória
-const consultas = new Map(); // mês → resposta do Qlik (a tela recalcula sem consultar de novo)
-const doMes = new Map();     // mês → { premiacoes: [], ajustes: [], mesPj: [], fechamento } do banco
+const consultas = new Map(); // mês → resposta do Qlik desta sessão (a tela recalcula sem consultar de novo)
+const doMes = new Map();     // mês → { premiacoes: [], ajustes: [], mesPj: [], fechamento, consulta } do banco
 
 const lerPremiacao = r => ({ ...r, valor: Number(r.valor) });
 const lerMesPj = r => {
@@ -52,7 +52,12 @@ const lerMesPj = r => {
 };
 const lerFechamento = r => (r ? { ...r, total: Number(r.total), total_clt: Number(r.total_clt), total_pj: Number(r.total_pj) } : null);
 const COLUNAS_HISTORICO = 'id,mes,status,total,total_clt,total_pj,fechado_em,fechado_por,reaberto_em,motivo_reabertura';
-const vazioMes = () => ({ premiacoes: [], ajustes: [], mesPj: [], fechamento: null });
+const vazioMes = () => ({ premiacoes: [], ajustes: [], mesPj: [], fechamento: null, consulta: null });
+const doMesOuNovo = mes => doMes.get(mes) || doMes.set(mes, vazioMes()).get(mes);
+// Consulta gravada (migração 19) no formato da resposta do Qlik.
+const daConsultaGravada = c => (c?.dados?.apuracao ? { ...c.dados, consultado_em: c.consultado_em, gravada: true } : null);
+// Tabela da migração 19 ainda não criada: o app segue como antes (consulta só na memória).
+const semTabela = e => ['PGRST205', '42P01'].includes(e?.code);
 async function postarQlik(corpo, sinal) {
   const { data } = await sb.auth.getSession();
   const token = data?.session?.access_token;
@@ -77,7 +82,26 @@ async function pedirAoQlik(mes, sinal) {
   const ap = periodoApuracao(mes, params.dia_corte);
   const ct = mesAnteriorFechado(mes);
   const corpo = await postarQlik({ apuracao_inicio: ap.inicio, apuracao_fim: ap.fim, contrato_inicio: ct.inicio, contrato_fim: ct.fim, cod_farelo: params.cod_farelo }, sinal);
-  return { ...corpo, cod_farelo: params.cod_farelo, dia_corte: params.dia_corte };
+  const q = { ...corpo, cod_farelo: params.cod_farelo, dia_corte: params.dia_corte };
+  const gravada = await gravarConsulta(mes, q);
+  return gravada ? { ...q, consultado_em: gravada.consultado_em, gravada: true } : q;
+}
+
+// Grava a consulta do mês (uma linha por mês). Se não der, a apuração segue com a da memória.
+async function gravarConsulta(mes, q) {
+  const dados = { apuracao: q.apuracao, contrato: q.contrato, cod_farelo: q.cod_farelo, dia_corte: q.dia_corte };
+  const atual = doMes.get(mes)?.consulta;
+  const tabela = () => sb.from('comissao_consultas');
+  let r = atual
+    ? await tabela().update({ dados }).eq('id', atual.id).select('*').single()
+    : await tabela().insert({ mes, dados }).select('*').single();
+  if (!atual && r.error?.code === '23505') r = await tabela().update({ dados }).eq('mes', mes).select('*').single();   // outra pessoa gravou antes
+  if (r.error) {
+    if (!semTabela(r.error)) console.warn('Consulta do Qlik não foi gravada', r.error);
+    return null;
+  }
+  doMesOuNovo(mes).consulta = r.data;
+  return r.data;
 }
 
 export const comissoes = {
@@ -121,15 +145,28 @@ export const comissoes = {
   // ---------- o mês: premiações e dados do PJ (metas, realizado informado, NF) ----------
   // Lê do banco as premiações e os dados do PJ do mês. A tela chama ao trocar de mês.
   async carregarMes(mes) {
-    const [p, a, m, f] = await Promise.all([
+    const [p, a, m, f, q] = await Promise.all([
       sb.from('comissao_premiacoes').select('*').eq('mes', mes).order('id'),
       sb.from('comissao_ajustes').select('*').eq('mes', mes).order('id'),
       sb.from('comissao_mes_pj').select('*').eq('mes', mes),
       sb.from('comissao_fechamentos').select('*').eq('mes', mes).maybeSingle(),
+      sb.from('comissao_consultas').select('*').eq('mes', mes).maybeSingle(),
     ]);
+    if (q.error && !semTabela(q.error)) console.warn('Consulta gravada do Qlik não foi lida', q.error);
     doMes.set(mes, { premiacoes: (exigir(p) || []).map(lerPremiacao), ajustes: (exigir(a) || []).map(lerPremiacao),
-      mesPj: (exigir(m) || []).map(lerMesPj), fechamento: lerFechamento(exigir(f)) });
+      mesPj: (exigir(m) || []).map(lerMesPj), fechamento: lerFechamento(exigir(f)), consulta: q.error ? null : q.data });
     return doMes.get(mes);
+  },
+  // Consulta ao Qlik gravada do mês (migração 19) ou null: { consultado_em, conferido_em, … }.
+  consulta: mes => doMes.get(mes)?.consulta || null,
+  // Mês reaberto calcula com o cadastro de quando foi fechado (mudanças de % depois não voltam no tempo).
+  usaCadastroDaCopia(mes) {
+    const f = this.fechamento(mes);
+    return f?.status === 'reaberto' && Array.isArray(f.dados?.cadastro);
+  },
+  cadastroDoMes(mes) {
+    if (!this.usaCadastroDaCopia(mes)) return lista || [];
+    return cadastroDaCopia(this.fechamento(mes).dados.cadastro.map(lerComissionado), lista || []).sort(porNome);
   },
   premiacoes: mes => (doMes.get(mes)?.premiacoes || []).filter(x => x.ativo !== false),
   ajustes: mes => (doMes.get(mes)?.ajustes || []).filter(x => x.ativo !== false),
@@ -200,7 +237,7 @@ export const comissoes = {
     const ids = new Set(resultado.linhas.map(l => l.id));
     const dados = {
       resultado, parametros: this.parametros(),
-      cadastro: (lista || []).filter(c => ids.has(c.id)),
+      cadastro: this.cadastroDoMes(mes).filter(c => ids.has(c.id)),
       premiacoes: this.premiacoes(mes), ajustes: this.ajustes(mes),
     };
     const campos = { status: 'fechado', dados, total: resultado.totais.geral.valor_pagar, total_clt: resultado.totais.clt.valor_pagar, total_pj: resultado.totais.pj.valor_pagar };
@@ -208,7 +245,7 @@ export const comissoes = {
     const r = lerFechamento(exigir(atual
       ? await sb.from('comissao_fechamentos').update(campos).eq('id', atual.id).select('*').single()
       : await sb.from('comissao_fechamentos').insert({ mes, ...campos }).select('*').single()));
-    (doMes.get(mes) || doMes.set(mes, vazioMes()).get(mes)).fechamento = r;
+    doMesOuNovo(mes).fechamento = r;
     return r;
   },
   async reabrirMes(mes, motivo) {
@@ -225,26 +262,27 @@ export const comissoes = {
       const d = f.dados;
       return { cadastro: d.cadastro || [], premiacoes: d.premiacoes || [], ajustes: d.ajustes || [], parametros: { ...PARAMETROS_PADRAO, ...(d.parametros || {}) }, fechado: true };
     }
-    return { cadastro: this.cadastro(), premiacoes: this.premiacoes(mes), ajustes: this.ajustes(mes), parametros: this.parametros(), fechado: false };
+    return { cadastro: this.cadastroDoMes(mes), premiacoes: this.premiacoes(mes), ajustes: this.ajustes(mes), parametros: this.parametros(), fechado: false };
   },
 
   // Apuração do mês com o cadastro e os parâmetros atuais.
   // Mês fechado: devolve a cópia do histórico (não consulta o Qlik nem recalcula).
-  // buscar: true consulta o Qlik; false reaproveita a última consulta do mês (null se não houver).
-  // Uma consulta feita com outro código de Farelo ou outro corte não é reaproveitada.
-  // → resultado de apurarMes + { consulta: { consultado_em, total, sem_vendedor } }
+  // Mês reaberto: cadastro da cópia do fechamento (cadastroDoMes), completado com quem é novo.
+  // buscar: true consulta o Qlik (e grava); false reaproveita a última consulta do mês, da memória ou a
+  // gravada no banco (null se não houver). Uma consulta feita com outro código de Farelo ou outro corte não é reaproveitada.
+  // → resultado de apurarMes + { consulta: { consultado_em, total, sem_vendedor, gravada } }
   async apurar(mes, { buscar = true, sinal } = {}) {
     if (!params) await this.carregar();
     if (!doMes.has(mes)) await this.carregarMes(mes);
     const f = this.fechamento(mes);
     if (f?.status === 'fechado' && f.dados?.resultado) return { ...f.dados.resultado, fechado: f };
-    let q = consultas.get(mes);
+    let q = consultas.get(mes) || daConsultaGravada(this.consulta(mes));
     if (q && (q.cod_farelo !== params.cod_farelo || q.dia_corte !== params.dia_corte)) q = null;
     if (buscar) { q = await pedirAoQlik(mes, sinal); consultas.set(mes, q); }
     if (!q) return null;
     const m = doMes.get(mes);
-    const r = apurarMes({ mes, comissionados: lista, parametros: params, vendas: q.apuracao.vendas, contratoLinhas: q.contrato.linhas,
+    const r = apurarMes({ mes, comissionados: this.cadastroDoMes(mes), parametros: params, vendas: q.apuracao.vendas, contratoLinhas: q.contrato.linhas,
       premiacoes: m.premiacoes, ajustes: m.ajustes, mesPj: m.mesPj });
-    return { ...r, consulta: { consultado_em: q.consultado_em, total: q.apuracao.total, sem_vendedor: Number(q.apuracao.sem_vendedor) || 0 } };
+    return { ...r, consulta: { consultado_em: q.consultado_em, total: q.apuracao.total, sem_vendedor: Number(q.apuracao.sem_vendedor) || 0, gravada: !!q.gravada } };
   },
 };

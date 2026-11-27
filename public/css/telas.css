@@ -347,11 +347,9 @@ a.det-empresa:hover { text-decoration-color: currentColor; }
 /* ---------- comissões ---------- */
 .comissoes { display: grid; gap: var(--e-4); }
 .cm-abas { max-width: 760px; }
-/* Seis seções: no celular, duas linhas de três (nenhuma fica escondida rolando de lado). */
-@media (max-width: 640px) {
-  .cm-abas { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); overflow: visible; }
-  .cm-abas .filtro { white-space: normal; line-height: 1.15; padding: 4px 6px; text-align: center; }
-}
+/* Seis seções numa linha só; no celular a faixa rola de lado (sem quebrar em duas linhas). */
+.cm-abas { flex-wrap: nowrap; overflow-x: auto; }
+.cm-abas .filtro { flex: 1 0 auto; }
 .cm-documentos { flex-wrap: wrap; gap: var(--e-2); }
 .cm-recibo { margin-top: var(--e-1); padding-left: 0; }
 .cm-acao { text-align: right; white-space: nowrap; }
@@ -367,6 +365,8 @@ a.det-empresa:hover { text-decoration-color: currentColor; }
    se ainda não couber, a caixa rola sozinha (nunca corta a tabela nem empurra a página). */
 .comissoes .tabela-caixa { overflow-x: auto; }
 .cm-tabela th.num, .cm-tabela .cm-sub { white-space: normal; }
+/* Título de coluna quebra só entre palavras ("PREMIAÇ / ÕES" não); sem espaço, a tabela rola na própria caixa. */
+.cm-tabela th { hyphens: manual; overflow-wrap: normal; word-break: keep-all; }
 @media (max-width: 1100px) { .cm-tabela th, .cm-tabela td { padding-left: var(--e-3); padding-right: var(--e-3); } }
 .cm-tabela tfoot th, .cm-tabela tfoot td { padding-top: var(--e-3); border-top: 1px solid var(--line); text-align: left; }
 .cm-tabela tfoot td.num { text-align: right; }
@@ -391,7 +391,7 @@ a.det-empresa:hover { text-decoration-color: currentColor; }
 .cm-numeros .numero dd { font-size: var(--t-20); }
 .cm-numero-alerta { border-color: var(--amber); }
 .cm-numero-alerta dt { color: var(--amber); }
-.cm-sem { border-color: var(--amber); }
+.cm-sem, .cm-desativados { border-color: var(--amber); }
 .cm-sem-lista li { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--e-2) var(--e-3); padding: var(--e-3) var(--e-4); border-top: 1px solid var(--line); }
 .cm-sem-lista li > div:first-child { display: grid; gap: 2px; min-width: 0; }
 .cm-sem-lista small { font-size: var(--t-13); color: var(--ink-2); }
@@ -452,3 +452,47 @@ a.det-empresa:hover { text-decoration-color: currentColor; }
   .cm-tabela td.num .cm-sub { flex-basis: 100%; text-align: right; }
 }
 .cm-parametros .painel-corpo > .campo-dica { margin-bottom: var(--e-3); }
+
+/* Apuração (v3.5): total do grupo no título; cartão por pessoa até 600 px, com o total fixo no topo. */
+.cm-grupo { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: var(--e-1) var(--e-3); }
+.cm-grupo-total { font-size: var(--t-16); font-weight: 700; }
+.cm-pendencias { margin: var(--e-1) 0 0; font-size: var(--t-14); font-weight: 600; }
+.cm-pendencias-falta { color: var(--amber); }
+.cm-rodape { margin: 0; }
+.cm-cartoes { display: none; margin: 0; padding: 0; list-style: none; }
+@media (max-width: 600px) {
+  .cm-caixa-pessoas, .cm-numeros, .cm-destaque .destaque-sub, .cm-fechar .painel-corpo > .campo-dica { display: none; }
+  .cm-cartoes { display: grid; gap: var(--e-2); }
+  .cm-cartao { background: var(--card); border: 1px solid var(--line); border-radius: var(--r-panel); min-width: 0; }
+  .cm-cartao summary { display: grid; gap: 2px; padding: var(--e-2) var(--e-3); min-height: var(--tap); cursor: pointer; list-style: none; }
+  .cm-cartao summary::-webkit-details-marker { display: none; }
+  .cm-cartao-topo { display: flex; justify-content: space-between; align-items: baseline; gap: var(--e-3); min-width: 0; }
+  .cm-cartao-linha { display: block; }
+  .cm-cartao-topo strong { overflow-wrap: anywhere; }
+  .cm-cartao-pagar { font-size: var(--t-16); font-weight: 700; white-space: nowrap; }
+  .cm-cartao-linha { font-size: var(--t-13); color: var(--ink-2); }
+  .cm-ver-conta { float: right; margin-left: var(--e-3); text-decoration: underline; text-underline-offset: 3px; }
+  .cm-conta { display: grid; gap: 2px; margin: 0; padding: var(--e-2) var(--e-3); border-top: 1px solid var(--line); }
+  .cm-conta > div { display: flex; justify-content: space-between; align-items: baseline; gap: var(--e-3); font-size: var(--t-14); }
+  .cm-conta dt { color: var(--ink-2); }
+  .cm-conta dd { margin: 0; text-align: right; }
+  .cm-cartao .cm-recibo { margin: 0 var(--e-3) var(--e-2); }
+  .cm-cartao > .cm-alerta-linha { margin: 0; padding: 0 var(--e-3) var(--e-2); }
+  .cm-destaque {
+    position: sticky; top: calc(var(--topo-h) + env(safe-area-inset-top)); z-index: 5;
+    display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; column-gap: var(--e-3);
+    padding: var(--e-2) var(--e-3);
+  }
+  .cm-destaque .destaque-rotulo, .cm-destaque .cm-pendencias { grid-column: 1; margin: 0; font-size: var(--t-13); }
+  .cm-destaque .cm-total { grid-column: 2; grid-row: 1 / span 2; font-size: var(--t-20); }
+  .cm-documentos { flex-wrap: nowrap; }
+  .cm-documentos .btn { flex: 1 1 0; min-width: 0; padding-left: var(--e-2); padding-right: var(--e-2); }
+  .cm-so-largo, .cm-conferir .ok { display: none; }
+  .comissoes #cm-conteudo { gap: var(--e-3); }
+  .cm-fechar .painel-corpo, .cm-cartoes { gap: var(--e-2); }
+  .cm-consulta { flex-wrap: nowrap; }
+  .cm-consulta .campo { flex: 1 1 0; min-width: 0; }
+  .cm-consulta .btn { flex: none; }
+  /* O mês escolhido já se explica: o rótulo fica só para o leitor de tela. */
+  .cm-consulta .campo > label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+}

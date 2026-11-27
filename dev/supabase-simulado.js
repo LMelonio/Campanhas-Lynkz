@@ -104,7 +104,7 @@ if (!db.comissao_premiacoes) {
     realizado_faturamento: null, realizado_positivacao: null, realizado_motivo: null, nf_numero: '300', atualizado_em: null, atualizado_por: null }];
   db.seq.comissao_premiacoes = 1; db.seq.comissao_mes_pj = 1;
 }
-db.comissao_ajustes ||= []; db.comissao_fechamentos ||= [];
+db.comissao_ajustes ||= []; db.comissao_fechamentos ||= []; db.comissao_consultas ||= [];
 db.perfis ||= JSON.parse(JSON.stringify(USUARIOS));
 const gravarDb = () => { try { sessionStorage.setItem(CHAVE, JSON.stringify(db)); } catch { /* cheio */ } };
 gravarDb();
@@ -132,17 +132,28 @@ function verView(c) {
 
 // ---------- comissões (migração 16) ----------
 const nomeQlikSim = t => String(t ?? '').replace(/\s+/g, ' ').trim().toUpperCase();
-const TABELAS_MES = ['comissao_premiacoes', 'comissao_ajustes', 'comissao_mes_pj', 'comissao_fechamentos'];
+const TABELAS_MES = ['comissao_premiacoes', 'comissao_ajustes', 'comissao_mes_pj', 'comissao_fechamentos', 'comissao_consultas'];
 const TABELAS_COMISSAO = ['comissionados', 'comissao_parametros', 'comissao_auditoria', ...TABELAS_MES];
 const mesFechado = mes => db.comissao_fechamentos.some(f => f.mes === mes && f.status === 'fechado');
 // Fechar, reabrir e fechar de novo (trigger preparar_comissao_fechamento).
 function prepararFechamento(r, antigo) {
   const u = usuario(), agora = new Date().toISOString();
   r.motivo_reabertura = String(r.motivo_reabertura ?? '').replace(/\s+/g, ' ').trim() || null;
+  // Migração 20: ao fechar, os totais têm de ser a soma das linhas (centavo a centavo).
+  const conferirTotal = () => {
+    const c = x => Math.round(Number(x) * 100);
+    const linhas = Array.isArray(r.dados?.resultado?.linhas) ? r.dados.resultado.linhas : [];
+    const clt = linhas.filter(l => l.regime !== 'PJ').reduce((t, l) => t + c(l.valor_pagar), 0);
+    const pj = linhas.filter(l => l.regime === 'PJ').reduce((t, l) => t + c(l.valor_pagar), 0);
+    if (c(r.total_clt) !== clt || c(r.total_pj) !== pj || c(r.total) !== clt + pj) {
+      return erro(`O total do fechamento não confere com as linhas da apuração (CLT ${clt / 100}, PJ ${pj / 100}). Busque as vendas de novo e feche outra vez.`);
+    }
+    return null;
+  };
   if (!antigo) {
     if (db.comissao_fechamentos.some(f => f.mes === r.mes)) return erro('duplicate key value violates unique constraint "comissao_fechamentos_mes_unico"', '23505');
     Object.assign(r, { status: 'fechado', fechado_em: agora, fechado_por: u.id, reaberto_em: null, reaberto_por: null, motivo_reabertura: null });
-    return null;
+    return conferirTotal();
   }
   r.mes = antigo.mes;
   if (antigo.status === 'fechado' && r.status === 'fechado') return erro(`O mês ${antigo.mes} já está fechado. Reabra antes de fechar de novo.`);
@@ -152,14 +163,33 @@ function prepararFechamento(r, antigo) {
       fechado_em: antigo.fechado_em, fechado_por: antigo.fechado_por, reaberto_em: agora, reaberto_por: u.id });
   } else {
     Object.assign(r, { fechado_em: agora, fechado_por: u.id, reaberto_em: antigo.reaberto_em, reaberto_por: antigo.reaberto_por, motivo_reabertura: antigo.motivo_reabertura });
+    return conferirTotal();
   }
   return null;
 }
 const MES_RE = /^\d{4}-(0[1-9]|1[0-2])$/;
+// Consulta do Qlik do mês (migração 19, trigger preparar_comissao_consulta).
+function prepararConsulta(r, antigo) {
+  const u = usuario(), agora = new Date().toISOString();
+  if (antigo) r.mes = antigo.mes;
+  if (!MES_RE.test(r.mes || '')) return erro('violates check constraint "comissao_consultas_mes"', '23514');
+  if (mesFechado(r.mes)) return erro(`O mês ${r.mes} está fechado. Reabra o mês para consultar o Qlik de novo.`);
+  if (!antigo) {
+    if (db.comissao_consultas.some(x => x.mes === r.mes)) return erro('duplicate key value violates unique constraint "comissao_consultas_mes_unico"', '23505');
+    Object.assign(r, { consultado_em: agora, consultado_por: u.id, conferido_em: null, conferido_por: null });
+    return null;
+  }
+  if (JSON.stringify(r.dados) !== JSON.stringify(antigo.dados)) Object.assign(r, { consultado_em: agora, consultado_por: u.id, conferido_em: null, conferido_por: null });
+  else if (r.conferido_em == null) Object.assign(r, { consultado_em: antigo.consultado_em, consultado_por: antigo.consultado_por, conferido_por: null });
+  else if (antigo.conferido_em == null) Object.assign(r, { consultado_em: antigo.consultado_em, consultado_por: antigo.consultado_por, conferido_em: agora, conferido_por: u.id });
+  else Object.assign(r, { consultado_em: antigo.consultado_em, consultado_por: antigo.consultado_por, conferido_em: antigo.conferido_em, conferido_por: antigo.conferido_por });
+  return null;
+}
 // Regras das tabelas da migração 17 (constraints e trigger preparar_comissao_mes).
 function prepararMes(tabela, r, antigo) {
   const u = usuario();
   if (tabela === 'comissao_fechamentos') return prepararFechamento(r, antigo);
+  if (tabela === 'comissao_consultas') return prepararConsulta(r, antigo);
   if (!MES_RE.test(r.mes || '')) return erro(`violates check constraint "${tabela}_mes"`, '23514');
   if (mesFechado(r.mes) || (antigo && mesFechado(antigo.mes))) return erro(`O mês ${r.mes} está fechado. Reabra o mês para mudar premiações, ajustes, contrato ou nota fiscal.`);
   if (tabela === 'comissao_ajustes') {
@@ -229,7 +259,7 @@ function inserir(tabela, d) {
     if (!ehAprovador()) return { error: erro(`new row violates row-level security policy for table "${tabela}"`, '42501') };
     const base = tabela === 'comissao_mes_pj'
       ? { meta_faturamento: null, meta_positivacao: null, realizado_faturamento: null, realizado_positivacao: null, realizado_motivo: null, nf_numero: null, nf_valor: null }
-      : tabela === 'comissao_fechamentos' ? { status: 'fechado' } : { ativo: true, atualizado_em: null, atualizado_por: null };
+      : tabela === 'comissao_fechamentos' ? { status: 'fechado' } : tabela === 'comissao_consultas' ? {} : { ativo: true, atualizado_em: null, atualizado_por: null };
     const r = { ...base, ...d, id: (db.seq[tabela] || 0) + 1 };
     const e = prepararMes(tabela, r, null);
     if (e) return { error: e };
@@ -245,7 +275,7 @@ function inserir(tabela, d) {
   }
   if (tabela === 'balconistas') {
     // Migração 12: no máximo 2 por empresa, contando os desativados.
-    if (db.balconistas.filter(b => b.empresa_id == d.empresa_id).length >= 2) return { error: erro('Esta empresa já tem 2 balconistas cadastrados, que é o limite. Edite um deles na ficha da empresa.') };
+    if (db.balconistas.filter(b => b.empresa_id == d.empresa_id).length >= 2) return { error: erro('Esta empresa já tem 2 balconistas cadastrados, que é o limite. Para trocar a pessoa, um administrador exclui um deles na ficha da empresa.') };
     if (!cpfValido(d.cpf)) return { error: erro('violates check constraint "balconistas_cpf_valido"', '23514') };
     if (db.balconistas.some(b => b.empresa_id == d.empresa_id && b.cpf === d.cpf)) return { error: erro('duplicate key value violates unique constraint "balconistas_empresa_cpf_unico"', '23505') };
     const r = { ativo: true, ...d, empresa_id: +d.empresa_id, id: ++db.seq.balconistas, criado_em: new Date().toISOString(), criado_por: u.id };
@@ -414,6 +444,35 @@ function excluirCampanha({ p_id: id, p_motivo: motivo = '' }) {
   return { data: { id: c.id, codigo: c.codigo }, error: null };
 }
 
+// excluir_balconista(p_id, p_motivo): só administrador ativo; motivo de 3 a 500 letras; barra campanha
+// pendente; campanha Swile decidida sem quem recebe ganha os dados do cadastro; balconista_id vira null.
+function excluirBalconista({ p_id: id, p_motivo: motivo = '' }) {
+  const u = usuario();
+  if (!u) return { data: null, error: erro('JWT expired', 'PGRST301') };
+  if (!(u.papel === 'aprovador' && u.ativo)) return { data: null, error: erro('Só um administrador exclui balconistas.', '42501') };
+  const m = String(motivo ?? '').trim().replace(/\s+/g, ' ');
+  if (m.length < 3 || m.length > 500) return { data: null, error: erro('Escreva o motivo da exclusão (de 3 a 500 caracteres).') };
+  const i = db.balconistas.findIndex(b => b.id == id);
+  if (i < 0) return { data: null, error: erro('Balconista não encontrado. Talvez outra pessoa já tenha excluído.') };
+  const b = db.balconistas[i];
+  const dele = db.campanhas.filter(c => c.balconista_id == b.id);
+  const pend = dele.filter(c => c.status === 'Pendente').length;
+  if (pend) return { data: null, error: erro(`Este balconista está em ${pend} campanha(s) pendente(s). Decida ou troque o balconista antes de excluir.`) };
+  for (const c of dele) {
+    if (c.forma_pagamento === 'Swile' && c.swile_nome_completo == null) {
+      Object.assign(c, { swile_nome_completo: b.nome_completo, swile_cpf: b.cpf, swile_data_nascimento: b.data_nascimento, swile_email: b.email, swile_telefone: b.telefone });
+    }
+    c.balconista_id = null;
+  }
+  db.balconistas.splice(i, 1);
+  (db.balconistas_excluidos ||= []).push({ balconista_id: b.id, empresa_id: b.empresa_id, nome_completo: b.nome_completo, motivo: m, excluido_por: u.id,
+    dados: { balconista: b, campanhas: dele.map(c => c.id) } });
+  gravarDb();
+  dele.forEach(c => emitir('campanhas', 'UPDATE', c));
+  emitir('balconistas', 'DELETE', b);
+  return { data: { id: b.id, campanhas: dele.length }, error: null };
+}
+
 // ---------- tempo real ----------
 const canais = new Set();
 function emitir(tabela, eventType, row) {
@@ -527,6 +586,7 @@ export const sb = {
     const rodar = () => {
       if (nome === 'definir_perfil') return definirPerfil(args);
       if (nome === 'excluir_campanha') return excluirCampanha(args);
+      if (nome === 'excluir_balconista') return excluirBalconista(args);
       if (nome !== 'enviar_campanha') return { data: null, error: erro(`Could not find the function public.${nome} in the schema cache`, 'PGRST202') };
       const r = enviarCampanha(args);
       return r.error ? { data: null, error: r.error } : r;

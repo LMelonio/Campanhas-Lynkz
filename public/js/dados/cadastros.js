@@ -1,4 +1,5 @@
-// Empresas e balconistas. Todo usuário ativo lê e edita; nada é apagado (desativar = ativo false).
+// Empresas e balconistas. Todo usuário ativo lê e edita; desativar = ativo false. Só o administrador
+// exclui balconista (excluir_balconista, migração 18), para liberar a vaga na empresa.
 import { sb } from '../lib/supabase.js';
 import { soDigitos, maskCNPJ } from '../lib/regras.js';
 import { exigir } from './erros.js';
@@ -164,6 +165,16 @@ export const cadastros = {
     porEmpresa = null;
     avisar({ tipo: 'balconista', id: linha.id, registro: linha });
     return linha;
+  },
+
+  // Só administrador (a regra está no banco). O banco barra campanha pendente, guarda a cópia
+  // em balconistas_excluidos e solta o balconista das campanhas decididas.
+  async excluirBalconista(id, motivo) {
+    const r = exigir(await sb.rpc('excluir_balconista', { p_id: Number(id), p_motivo: motivo }));
+    balconistasMap.delete(String(id));
+    porEmpresa = null;
+    avisar({ tipo: 'balconista', id, registro: null });
+    return r;
   },
 
   // Depois de gravar um balconista por fora (enviar_campanha): traz a linha para a memória.
