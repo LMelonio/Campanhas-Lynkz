@@ -81,6 +81,38 @@ test('vendas: soma os nomes da mesma pessoa e lista quem não tem cadastro', () 
   assert.deepEqual(r.ignorados.map(x => x.vendedor), ['TERRAZOO']);
 });
 
+test('desativado com venda (v3.5): vai para "desativados", não para Novos no Qlik', () => {
+  const r = juntarVendas([
+    { vendedor: 'Ana Silva', total: 1000, farelo: 100 },
+    { vendedor: 'saiu', total: 50, farelo: 5 },
+    { vendedor: 'NOVO NOME', total: 70, farelo: 0 },
+  ], CAD, []);
+  assert.deepEqual(r.desativados, [{ id: 3, nome: 'Saiu', vendedor: 'saiu', total: 50, farelo: 5 }]);
+  assert.deepEqual(r.semCadastro.map(x => x.vendedor), ['NOVO NOME']);
+  assert.equal(r.porId.has(3), false, 'não entra na comissão');
+});
+
+test('desativado com premiação ou ajuste (v3.5): fica fora do total e aparece em lancamentosOrfaos', () => {
+  const r = apurarMes({
+    mes: '2026-10', comissionados: CAD, vendas: [{ vendedor: 'SAIU', total: 50, farelo: 0 }],
+    premiacoes: [{ id: 7, comissionado_id: 3, mes: '2026-10', descricao: 'Campanha X', valor: 100 }, { id: 8, comissionado_id: 3, mes: '2026-10', descricao: 'Apagada', valor: 5, ativo: false }],
+    ajustes: [{ id: 9, comissionado_id: 3, mes: '2026-10', motivo: 'Acerto', valor: -20 }],
+  });
+  assert.equal(r.linhas.some(l => l.id === 3), false, 'sem linha para quem está desativado');
+  assert.deepEqual(r.semCadastro, [], 'o nome não cai em Novos no Qlik');
+  assert.deepEqual(r.desativados.map(x => x.id), [3]);
+  assert.deepEqual(r.lancamentosOrfaos, [
+    { tipo: 'premiacao', id: 7, comissionado_id: 3, nome: 'Saiu', valor: 100, descricao: 'Campanha X' },
+    { tipo: 'ajuste', id: 9, comissionado_id: 3, nome: 'Saiu', valor: -20, descricao: 'Acerto' },
+  ]);
+});
+
+test('cadastro (v3.5): nome do Qlik de quem está desativado pede para reativar', () => {
+  const e = errosComissionado({ nome: 'Saiu de novo', regime: 'CLT', pct_principal: 2.5, pct_farelo: 1, nomes_qlik: ['SAIU'] }, CAD);
+  assert.equal(e.nomes_qlik, '"SAIU" é de Saiu, que está desativado. Reative o cadastro em vez de criar outro.');
+  assert.deepEqual(errosComissionado({ ...CAD[2], ativo: true }, CAD), {}, 'reativar o próprio cadastro passa');
+});
+
 test('contrato: realizados e positivação líquida por pessoa', () => {
   const r = realizadosContrato([
     { vendedor: 'B REPRESENTAÇÕES', cliente: '10', valor: 1000 },

@@ -730,7 +730,7 @@ teste('gestão: administrador exclui balconista desativado, a vaga abre e a camp
   await d.locator('button[type="submit"]').click();
   afirma((await erroDo(page, 'xb-motivo').innerText()).includes('motivo'), 'motivo é obrigatório');
   await d.locator('#xb-motivo').fill('Saiu da loja'); await d.locator('button[type="submit"]').click(); await d.waitFor({ state: 'detached' });
-  await toastCom(page, 'Ana Beatriz Costa excluído');
+  await toastCom(page, 'Cadastro de Ana Beatriz Costa excluído');
   const banco = await db(page);
   afirma(!banco.balconistas.some(b => b.id === 3), 'cadastro apagado');
   const c = banco.campanhas.find(x => x.id === 99);
@@ -2649,6 +2649,32 @@ teste('v3.3: comissões — apuração separa Farelo, aplica acordo e contrato e
   afirma(/Sem Cadastro Ltda[\s\S]*R\$ 76,52/.test(await page.locator('#cm-conteudo').innerText()), 'entrou na comissão como PJ (5%)');
   const novo = (await db(page)).comissionados.find(c => c.nomes_qlik.join() === 'SEM CADASTRO LTDA');
   afirma(novo && novo.regime === 'PJ' && novo.pj_documento === '12345678000195', 'gravado: ' + JSON.stringify(novo));
+});
+
+teste('v3.5: comissões — desativado com venda no Qlik não vira "novo"; premiação dele avisa; Reativar devolve à conta', async ({ page }) => {
+  await abrir(page, { rota: '#/comissoes' });
+  // Maria Amanda (4) desativada, com uma premiação lançada em outubro.
+  await page.evaluate(() => {
+    const d = JSON.parse(sessionStorage.getItem('simulado-db-v3'));
+    d.comissionados.find(c => c.id === 4).ativo = false;
+    d.comissao_premiacoes.push({ id: 50, mes: '2026-10', comissionado_id: 4, descricao: 'Campanha Avert', valor: 100, ativo: true, criado_em: new Date().toISOString(), criado_por: 'u-aprov' });
+    sessionStorage.setItem('simulado-db-v3', JSON.stringify(d));
+  });
+  await page.goto(`${BASE}/?papel=aprovador#/comissoes?aba=previa&mes=2026-10`);
+  await page.click('#cm-buscar');
+  await page.locator('.cm-desativados').waitFor();
+  const painel = await page.locator('.cm-desativados').innerText();
+  afirma(painel.includes('Maria Amanda') && painel.includes('MARIA AMANDA FARIAS DE SOUSA') && painel.includes('R$ 42.287,36') && painel.includes('R$ 100,00'), 'venda e premiação do desativado: ' + painel);
+  afirma(!(await page.locator('.cm-sem').innerText()).includes('MARIA AMANDA'), 'não aparece em Novos no Qlik');
+  const fechar = await page.locator('.cm-fechar').innerText();
+  afirma(fechar.includes('1 desativado com venda') && fechar.includes('Premiação ou ajuste de quem está desativado: Maria Amanda (R$ 100,00)'), 'o que falta para fechar: ' + fechar);
+  await page.click('[data-reativar="4"]');
+  const dlg = page.locator('dialog', { hasText: 'Reativar Maria Amanda?' });
+  await dlg.locator('button[type="submit"]').click();
+  await toastCom(page, 'Cadastro de Maria Amanda reativado');
+  await page.locator('.cm-desativados').waitFor({ state: 'detached' });
+  afirma(/Maria Amanda[\s\S]*R\$ 100,00/.test(await page.locator('#cm-t-clt + .tabela-caixa').innerText()), 'de volta na tabela CLT com a premiação');
+  igual((await db(page)).comissionados.find(c => c.id === 4).ativo, true, 'reativado no banco');
 });
 
 teste('v3.4: comissões — o mês escolhido fica no endereço e volta com a apuração', async ({ page }) => {

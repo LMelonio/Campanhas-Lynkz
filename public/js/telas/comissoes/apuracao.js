@@ -1,4 +1,5 @@
-// Comissões → Apuração: vendas do mês no Qlik, cálculo de cada pessoa e "Novos no Qlik" (um a um ou em lote).
+// Comissões → Apuração: vendas do mês no Qlik, cálculo de cada pessoa, "Novos no Qlik" (um a um ou em lote)
+// e "Desativados com venda no Qlik" (reativar).
 // Os documentos e o fechamento do mês ficam em documentos.js.
 import { html, pintar, $, $$, ao } from '../../lib/dom.js';
 import { dataBR, horaBR } from '../../lib/regras.js';
@@ -41,6 +42,7 @@ function resultadoHtml(r) {
     ${documentosHtml(r)}
 
     ${r.semCadastro.length ? novosHtml(r) : ''}
+    ${desativadosHtml(r)}
     ${r.consulta.sem_vendedor ? html`<p class="nota">${icone('info')}<span>${r$(r.consulta.sem_vendedor)} em vendas sem vendedor no Qlik ficaram de fora.</span></p>` : ''}
 
     ${tabela('Vendedores CLT', r.linhas.filter(l => !ehPJ(l)), false)}
@@ -116,6 +118,48 @@ function novosHtml(r) {
           <button type="button" class="btn btn-texto btn-pequeno" data-ignorar="${x.vendedor}" aria-label="Não comissiona: ${x.vendedor}">Não comissiona</button>
         </div>`}</li>`)}</ul>
     </section>`;
+}
+
+// ---------- Desativados com venda no Qlik ----------
+// Venda, premiação ou ajuste de quem foi desativado não entra no total: reativar devolve a pessoa à conta.
+function desativadosHtml(r) {
+  const vendas = r.desativados || [];
+  const orfaos = r.lancamentosOrfaos || [];
+  if (!vendas.length && !orfaos.length) return '';
+  const pessoas = new Map();
+  const pessoa = (id, nome) => pessoas.get(id) || pessoas.set(id, { id, nome, vendas: [], lancamentos: [] }).get(id);
+  for (const v of vendas) pessoa(v.id, v.nome).vendas.push(v);
+  for (const o of orfaos) pessoa(o.comissionado_id, o.nome).lancamentos.push(o);
+  const f = r.fechado;
+  return html`<section class="painel cm-desativados" aria-labelledby="cm-t-desativados">
+    <h2 class="painel-titulo" id="cm-t-desativados">Desativados com venda no Qlik</h2>
+    <p class="painel-corpo campo-dica">${f ? 'Cadastros desativados quando o mês foi fechado: as vendas e lançamentos deles ficaram fora da comissão.' : 'Estas pessoas estão desativadas no Cadastro. As vendas, premiações e ajustes delas não entram no total até reativar.'}</p>
+    <ul class="cm-sem-lista">${[...pessoas.values()].map(p => html`<li>
+      <div><strong>${p.nome}</strong>
+        ${p.vendas.map(v => html`<small class="tabular">${v.vendedor}: ${r$(v.total)}${v.farelo ? `, Farelo ${r$(v.farelo)}` : ''}</small>`)}
+        ${p.lancamentos.map(o => html`<small class="tabular">${o.tipo === 'premiacao' ? 'Premiação' : 'Ajuste'} ${o.descricao ? `"${o.descricao}" ` : ''}${r$(o.valor)}</small>`)}</div>
+      ${f ? '' : html`<div class="acoes"><button type="button" class="btn btn-fantasma btn-pequeno" data-reativar="${p.id}" aria-label="Reativar ${p.nome}">Reativar</button></div>`}
+    </li>`)}</ul>
+  </section>`;
+}
+
+async function reativar(id) {
+  const c = comissoes.cadastro().find(x => String(x.id) === String(id));
+  if (!c) return;
+  const ok = await confirmar({
+    titulo: `Reativar ${c.nome}?`,
+    descricao: 'Volta para a apuração com o regime e os % do cadastro. As vendas, premiações e ajustes do mês entram no total.',
+    confirmar: 'Reativar',
+  });
+  if (!ok || !s) return;
+  const meu = s;
+  try {
+    await comissoes.salvar({ ...c, ativo: true }, c.id);
+    if (s !== meu) return;
+    await recalcular();
+    s.ctx.toast(`Cadastro de ${c.nome} reativado e de volta na apuração.`, { tom: 'sucesso' });
+    redesenhar();
+  } catch (e) { s.ctx.toast(detalhar(e).mensagem, { tom: 'erro' }); }
 }
 
 async function ignorarNome(nome) {
@@ -204,6 +248,7 @@ export function ligar(el) {
     ao(el, 'click', '#cm-buscar', buscar),
     ao(el, 'click', '[data-ignorar]', (e, b) => ignorarNome(b.dataset.ignorar)),
     ao(el, 'click', '[data-completar]', (e, b) => editar(null, b.dataset.completar)),
+    ao(el, 'click', '[data-reativar]', (e, b) => reativar(b.dataset.reativar)),
     ao(el, 'change', '[data-lote]', marcarLote),
     ao(el, 'change', '#cm-lote-todos', (e, t) => { $$('[data-lote]', el).forEach(c => { c.checked = t.checked; }); marcarLote(); }),
     ao(el, 'click', '#cm-lote-ok', () => s.resultado && aplicarLote()),

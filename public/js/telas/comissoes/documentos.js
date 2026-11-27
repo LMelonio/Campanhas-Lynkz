@@ -34,8 +34,12 @@ function antesDeFechar(r) {
   const semNf = pjs.filter(l => !l.nf || l.nf_valor == null).map(l => l.nome);
   const semCadastro = pjs.filter(l => l.falta.some(x => !NF.includes(x))).map(l => l.nome);
   const n = r.semCadastro.length;
+  const nd = new Set((r.desativados || []).map(x => x.id)).size;
+  const orfaos = r.lancamentosOrfaos || [];
   return [
     { ok: !n, texto: n ? `${n} ${n === 1 ? 'vendedor' : 'vendedores'} em Novos no Qlik, fora da comissão` : 'Ninguém em Novos no Qlik' },
+    ...(nd ? [{ ok: false, texto: `${nd} ${nd === 1 ? 'desativado' : 'desativados'} com venda no Qlik, fora da comissão` }] : []),
+    ...(orfaos.length ? [{ ok: false, texto: `Premiação ou ajuste de quem está desativado: ${orfaos.map(o => `${o.nome} (${r$(o.valor)})`).join(', ')}` }] : []),
     { ok: !semCadastro.length, texto: semCadastro.length ? `Cadastro do PJ incompleto: ${semCadastro.join(', ')}` : 'Cadastro dos PJ completo para o recibo e a ADP' },
     { ok: !semNf.length, texto: !pjs.length ? 'Nenhum PJ a pagar neste mês' : semNf.length ? `ADP dos PJ sem a NF de ${semNf.join(', ')}` : 'ADP dos PJ gerada, com a NF de todos' },
   ];

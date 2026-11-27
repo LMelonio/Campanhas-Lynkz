@@ -391,7 +391,7 @@ a.det-empresa:hover { text-decoration-color: currentColor; }
 .cm-numeros .numero dd { font-size: var(--t-20); }
 .cm-numero-alerta { border-color: var(--amber); }
 .cm-numero-alerta dt { color: var(--amber); }
-.cm-sem { border-color: var(--amber); }
+.cm-sem, .cm-desativados { border-color: var(--amber); }
 .cm-sem-lista li { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--e-2) var(--e-3); padding: var(--e-3) var(--e-4); border-top: 1px solid var(--line); }
 .cm-sem-lista li > div:first-child { display: grid; gap: 2px; min-width: 0; }
 .cm-sem-lista small { font-size: var(--t-13); color: var(--ink-2); }

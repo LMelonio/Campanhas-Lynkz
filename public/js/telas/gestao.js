@@ -249,7 +249,7 @@ async function excluirBalconista(ctx, b) {
     },
   });
   if (!excluido) return;
-  ctx.toast(`${b.nome_completo} excluído. A vaga está livre.`, { tom: 'sucesso' });
+  ctx.toast(`Cadastro de ${b.nome_completo} excluído. A vaga está livre.`, { tom: 'sucesso' });
   // As campanhas dele mudaram no banco (balconista_id nulo, dados de quem recebeu): relê da view.
   try { await ctx.campanhas.reler(ids); } catch (e) { console.warn('Não consegui reler as campanhas do balconista excluído', e); }
 }
