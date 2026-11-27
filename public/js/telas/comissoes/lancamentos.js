@@ -11,6 +11,7 @@ import { vazio } from '../../ui/pecas.js';
 import { confirmar, abrirDialogo, erroNoDialogo } from '../../ui/avisos.js';
 import { campo, selecao, aplicarErros, ligarMascaras } from '../../ui/campos.js';
 import { s, r$, mesMinusculo, ativos, fechado, avisoFechado, redesenhar, recalcular } from './comum.js';
+import { editar as completarCadastro } from './cadastro.js';
 
 const LANC = {
   premio: { tabela: 'premiacoes', texto: x => x.descricao, rotuloTexto: 'Campanha', titulo: 'Premiações do mês' },
@@ -38,19 +39,29 @@ function tabelaLancamentos(tipo, lista, travado) {
 
 const CELULAR = '(max-width: 600px)';
 const noCelular = () => window.matchMedia(CELULAR).matches;
-const pessoasDoMes = () => ativos().map(c => ({ valor: c.id, rotulo: `${c.nome} (${ROTULO_REGIME[c.regime]})` }));
+// Quem pode receber: os cadastrados ativos e, da consulta do mês, quem vendeu e ainda não tem cadastro
+// (valor "qlik:NOME": ao lançar, completa o cadastro antes). Ficam de fora quem não comissiona e os desativados.
+const PREFIXO_QLIK = 'qlik:';
+const resultadoDoMes = () => (s.resultado && s.resultado.mes === s.mes ? s.resultado : null);
+function pessoasDoMes() {
+  const cadastrados = ativos().map(c => ({ valor: c.id, rotulo: `${c.nome} (${ROTULO_REGIME[c.regime]})`, grupo: 'Cadastrados' }));
+  const semCadastro = (resultadoDoMes()?.semCadastro || []).map(x => ({ valor: PREFIXO_QLIK + x.vendedor, rotulo: `${x.vendedor} (sem cadastro)`, grupo: 'Sem cadastro' }));
+  return semCadastro.length ? [...cadastrados, ...semCadastro] : cadastrados.map(({ grupo, ...o }) => o);
+}
 
-const camposPremio = pessoas => html`
-  ${selecao({ id: 'pr-pessoa', rotulo: 'Quem recebe', opcoes: pessoas, vazio: 'Escolha a pessoa', obrigatorio: true })}
-  ${campo({ id: 'pr-desc', rotulo: 'Campanha', obrigatorio: true, atributos: { maxlength: 120, autocomplete: 'off' } })}
-  ${campo({ id: 'pr-valor', rotulo: 'Valor', obrigatorio: true, mascara: 'valor' })}`;
-const camposAjuste = pessoas => html`
-  ${selecao({ id: 'aj-pessoa', rotulo: 'Quem recebe', opcoes: pessoas, vazio: 'Escolha a pessoa', obrigatorio: true })}
-  ${campo({ id: 'aj-motivo', rotulo: 'Motivo', obrigatorio: true, dica: 'Entra depois do acordo mínimo e aparece no recibo.', atributos: { maxlength: 200, autocomplete: 'off' } })}
+const camposPremio = (pessoas, pre = {}) => html`
+  ${selecao({ id: 'pr-pessoa', rotulo: 'Quem recebe', opcoes: pessoas, valor: pre.pessoa, vazio: 'Escolha a pessoa', obrigatorio: true })}
+  ${campo({ id: 'pr-desc', rotulo: 'Campanha', valor: pre.texto, obrigatorio: true, atributos: { maxlength: 120, autocomplete: 'off' } })}
+  ${campo({ id: 'pr-valor', rotulo: 'Valor', valor: pre.valorTexto, obrigatorio: true, mascara: 'valor' })}`;
+const camposAjuste = (pessoas, pre = {}) => html`
+  ${selecao({ id: 'aj-pessoa', rotulo: 'Quem recebe', opcoes: pessoas, valor: pre.pessoa, vazio: 'Escolha a pessoa', obrigatorio: true })}
+  ${campo({ id: 'aj-motivo', rotulo: 'Motivo', valor: pre.texto, obrigatorio: true, dica: 'Entra depois do acordo mínimo e aparece no recibo.', atributos: { maxlength: 200, autocomplete: 'off' } })}
   <div class="cm-duas">
-    ${selecao({ id: 'aj-tipo', rotulo: 'Tipo', obrigatorio: true, valor: 'desconto', vazio: 'Escolha', opcoes: [{ valor: 'desconto', rotulo: 'Desconto (−)' }, { valor: 'acrescimo', rotulo: 'Acréscimo (+)' }] })}
-    ${campo({ id: 'aj-valor', rotulo: 'Valor', obrigatorio: true, mascara: 'valor' })}
+    ${selecao({ id: 'aj-tipo', rotulo: 'Tipo', obrigatorio: true, valor: pre.acrescimo ? 'acrescimo' : 'desconto', vazio: 'Escolha', opcoes: [{ valor: 'desconto', rotulo: 'Desconto (−)' }, { valor: 'acrescimo', rotulo: 'Acréscimo (+)' }] })}
+    ${campo({ id: 'aj-valor', rotulo: 'Valor', valor: pre.valorTexto, obrigatorio: true, mascara: 'valor' })}
   </div>`;
+const semConsulta = () => (!resultadoDoMes() && !fechado()
+  ? html`<p class="nota">${icone('info')}<span>Busque as vendas na Apuração para ver quem vendeu no mês.</span></p>` : '');
 
 export function desenhar() {
   const travado = fechado();
@@ -59,11 +70,11 @@ export function desenhar() {
   const celular = noCelular();
   const pessoas = pessoasDoMes();
   const listas = html`${premios.length ? tabelaLancamentos('premio', premios, travado)
-      : vazio({ icone: 'moeda', titulo: `Nenhuma premiação em ${mesMinusculo(s.mes)}`, texto: 'As premiações de campanha do mês entram no valor a pagar, no recibo e no Excel.' })}
+      : vazio({ icone: 'moeda', titulo: `Nenhuma premiação em ${mesMinusculo(s.mes)}`, texto: 'Lance uma premiação: ela entra no valor a pagar, no recibo e no Excel.' })}
     ${ajustes.length ? tabelaLancamentos('ajuste', ajustes, travado) : ''}`;
   if (travado) return html`${avisoFechado()}${listas}`;
-  if (celular) return html`${listas}<button type="button" class="btn btn-primario btn-largo" id="cm-lancar">${icone('mais')} Lançar premiação / ajuste</button>`;
-  return html`<div class="cm-lancar">
+  if (celular) return html`${semConsulta()}${listas}<button type="button" class="btn btn-primario btn-largo" id="cm-lancar">${icone('mais')} Lançar premiação / ajuste</button>`;
+  return html`${semConsulta()}<div class="cm-lancar">
       <form class="painel cm-premiar" id="cm-form-premio" novalidate aria-labelledby="cm-t-premio">
         <h2 class="painel-titulo" id="cm-t-premio">Lançar premiação de ${mesMinusculo(s.mes)}</h2>
         <div class="painel-corpo">
@@ -93,15 +104,35 @@ function lerLancamento(raiz, tipo) {
   if (!v(`${p}-pessoa`)) erros[`${p}-pessoa`] = 'Escolha quem recebe.';
   if (texto.length < (premio ? 2 : 3)) erros[premio ? 'pr-desc' : 'aj-motivo'] = premio ? 'Informe a campanha.' : 'Escreva o motivo (3 letras ou mais).';
   if (!(valor >= 0.01 && valor <= 1000000)) erros[`${p}-valor`] = 'Valor de R$ 0,01 a R$ 1.000.000,00.';
-  return { erros, tipo, comissionado_id: v(`${p}-pessoa`), texto, valor, acrescimo: !premio && v('aj-tipo') === 'acrescimo' };
+  return { erros, tipo, comissionado_id: v(`${p}-pessoa`), texto, valor, valorTexto: v(`${p}-valor`), acrescimo: !premio && v('aj-tipo') === 'acrescimo' };
 }
+
+// Quem vendeu sem cadastro: completa o cadastro (o diálogo do Cadastro) e devolve o id novo.
+// Fechou sem salvar: null, e o aviso diz que nada foi lançado.
+async function garantirCadastro(x) {
+  if (!String(x.comissionado_id).startsWith(PREFIXO_QLIK)) return x.comissionado_id;
+  const nome = String(x.comissionado_id).slice(PREFIXO_QLIK.length);
+  const novo = await completarCadastro(null, nome);
+  if (!novo) {
+    s?.ctx.toast(`${x.tipo === 'premio' ? 'Premiação não lançada' : 'Ajuste não lançado'}: falta o cadastro de ${nome}.`, { tom: 'erro', duracao: 7000 });
+    return null;
+  }
+  return novo.id;
+}
+
+const aPagarDe = id => resultadoDoMes()?.linhas.find(l => String(l.id) === String(id))?.valor_pagar;
 
 async function gravarLancamento({ tipo, comissionado_id, texto, valor, acrescimo }) {
   const c = comissoes.cadastro().find(x => String(x.id) === String(comissionado_id));
+  const antes = aPagarDe(comissionado_id);
   if (tipo === 'premio') await comissoes.lancarPremiacao({ mes: s.mes, comissionado_id, descricao: texto, valor });
   else await comissoes.lancarAjuste({ mes: s.mes, comissionado_id, motivo: texto, valor: acrescimo ? valor : -valor });
   await recalcular();
-  s.ctx.toast(tipo === 'premio' ? `Premiação de ${r$(valor)} lançada para ${c?.nome || ''}.` : `Ajuste de ${acrescimo ? '+' : '−'}${r$(valor)} lançado para ${c?.nome || ''}.`, { tom: 'sucesso' });
+  // O efeito no valor a pagar, com o resultado recalculado antes e depois.
+  const depois = aPagarDe(comissionado_id);
+  const efeito = antes != null && depois != null ? ` A pagar de ${c?.nome || ''}: ${r$(antes)} → ${r$(depois)}.` : '';
+  s.ctx.toast(tipo === 'premio' ? `Premiação lançada.${efeito || ` ${r$(valor)} para ${c?.nome || ''}.`}`
+    : `Ajuste lançado.${efeito || ` ${acrescimo ? '+' : '−'}${r$(valor)} para ${c?.nome || ''}.`}`, { tom: 'sucesso', duracao: 6000 });
 }
 
 async function lancar(form, tipo) {
@@ -109,24 +140,30 @@ async function lancar(form, tipo) {
   if (Object.keys(x.erros).length) { aplicarErros(form, x.erros); return; }
   const botao = $('button[type="submit"]', form);
   botao.disabled = true; botao.setAttribute('aria-busy', 'true');
+  const liberar = () => { if (botao.isConnected) { botao.disabled = false; botao.removeAttribute('aria-busy'); } };
   try {
-    await gravarLancamento(x);
+    const id = await garantirCadastro(x);
+    if (id == null) { liberar(); return; }   // o formulário continua preenchido
+    await gravarLancamento({ ...x, comissionado_id: id });
     redesenhar();
     $(`#${tipo === 'premio' ? 'pr' : 'aj'}-pessoa`, s.el)?.focus();
   } catch (e) {
     s.ctx.toast(detalhar(e).mensagem, { tom: 'erro' });
-    botao.disabled = false; botao.removeAttribute('aria-busy');
+    liberar();
   }
 }
 
-// Celular: um diálogo só, com a escolha entre premiação e ajuste.
-async function dialogoLancar() {
+// Celular: um diálogo só, com a escolha entre premiação e ajuste. pre: os valores de antes (reabrir preenchido).
+// Quem não tem cadastro: o diálogo fecha, abre o do cadastro e, se ele for cancelado, este volta preenchido.
+async function dialogoLancar(pre = null) {
   const pessoas = pessoasDoMes();
+  const tipoIni = pre?.tipo || 'premio';
+  let pendente = null;
   const v = await abrirDialogo({
     titulo: `Lançar em ${mesMinusculo(s.mes)}`,
-    corpo: html`${selecao({ id: 'lc-tipo', rotulo: 'O que lançar', obrigatorio: true, valor: 'premio', opcoes: [{ valor: 'premio', rotulo: 'Premiação de campanha' }, { valor: 'ajuste', rotulo: 'Ajuste (acréscimo ou desconto)' }] })}
-      <div data-lc="premio">${camposPremio(pessoas)}</div>
-      <div data-lc="ajuste" hidden>${camposAjuste(pessoas)}</div>`,
+    corpo: html`${selecao({ id: 'lc-tipo', rotulo: 'O que lançar', obrigatorio: true, valor: tipoIni, opcoes: [{ valor: 'premio', rotulo: 'Premiação de campanha' }, { valor: 'ajuste', rotulo: 'Ajuste (acréscimo ou desconto)' }] })}
+      <div data-lc="premio"${tipoIni === 'premio' ? '' : html` hidden`}>${camposPremio(pessoas, tipoIni === 'premio' && pre ? { ...pre, pessoa: pre.comissionado_id } : {})}</div>
+      <div data-lc="ajuste"${tipoIni === 'ajuste' ? '' : html` hidden`}>${camposAjuste(pessoas, tipoIni === 'ajuste' && pre ? { ...pre, pessoa: pre.comissionado_id } : {})}</div>`,
     acoes: [{ rotulo: 'Cancelar', valor: null, tipo: 'fantasma' }, { rotulo: 'Lançar', valor: 'lancar', tipo: 'primario', principal: true }],
     aoAbrir: d => {
       const desligar = ligarMascaras(d);
@@ -140,11 +177,18 @@ async function dialogoLancar() {
       erroNoDialogo(d, '');
       const x = lerLancamento(d, $('#lc-tipo', d).value);
       if (Object.keys(x.erros).length) { aplicarErros(d, x.erros); return false; }
+      if (String(x.comissionado_id).startsWith(PREFIXO_QLIK)) { pendente = x; return true; }
       try { await gravarLancamento(x); return true; }
       catch (e) { erroNoDialogo(d, detalhar(e).mensagem); return false; }
     },
   });
-  if (v === 'lancar' && s) redesenhar();
+  if (pendente && s) {
+    const id = await garantirCadastro(pendente);
+    if (id == null) { if (s) await dialogoLancar(pendente); return; }
+    try { await gravarLancamento({ ...pendente, comissionado_id: id }); }
+    catch (e) { s.ctx.toast(detalhar(e).mensagem, { tom: 'erro' }); }
+  }
+  if ((v === 'lancar' || pendente) && s) redesenhar();
 }
 
 async function remover(chave) {

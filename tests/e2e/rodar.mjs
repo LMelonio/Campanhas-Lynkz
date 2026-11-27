@@ -2774,7 +2774,8 @@ teste('v3.5: comissões — Premiações no celular: lista primeiro e o lançame
   await d.locator('#aj-tipo').selectOption('acrescimo');
   await d.locator('#aj-valor').fill('50,00');
   await d.locator('button[type="submit"]').click(); await d.waitFor({ state: 'detached' });
-  await toastCom(page, 'Ajuste de +R$ 50,00 lançado para Elielson Serpa Mendes');
+  await toastCom(page, 'Ajuste lançado');
+  afirma((await page.locator('.toast', { hasText: 'Ajuste lançado' }).innerText()).includes('Elielson Serpa Mendes'), 'aviso com o nome');
   await page.locator('#cm-t-ajuste').waitFor();
   const aj = (await db(page)).comissao_ajustes.find(x => x.motivo === 'Acerto de rota');
   afirma(aj && aj.valor === 50 && aj.mes === '2026-10', 'ajuste gravado: ' + JSON.stringify(aj));
@@ -3168,6 +3169,62 @@ teste('v3.6: comissões — PJ precisa dos dados de pagamento; no lote, PJ abre 
   igual(await ind.locator('#dc-regime').inputValue(), 'PJ', 'já vem como PJ');
   afirma(await ind.locator('#dc-pj-razao-social').isVisible(), 'com os campos do PJ');
 });
+
+teste('v3.6: comissões — premiar quem vendeu sem cadastro completa o cadastro e lança; cancelar não lança', async ({ page }) => {
+  await abrir(page, { rota: '#/comissoes?aba=premiacoes&mes=2026-10' });
+  await page.locator('#pr-pessoa optgroup[label="Sem cadastro"]').waitFor({ state: 'attached' });
+  const grupos = await page.locator('#pr-pessoa').evaluate(sel => [...sel.querySelectorAll('optgroup')].map(g => [g.label, [...g.children].map(o => o.textContent)]));
+  igual(grupos.map(g => g[0]).join(), 'Cadastrados,Sem cadastro', 'dois grupos');
+  afirma(grupos[1][1].join() === 'SEM CADASTRO LTDA (sem cadastro)', 'sem cadastro: só quem vendeu e comissiona: ' + JSON.stringify(grupos[1][1]));
+  afirma(!grupos.flatMap(g => g[1]).some(t => /TERRAZOO|Alesandro/.test(t)), 'sem quem não comissiona nem desativado');
+
+  // O aviso mostra o efeito no valor a pagar.
+  await page.selectOption('#pr-pessoa', '4');
+  await page.fill('#pr-desc', 'Campanha Vansil');
+  await page.fill('#pr-valor', '200,00');
+  await page.click('#cm-form-premio button[type="submit"]');
+  await toastCom(page, 'Premiação lançada. A pagar de Maria Amanda: R$ 1.057,18 → R$ 1.257,18.');
+
+  // Sem cadastro: cancelar o cadastro não lança e o formulário continua preenchido.
+  await page.selectOption('#pr-pessoa', 'qlik:SEM CADASTRO LTDA');
+  await page.fill('#pr-desc', 'Campanha Banni');
+  await page.fill('#pr-valor', '100,00');
+  await page.click('#cm-form-premio button[type="submit"]');
+  const d = page.locator('dialog', { hasText: 'Completar cadastro' }); await d.waitFor();
+  await page.keyboard.press('Escape'); await d.waitFor({ state: 'detached' });
+  await toastCom(page, 'Premiação não lançada: falta o cadastro de SEM CADASTRO LTDA.');
+  igual(await page.inputValue('#pr-desc'), 'Campanha Banni', 'o formulário continua preenchido');
+  igual((await db(page)).comissao_premiacoes.filter(p => p.descricao === 'Campanha Banni').length, 0, 'nada lançado');
+
+  // Completar: lança para o cadastro novo, sem digitar de novo.
+  await page.click('#cm-form-premio button[type="submit"]');
+  await d.waitFor();
+  await d.locator('button[type="submit"]').click(); await d.waitFor({ state: 'detached' });
+  await toastCom(page, 'Premiação lançada. A pagar de Sem Cadastro Ltda');
+  const banco = await db(page);
+  const novo = banco.comissionados.find(c => c.nomes_qlik.includes('SEM CADASTRO LTDA'));
+  afirma(novo && banco.comissao_premiacoes.some(p => p.comissionado_id === novo.id && p.descricao === 'Campanha Banni' && p.valor === 100), 'premiação para o id novo');
+  await page.click('[data-aba="apuracao"]');
+  // CLT 2,5% de R$ 1.530,40 = R$ 38,26, mais a premiação de R$ 100.
+  afirma(/Sem Cadastro Ltda[\s\S]*R\$ 138,26/.test(await page.locator('#cm-conteudo').innerText()), 'a premiação entra no valor a pagar');
+});
+
+teste('v3.6: comissões — no celular, premiar quem não tem cadastro e cancelar reabre o lançamento preenchido', async ({ page }) => {
+  await abrir(page, { rota: '#/comissoes?aba=premiacoes&mes=2026-10' });
+  await page.waitForFunction(() => !document.querySelector('#cm-conteudo .nota')?.textContent.includes('Busque as vendas'));
+  await page.click('#cm-lancar');
+  let d = page.locator('dialog', { hasText: 'Lançar em outubro' }); await d.waitFor();
+  await d.locator('#pr-pessoa').selectOption('qlik:SEM CADASTRO LTDA');
+  await d.locator('#pr-desc').fill('Campanha Banni');
+  await d.locator('#pr-valor').fill('100,00');
+  await d.locator('button[type="submit"]').click();
+  const cad = page.locator('dialog', { hasText: 'Completar cadastro' }); await cad.waitFor();
+  await page.keyboard.press('Escape'); await cad.waitFor({ state: 'detached' });
+  await toastCom(page, 'Premiação não lançada: falta o cadastro de SEM CADASTRO LTDA.');
+  d = page.locator('dialog', { hasText: 'Lançar em outubro' }); await d.waitFor();
+  igual(await d.locator('#pr-desc').inputValue(), 'Campanha Banni', 'volta preenchido');
+  igual(await d.locator('#pr-pessoa').inputValue(), 'qlik:SEM CADASTRO LTDA', 'com a pessoa escolhida');
+}, { largura: 390, altura: 844, toque: true });
 
 teste('v3.3: comissões — cadastro só edita quem veio do Qlik e avisa o que falta no PJ', async ({ page }) => {
   await abrir(page, { rota: '#/comissoes?aba=cadastro' });

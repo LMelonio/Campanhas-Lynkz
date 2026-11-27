@@ -42,13 +42,16 @@ export function campo({ id, rotulo, tipo = 'text', valor = '', dica = '', obriga
 }
 
 // opcoes: ['A', 'B'] ou [{ valor, rotulo }]
+// opcoes: ['A', 'B'] ou [{ valor, rotulo, grupo? }]. Com grupo, as opções vão em <optgroup>, na ordem em que aparecem.
 export function selecao({ id, rotulo, opcoes = [], valor = '', vazio = 'Selecione', dica = '', obrigatorio = false, opcional = false, classe = '' }) {
   const ops = opcoes.map(o => (typeof o === 'string' ? { valor: o, rotulo: o } : o));
+  const opcao = o => html`<option value="${o.valor}"${atributos({ selected: String(o.valor) === String(valor ?? '') })}>${o.rotulo}</option>`;
+  const grupos = [...new Set(ops.map(o => o.grupo).filter(Boolean))];
   return html`<div class="campo ${classe}" data-campo="${id}">
     ${rotuloHtml({ id, rotulo, obrigatorio, opcional })}
     <select id="${id}" name="${id}" aria-describedby="${descr(id, dica)}"${atributos({ 'aria-required': obrigatorio ? 'true' : false })}>
       <option value="">${vazio}</option>
-      ${ops.map(o => html`<option value="${o.valor}"${atributos({ selected: String(o.valor) === String(valor ?? '') })}>${o.rotulo}</option>`)}
+      ${grupos.length ? grupos.map(g => html`<optgroup label="${g}">${ops.filter(o => o.grupo === g).map(opcao)}</optgroup>`) : ops.map(opcao)}
     </select>
     ${rodape(id, dica)}
   </div>`;

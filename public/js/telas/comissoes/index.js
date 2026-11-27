@@ -94,7 +94,7 @@ function seletorMes() {
       ${fechado() || !naApuracao ? '' : html`<button type="button" class="btn ${r ? 'btn-fantasma' : 'btn-primario'}" id="cm-buscar"${s.buscando ? html` aria-busy="true" disabled` : ''}>${icone('repetir')} ${s.buscando ? 'Buscando no Qlik…' : 'Atualizar do Qlik'}</button>`}
     </div>
     ${naApuracao ? html`<p class="secao-nota cm-periodo">Vendas de ${dataBR(ap.inicio)} a ${dataBR(ap.fim)}<span class="cm-so-largo">, receita menos devolução, atacado regular</span>. ${textoFornecedores()}
-      O Contrato de Resultado olha ${mesMinusculo(ct.mes)} inteiro.</p>` : ''}</div>`;
+      <span class="cm-so-largo">O Contrato de Resultado olha ${mesMinusculo(ct.mes)} inteiro.</span></p>` : ''}</div>`;
 }
 
 const abaDe = params => {
