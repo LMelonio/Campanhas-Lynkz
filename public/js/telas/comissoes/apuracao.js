@@ -3,7 +3,7 @@
 // Os documentos e o fechamento do mês ficam em documentos.js.
 import { html, pintar, $, $$, ao } from '../../lib/dom.js';
 import { dataBR, horaBR } from '../../lib/regras.js';
-import { periodoApuracao } from '../../lib/comissoes.js';
+import { periodoApuracao, textoContrato } from '../../lib/comissoes.js';
 import { REGIMES, ROTULO_REGIME, ehPJ, pctPadrao, errosComissionado, novoDoQlik, secundariosDaLinha } from '../../lib/comissoes.js';
 import { comissoes } from '../../dados/comissoes.js';
 import { detalhar } from '../../dados/erros.js';
@@ -73,9 +73,10 @@ function resultadoHtml(r) {
 
 const alertasHtml = l => (l.alertas.length ? html`<small class="cm-alerta-linha">${icone('alerta')}<span>${l.alertas.map(a => a.texto).join(' ')}</span></small>` : '');
 
+// "01/10 a 31/10 · faturamento 105,9% · positivação 37 de 40": o contrato olha o mês anterior de calendário.
 function contratoHtml(c) {
   if (!c || c.motivo === 'Sem meta cadastrada') return html`<span class="cm-sub">Sem meta</span>`;
-  const conta = `Faturamento ${pct1(c.pct_faturamento)}, positivação ${c.positivados} de ${c.meta_positivacao}${c.informado ? ' (informado)' : ''}`;
+  const conta = `${textoContrato(s.mes).periodo} · faturamento ${pct1(c.pct_faturamento)} · positivação ${c.positivados} de ${c.meta_positivacao}${c.informado ? ' (informado)' : ''}`;
   return c.atingiu
     ? html`${r$(c.valor)}<small class="cm-sub">${conta}: ${pctTxt(c.pct_premio)}</small>`
     : html`<span class="cm-sub cm-nao">Não atingiu</span><small class="cm-sub">${conta}</small>`;
@@ -100,7 +101,7 @@ function tabela(titulo, ls, pj, total, cols) {
     <div class="tabela-caixa cm-caixa-pessoas"><table class="tabela cm-tabela">
       <thead><tr><th scope="col">${pj ? 'Representante' : 'Vendedor'}</th><th scope="col" class="num">Venda principal</th>
         ${cols.secundarios.map(x => html`<th scope="col" class="num">${x.nome}</th>`)}${cols.outros ? html`<th scope="col" class="num">Outros</th>` : ''}
-        <th scope="col" class="num">Comissão</th><th scope="col" class="num">Prêmios</th><th scope="col" class="num">${pj ? 'Contrato de Resultado' : 'Acordo mínimo'}</th><th scope="col" class="num">A pagar</th></tr></thead>
+        <th scope="col" class="num">Comissão</th><th scope="col" class="num">Prêmios</th><th scope="col" class="num">${pj ? `Contrato (${textoContrato(s.mes).curto})` : 'Acordo mínimo'}</th><th scope="col" class="num">A pagar</th></tr></thead>
       <tbody>${ls.map(l => html`<tr>
         <td data-rotulo="${pj ? 'Representante' : 'Vendedor'}" class="principal"><strong>${l.nome} <span class="cm-pagar-nome tabular" aria-hidden="true">${r$(l.valor_pagar)}</span></strong>
           <small class="cm-sub">${regimeTxt(l)}</small>${alertasHtml(l)}
@@ -110,7 +111,7 @@ function tabela(titulo, ls, pj, total, cols) {
         ${cols.outros ? html`<td data-rotulo="Outros" class="num tabular">${r$(l.venda_outros || 0)}</td>` : ''}
         <td data-rotulo="Comissão" class="num tabular">${r$(l.comissao_total)}</td>
         <td data-rotulo="Prêmios" class="num tabular">${l.premiacoes ? r$(l.premiacoes) : '—'}${l.ajustes ? html`<small class="cm-sub">Ajustes ${sinal(l.ajustes)}</small>` : ''}</td>
-        <td data-rotulo="${pj ? 'Contrato de Resultado' : 'Acordo mínimo'}" class="num tabular">${pj ? contratoHtml(l.contrato)
+        <td data-rotulo="${pj ? `Contrato (${textoContrato(s.mes).curto})` : 'Acordo mínimo'}" class="num tabular">${pj ? contratoHtml(l.contrato)
           : l.acordo ? html`${r$(l.acordo.valor)}${l.piso_aplicado ? html`<small class="cm-sub">Paga o acordo</small>` : ''}` : '—'}</td>
         <td data-rotulo="A pagar" class="num tabular cm-pagar">${r$(l.valor_pagar)}</td>
       </tr>`)}</tbody>
@@ -154,7 +155,7 @@ function cartao(l, pj) {
         ${linha('Comissão', r$(l.comissao_total))}
         ${linha('Prêmios', l.premiacoes ? r$(l.premiacoes) : '—')}
         ${l.ajustes ? linha('Ajustes', sinal(l.ajustes)) : ''}
-        ${pj ? linha('Contrato de Resultado', contratoHtml(l.contrato)) : linha('Acordo mínimo', l.acordo ? `${r$(l.acordo.valor)}${l.piso_aplicado ? ' (paga o acordo)' : ''}` : '—')}
+        ${pj ? linha(`Contrato (${textoContrato(s.mes).curto})`, contratoHtml(l.contrato)) : linha('Acordo mínimo', l.acordo ? `${r$(l.acordo.valor)}${l.piso_aplicado ? ' (paga o acordo)' : ''}` : '—')}
         ${linha('A pagar', r$(l.valor_pagar))}
       </dl>
       ${botaoRecibo(l, pj)}

@@ -3258,6 +3258,17 @@ teste('v3.6: comissões — Cadastro com todos os vendedores: CLT, PJ, Sem cadas
   afirma((await page.locator('#cm-lista').innerText()).includes('Sem Cadastro Ltda'), 'entrou no grupo CLT');
 });
 
+teste('v3.6: comissões — o Contrato diz que é o mês anterior de calendário (inclusive em janeiro)', async ({ page }) => {
+  await previaOutubro(page);
+  igual(await page.locator('#cm-t-pj + .tabela-caixa thead th').nth(5).innerText(), 'CONTRATO (SETEMBRO)', 'coluna com o mês');
+  afirma((await page.locator('#cm-t-pj + .tabela-caixa').innerText()).includes('01/09 a 30/09 · faturamento'), 'linha com o período');
+  await page.click('[data-aba="contrato"]');
+  igual(await page.locator('#cm-t-contrato').innerText(), 'Metas e realizado de setembro de 2026 (mês anterior fechado, 01/09 a 30/09)', 'título da aba');
+  await page.goto(`${BASE}/?papel=aprovador#/comissoes?aba=contrato&mes=2027-01`);
+  await page.locator('#cm-t-contrato', { hasText: 'dezembro de 2026' }).waitFor();
+  igual(await page.locator('#cm-t-contrato').innerText(), 'Metas e realizado de dezembro de 2026 (mês anterior fechado, 01/12 a 31/12)', 'janeiro olha dezembro do ano anterior');
+});
+
 teste('v3.3: comissões — cadastro só edita quem veio do Qlik e avisa o que falta no PJ', async ({ page }) => {
   await abrir(page, { rota: '#/comissoes?aba=cadastro' });
   await page.locator('.usuarios-lista').first().waitFor();

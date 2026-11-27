@@ -10,7 +10,7 @@ import {
   periodoApuracao, mesAnteriorFechado, somaMes, rotuloMesComissao, chaveNome, nomeQlik, centavos, arred,
   acordoVigente, juntarVendas, realizadosContrato, avaliarContrato, calcularLinha, apurarMes,
   errosComissionado, pctPadrao, PARAMETROS_PADRAO, nomeLegivel, novoDoQlik, cadastroDaCopia,
-  regrasFornecedores, classificarVendas, pctSecundario, vendasFormato2, regrasParaCopia, regrasDaCopia, secundariosDaLinha,
+  textoContrato, regrasFornecedores, classificarVendas, pctSecundario, vendasFormato2, regrasParaCopia, regrasDaCopia, secundariosDaLinha,
 } from '../public/js/lib/comissoes.js';
 
 test('novos no Qlik (v3.4): cadastro com o regime e os % padrão, nome legível', () => {
@@ -35,6 +35,12 @@ test('períodos: apuração 26 a 25 e mês anterior fechado', () => {
   assert.equal(somaMes('2026-12', 1), '2027-01');
   assert.equal(rotuloMesComissao('2026-10'), 'Outubro 2026');
   assert.throws(() => periodoApuracao('2026-13'));
+});
+
+test('contrato (v3.6): textos com o mês anterior de calendário, inclusive na virada do ano', () => {
+  assert.deepEqual(textoContrato('2026-11'), { mes: 'outubro de 2026', barra: 'outubro/2026', curto: 'outubro', periodo: '01/10 a 31/10' });
+  assert.deepEqual(textoContrato('2027-01'), { mes: 'dezembro de 2026', barra: 'dezembro/2026', curto: 'dezembro', periodo: '01/12 a 31/12' });
+  assert.equal(textoContrato('2028-03').periodo, '01/02 a 29/02', 'fevereiro bissexto');
 });
 
 test('dinheiro: centavos arredondam meio centavo para longe do zero', () => {

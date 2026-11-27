@@ -4,7 +4,7 @@
 //  Quem desenha: comissoes-pdf.js (recibo e ADP) e comissoes-excel.js (SheetJS).
 //  Testes: tests/comissoes-documentos.test.mjs.
 // ============================================================
-import { ehPJ, rotuloMesComissao, arred, centavos, reais, secundariosDaLinha } from './comissoes.js';
+import { ehPJ, rotuloMesComissao, arred, centavos, reais, secundariosDaLinha, textoContrato, somaMes } from './comissoes.js';
 import { cpfValido, cnpjValido } from './regras.js';
 
 const soDigitos = v => String(v ?? '').replace(/\D/g, '');
@@ -33,7 +33,7 @@ export const pendenciasPj = c => CAMPOS_PJ.filter(([, , ok]) => !ok(c)).map(([, 
 
 // ---------- recibo ----------
 // Linhas do recibo de um PJ: [{ descricao, base, pct, valor }] (base e pct só nas comissões sobre venda).
-// contratoMes: mês avaliado no Contrato de Resultado ("2026-09").
+// contratoMes: mês avaliado no Contrato de Resultado ("2026-09"): "Contrato de Resultado de setembro/2026 (01/09 a 30/09)".
 export function itensRecibo(l, { contratoMes = '' } = {}) {
   const itens = [{ descricao: 'Comissão sobre a venda principal', base: l.venda_principal, pct: l.pct_principal, valor: l.comissao_principal }];
   // Uma linha por secundário com venda no mês, e "Outros fornecedores".
@@ -42,7 +42,8 @@ export function itensRecibo(l, { contratoMes = '' } = {}) {
   }
   if (l.venda_outros || l.comissao_outros) itens.push({ descricao: 'Comissão sobre outros fornecedores', base: l.venda_outros, pct: l.pct_outros ?? 0, valor: l.comissao_outros });
   if (l.contrato_valor) {
-    itens.push({ descricao: `Premiação Contrato de Resultado${contratoMes ? ` (meta de ${mesMinusculo(contratoMes)})` : ''}`, base: null, pct: null, valor: l.contrato_valor });
+    const tc = contratoMes ? textoContrato(somaMes(contratoMes, 1)) : null;
+    itens.push({ descricao: `Contrato de Resultado${tc ? ` de ${tc.barra} (${tc.periodo})` : ''}`, base: null, pct: null, valor: l.contrato_valor });
   }
   for (const p of l.premiacoes_lista || []) itens.push({ descricao: `Premiação de campanha: ${p.descricao}`, base: null, pct: null, valor: p.valor });
   for (const a of l.ajustes_lista || []) itens.push({ descricao: `${a.valor < 0 ? 'Desconto' : 'Acréscimo'}: ${a.motivo}`, base: null, pct: null, valor: a.valor });

@@ -84,7 +84,7 @@ test('recibo: comissões, contrato e cada premiação; só PJ com valor a pagar'
   const a = r.linhas.find(l => l.id === 5);
   const itens = itensRecibo(a, { contratoMes: '2026-09' });
   assert.deepEqual(itens.map(i => i.descricao), [
-    'Comissão sobre a venda principal', 'Premiação Contrato de Resultado (meta de setembro 2026)', 'Premiação de campanha: Campanha Farmina',
+    'Comissão sobre a venda principal', 'Contrato de Resultado de setembro/2026 (01/09 a 30/09)', 'Premiação de campanha: Campanha Farmina',
     'Desconto: Desconto de adiantamento']);
   assert.equal(itens.reduce((s, i) => s + i.valor, 0).toFixed(2), a.valor_pagar.toFixed(2), 'itens somam o total');
   assert.deepEqual([itens[0].base, itens[0].pct, itens[0].valor], [118401.89, 5, 5920.09]);

@@ -108,6 +108,16 @@ export function mesAnteriorFechado(mes) {
   return { inicio: iso(Date.UTC(a, m - 2, 1)), fim: iso(Date.UTC(a, m - 1, 0)), mes: iso(Date.UTC(a, m - 2, 1)).slice(0, 7) };
 }
 
+// Textos do Contrato de Resultado: o mês avaliado é o mês anterior de calendário (01 ao último dia).
+// Apuração de "2026-11" → { mes: 'outubro de 2026', barra: 'outubro/2026', curto: 'outubro', periodo: '01/10 a 31/10' }.
+export function textoContrato(mesApuracao) {
+  const ct = mesAnteriorFechado(mesApuracao);
+  const [a, m] = ct.mes.split('-');
+  const nome = MESES[Number(m) - 1].toLowerCase();
+  const dm = iso => `${iso.slice(8, 10)}/${iso.slice(5, 7)}`;
+  return { mes: `${nome} de ${a}`, barra: `${nome}/${a}`, curto: nome, periodo: `${dm(ct.inicio)} a ${dm(ct.fim)}` };
+}
+
 export const mesDe = civil => String(civil || '').slice(0, 7);
 // "2026-10" → mês anterior / seguinte.
 export function somaMes(mes, n) {
