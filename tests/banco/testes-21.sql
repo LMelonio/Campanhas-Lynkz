@@ -103,6 +103,20 @@ set role anon;
 select t21.falha($$select * from comissao_fornecedores$$, 'permission denied', 'visitante não lê');
 reset role;
 
+-- ---------- 7. rollback leva o % de hoje do Farelo para os Parâmetros ----------
 select t21.logar('');
+update comissao_fornecedores f set pct_clt = 1.75, pct_televendas = 0.8, pct_pj = 2.25
+  from comissao_parametros p where f.codigo = p.cod_farelo;
+\ir ../../sql/migracoes/21-rollback.sql
+select t21.ok((select pct_clt_farelo = 1.75 and pct_televendas_farelo = 0.8 and pct_pj_farelo = 2.25 from comissao_parametros),
+  'rollback copia os % do Farelo de depois da 21 para os Parâmetros');
+select t21.ok(to_regclass('public.comissao_fornecedores') is null, 'rollback tira a tabela de fornecedores');
+\ir ../../sql/migracoes/21-rollback.sql
+select t21.ok(true, 'rollback roda duas vezes');
+-- Volta a 21 (a semente parte dos % de agora) para os testes seguintes.
+\ir ../../sql/migracoes/21-fornecedores-da-comissao.sql
+select t21.ok((select f.pct_clt = 1.75 from comissao_fornecedores f join comissao_parametros p on f.codigo = p.cod_farelo),
+  'reaplicar a 21 semeia o Farelo com os % de agora');
+
 drop schema t21 cascade;
 \echo 'TESTES DA 21 PASSARAM'
