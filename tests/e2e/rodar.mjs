@@ -2643,11 +2643,11 @@ teste('v3.1: sem pedidos a terceiros (fonte no próprio site) e Excel com a bibl
 // ============================================================
 //  v3.2: comissões (cadastro, parâmetros e prévia do mês)
 // ============================================================
+// Apuração de outubro: abrir o mês já busca no Qlik sozinho (v3.6); espera a busca terminar.
 async function previaOutubro(page) {
-  await abrir(page, { rota: '#/comissoes' });
-  await page.selectOption('#cm-mes', '2026-10');
-  await page.click('#cm-buscar');
-  await page.locator('.cm-destaque').waitFor();
+  await abrir(page, { rota: '#/comissoes?aba=apuracao&mes=2026-10' });
+  await page.locator('.cm-total').waitFor();
+  await page.locator('#cm-buscar:not([disabled])').waitFor();
 }
 
 teste('v3.2: comissões — só administrador vê o menu e a tela', async ({ page }) => {
@@ -2666,7 +2666,7 @@ teste('v3.3: comissões — apuração separa Farelo, aplica acordo e contrato e
   afirma(/Seldiana[\s\S]*R\$ 3\.607,04[\s\S]*R\$ 2\.051,85[\s\S]*R\$ 5\.658,89/.test(texto), 'PJ: 3% + 2% e contrato 1,2%');
   afirma(texto.includes('Novos no Qlik') && texto.includes('SEM CADASTRO LTDA') && !texto.includes('Alesandro'), 'novos no Qlik listados; desativado fora');
   igual(await page.locator('[data-ligar], #cm-novo').count(), 0, 'sem "Ligar a alguém" nem "Novo comissionado"');
-  afirma(texto.includes('Não comissionam: TERRAZOO'), 'TERRAZOO ignorado');
+  afirma(texto.includes('TERRAZOO · R$ 40.210,77'), 'TERRAZOO no card "Não comissionam"');
   const vio = (await axe(page, 'Comissões apuração')).filter(x => ['critical', 'serious'].includes(x.impacto));
   afirma(!vio.length, 'acessibilidade: ' + JSON.stringify(vio));
   // Completar o cadastro de quem chegou do Qlik: soma na hora, sem consultar o Qlik de novo.
@@ -2824,10 +2824,9 @@ teste('v3.4: comissões — novos no Qlik em lote: marcar dois e cadastrar como 
   await page.fill('#cp-nomes_ignorados', '');
   await page.click('#cm-form-param button[type="submit"]');
   await page.locator('.cm-alterado').waitFor();
-  await page.click('[data-aba="apuracao"]');
-  await page.selectOption('#cm-mes', '2026-10');
-  await page.click('#cm-buscar');
+  await page.goto(`${BASE}/?papel=aprovador#/comissoes?aba=apuracao&mes=2026-10`);
   await page.locator('.cm-lote').waitFor();
+  await page.locator('#cm-buscar:not([disabled])').waitFor();
   igual(await page.locator('[data-lote]').count(), 2, 'dois novos com caixa de marcar');
   await page.click('#cm-lote-ok');
   await toastCom(page, 'Marque pelo menos um');
@@ -3171,13 +3170,57 @@ teste('v3.3: comissões — parâmetros validam, gravam e pedem nova consulta', 
 });
 
 teste('v3.2: comissões — erro do Qlik aparece com o que fazer', async ({ page }) => {
-  await abrir(page, { rota: '#/comissoes' });
-  await page.selectOption('#cm-mes', { index: 1 });
-  await page.route('**/api/qlik/comissoes', r => r.fulfill({ status: 502, contentType: 'application/json', body: '{"erro":"O Qlik demorou demais para responder."}' }));
-  await page.click('#cm-buscar');
+  let chamadas = 0;
+  await page.route('**/api/qlik/comissoes', r => { chamadas++; return r.fulfill({ status: 502, contentType: 'application/json', body: '{"erro":"O Qlik demorou demais para responder."}' }); });
+  await abrir(page, { rota: '#/comissoes?aba=apuracao&mes=2026-10' });
   await page.locator('.nota-alerta', { hasText: 'O Qlik demorou demais para responder.' }).waitFor();
-  igual(await page.locator('.cm-destaque').count(), 0, 'sem resultado antigo na tela');
+  igual(await page.locator('.cm-destaque').count(), 0, 'sem resultado na tela');
+  await page.waitForTimeout(800);
+  igual(chamadas, 1, 'depois do erro, não tenta sozinho de novo');
+  await page.unroute('**/api/qlik/comissoes');
+  await page.click('#cm-tentar-qlik');
+  await page.locator('.cm-total').waitFor();
+  igual(await page.locator('.cm-erro-qlik').count(), 0, '"Tentar de novo" busca e o erro some');
 });
+
+teste('v3.6: comissões — Apuração busca sozinha; "Não comissionam" é o último bloco; mês fechado não chama o Qlik', async ({ page }) => {
+  let chamadas = 0;
+  page.on('request', rq => { if (rq.url().includes('/api/qlik/comissoes')) chamadas++; });
+  await abrir(page, { rota: '#/comissoes?aba=apuracao&mes=2026-11' });
+  await page.locator('.cm-total').waitFor();
+  igual(chamadas, 1, 'o total aparece sem clique (uma busca)');
+  igual((await page.locator('#cm-buscar').innerText()).trim(), 'Atualizar do Qlik', 'o botão só atualiza');
+  const ultimo = await page.evaluate(() => [...document.querySelectorAll('#cm-conteudo section')].at(-1)?.className);
+  afirma(/cm-nao-comissionam/.test(ultimo), '"Não comissionam" é o último bloco: ' + ultimo);
+  const card = await page.locator('.cm-nao-comissionam').innerText();
+  afirma(card.includes('TERRAZOO · R$ 40.210,77') && card.includes('Vendas sem vendedor no Qlik · R$ 87,50') && card.includes('R$ 40.298,27'), 'nomes, sem vendedor e o total: ' + card);
+  const vio = (await axe(page, 'Comissões não comissionam')).filter(x => ['critical', 'serious'].includes(x.impacto));
+  afirma(!vio.length, 'acessibilidade: ' + JSON.stringify(vio));
+  // Voltar a comissionar: sai da lista e vira "novo".
+  await page.click('[data-voltar-comissionar="TERRAZOO"]');
+  await page.locator('dialog', { hasText: 'Voltar a comissionar TERRAZOO?' }).locator('button[type="submit"]').click();
+  await toastCom(page, 'TERRAZOO volta a comissionar');
+  afirma((await page.locator('.cm-sem').innerText()).includes('TERRAZOO'), 'aparece em Novos no Qlik');
+  igual((await db(page)).comissao_parametros[0].nomes_ignorados.length, 0, 'saiu dos parâmetros');
+  // Trocar de mês busca sozinho; voltar a um mês já buscado não busca de novo.
+  await page.selectOption('#cm-mes', '2026-10');
+  await page.locator('.cm-destaque', { hasText: 'outubro 2026' }).waitFor();
+  igual(chamadas, 2, 'outubro buscou sozinho');
+  // Fecha outubro e volta: a cópia aparece sem Qlik.
+  await page.click('#cm-fechar');
+  await page.click('dialog button[type="submit"]');
+  await page.locator('#cm-reabrir').waitFor();
+  await page.goto(`${BASE}/?papel=aprovador#/comissoes?aba=apuracao&mes=2026-10`);
+  await page.locator('#cm-reabrir').waitFor();
+  await page.waitForTimeout(600);
+  igual(chamadas, 2, 'mês fechado não chama o Qlik');
+});
+
+teste('v3.6: comissões em 1024 px — o valor a pagar aparece também ao lado do nome', async ({ page }) => {
+  await previaOutubro(page);
+  const nome = await page.locator('#cm-t-clt + .tabela-caixa td.principal', { hasText: 'Elielson' }).innerText();
+  afirma(nome.includes('R$ 4.880,12'), 'valor ao lado do nome: ' + nome);
+}, { largura: 1024, altura: 768 });
 
 teste('v3.2: comissões no celular (360 px) e no tema escuro — sem rolagem lateral e acessível', async ({ page }) => {
   await previaOutubro(page);

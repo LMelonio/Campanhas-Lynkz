@@ -91,7 +91,7 @@ function seletorMes() {
   const naApuracao = s.aba === 'apuracao';
   return html`<div class="cm-cabeca"><div class="cm-consulta">
       ${selecao({ id: 'cm-mes', rotulo: 'Mês da apuração', opcoes: meses.map(m => ({ valor: m, rotulo: rotuloMesComissao(m) })), valor: s.mes, vazio: 'Escolha o mês' })}
-      ${fechado() || !naApuracao ? '' : html`<button type="button" class="btn ${r ? 'btn-fantasma' : 'btn-primario'}" id="cm-buscar"${s.buscando ? html` aria-busy="true" disabled` : ''}>${icone('repetir')} ${s.buscando ? 'Buscando no Qlik…' : r ? 'Atualizar do Qlik' : 'Buscar vendas no Qlik'}</button>`}
+      ${fechado() || !naApuracao ? '' : html`<button type="button" class="btn ${r ? 'btn-fantasma' : 'btn-primario'}" id="cm-buscar"${s.buscando ? html` aria-busy="true" disabled` : ''}>${icone('repetir')} ${s.buscando ? 'Buscando no Qlik…' : 'Atualizar do Qlik'}</button>`}
     </div>
     ${naApuracao ? html`<p class="secao-nota cm-periodo">Vendas de ${dataBR(ap.inicio)} a ${dataBR(ap.fim)}<span class="cm-so-largo">, receita menos devolução, atacado regular</span>. ${textoFornecedores()}
       O Contrato de Resultado olha ${mesMinusculo(ct.mes)} inteiro.</p>` : ''}</div>`;
@@ -106,6 +106,9 @@ const rotaDe = (aba, mes) => `#/comissoes?aba=${aba}${mes ? `&mes=${mes}` : ''}`
 // Põe o mês no endereço sem criar entrada no histórico do navegador.
 const marcarEndereco = () => { if (s?.mes) s.ctx.navegar(rotaDe(s.aba, s.mes), { substituir: true }); };
 
+// Nas abas do mês, mês aberto sem consulta busca no Qlik sozinho (uma vez por mês na sessão).
+const buscarSeFaltar = () => { if (ABAS_DO_MES.includes(s?.aba)) apuracao.buscarSeFaltar(); };
+
 async function trocarMes(mes) {
   const meu = s;
   s.mes = mesLembrado = mes; s.erroQlik = null;
@@ -114,7 +117,7 @@ async function trocarMes(mes) {
     if (s !== meu) return;
     s.resultado = await comissoes.apurar(mes, { buscar: false });
   } catch (e) { if (s === meu) s.ctx.toast(detalhar(e).mensagem, { tom: 'erro' }); }
-  if (s === meu) { marcarEndereco(); desenhar(); }
+  if (s === meu) { marcarEndereco(); desenhar(); buscarSeFaltar(); }
 }
 
 async function carregar() {
@@ -129,7 +132,7 @@ async function carregar() {
     s.resultado = await comissoes.apurar(s.mes, { buscar: false });
     s.pronto = true;
   } catch (e) { if (s === meu) s.erro = detalhar(e).mensagem; }
-  if (s === meu) desenhar();
+  if (s === meu) { desenhar(); if (s.pronto) buscarSeFaltar(); }
 }
 
 export function montar(el, ctx, params) {
@@ -162,4 +165,5 @@ export function atualizar(params) {
     s.mes = mesLembrado = mes;
   }
   desenhar();
+  if (s.pronto) buscarSeFaltar();
 }

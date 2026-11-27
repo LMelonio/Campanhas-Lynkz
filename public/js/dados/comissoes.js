@@ -218,6 +218,11 @@ export const comissoes = {
     return this.salvarParametros({ nomes_ignorados: lista });
   },
   ignorarNome(nome) { return this.ignorarNomes([nome]); },
+  // Tira o nome dos que não comissionam (ele volta a aparecer em "Novos no Qlik").
+  voltarAComissionar(nome) {
+    const lista = this.parametros().nomes_ignorados.filter(x => chaveNome(x) !== chaveNome(nome));
+    return this.salvarParametros({ nomes_ignorados: lista });
+  },
 
   // ---------- o mês: premiações e dados do PJ (metas, realizado informado, NF) ----------
   // Lê do banco as premiações e os dados do PJ do mês. A tela chama ao trocar de mês.

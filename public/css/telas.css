@@ -501,3 +501,20 @@ a.det-empresa:hover { text-decoration-color: currentColor; }
 .cm-sec-linha + .cm-sec-linha { border-top: 1px solid var(--line); padding-top: var(--e-3); }
 .cm-sec-padrao { margin: 0 0 var(--e-1); font-size: var(--t-14); }
 #cp-principal .pessoas { margin-bottom: var(--e-3); }
+
+/* Apuração (v3.6): busca sozinha, "Não comissionam" discreto e o valor a pagar ao lado do nome. */
+.cm-erro-qlik { flex-wrap: wrap; align-items: center; }
+.cm-erro-qlik .btn { margin-left: auto; }
+.cm-buscando .destaque-rotulo { margin: 0; }
+.cm-nao-comissionam { background: var(--card-2); box-shadow: none; }
+.cm-nao-comissionam, .cm-nao-comissionam .painel-titulo { color: var(--ink-2); }
+.cm-nao-comissionam .painel-titulo { display: flex; justify-content: space-between; gap: var(--e-3); margin: 0; }
+.cm-nao-comissionam summary { list-style: none; cursor: pointer; min-height: var(--tap); }
+.cm-nao-comissionam summary::-webkit-details-marker { display: none; }
+.cm-nao-comissionam details:not([open]) .painel-titulo span:first-child::after { content: ' ▸'; }
+.cm-nao-lista { margin: 0; padding: 0; list-style: none; }
+.cm-nao-lista li { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--e-1) var(--e-3);
+  padding: var(--e-2) var(--e-4); border-top: 1px solid var(--line); font-size: var(--t-14); }
+.cm-nao-lista .btn-texto { min-height: var(--tap); }
+.cm-pagar-nome { display: none; }
+@media (min-width: 601px) and (max-width: 1024px) { .cm-pagar-nome { display: inline; margin-left: var(--e-2); font-weight: 700; } }

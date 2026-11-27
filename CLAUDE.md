@@ -120,6 +120,8 @@ Tela: `export function montar(el, ctx, params) → desmontar`. `ctx`: `perfil`, 
 - Apuração: o total (fixo no topo até 600 px, com as pendências), Novos e Desativados, as pessoas (tabela; até 600 px um
   cartão por pessoa com "Ver conta") e, no fim, documentos junto de "Fechar mês". Buscar no Qlik e o período só na Apuração.
   Premiações até 600 px: lista primeiro e "Lançar premiação / ajuste" num diálogo.
+  Nas abas do mês, mês aberto sem consulta busca no Qlik sozinho (uma vez por mês na sessão; erro mostra "Tentar de novo"
+  e não repete). O último bloco é "Não comissionam" (nomes ignorados com "Voltar a comissionar" e vendas sem vendedor).
 - Histórico: "Fechar mês" fica numa faixa própria no fim da Apuração, com o que falta (Novos no Qlik, cadastro dos PJ,
   NF de todos pela ADP); o botão só fica em destaque quando nada falta. Grava em `comissao_fechamentos` a cópia (cálculo, cadastro usado, premiações, ajustes, parâmetros).
   Mês fechado trava premiações, ajustes, contrato e NF (trigger no banco); documentos saem da cópia (o Excel sem a aba

@@ -3,6 +3,7 @@
 // Os documentos e o fechamento do mês ficam em documentos.js.
 import { html, pintar, $, $$, ao } from '../../lib/dom.js';
 import { dataBR, horaBR } from '../../lib/regras.js';
+import { periodoApuracao } from '../../lib/comissoes.js';
 import { REGIMES, ROTULO_REGIME, ehPJ, pctPadrao, errosComissionado, novoDoQlik, secundariosDaLinha } from '../../lib/comissoes.js';
 import { comissoes } from '../../dados/comissoes.js';
 import { detalhar } from '../../dados/erros.js';
@@ -16,9 +17,24 @@ import { editar } from './cadastro.js';
 
 export function desenhar() {
   const r = s.resultado;
+  const p = periodoApuracao(s.mes, comissoes.parametros().dia_corte);
+  const dm = d => dataBR(d).slice(0, 5);
   return html`
-    ${s.erroQlik ? html`<p class="nota nota-alerta" role="alert">${icone('alerta')}<span>${s.erroQlik}</span></p>` : ''}
-    ${s.buscando && !r ? carregando(2) : r ? resultadoHtml(r) : html`<p class="nota">${icone('info')}<span>Escolha o mês e busque as vendas. As pessoas vêm do Qlik; premiações e metas do Contrato ficam gravadas nas outras abas.</span></p>`}`;
+    ${s.erroQlik ? html`<div class="nota nota-alerta cm-erro-qlik" role="alert">${icone('alerta')}<span>${s.erroQlik}</span>
+      <button type="button" class="btn btn-fantasma btn-pequeno" id="cm-tentar-qlik"${s.buscando ? html` disabled` : ''}>${icone('repetir')} Tentar de novo</button></div>` : ''}
+    ${s.buscando && !r ? html`<section class="destaque cm-destaque cm-buscando" aria-busy="true">
+        <p class="destaque-rotulo" role="status" aria-live="polite">Buscando as vendas de ${dm(p.inicio)} a ${dm(p.fim)} no Qlik…</p>
+      </section>${carregando(2)}`
+      : r ? resultadoHtml(r) : s.erroQlik ? '' : html`<p class="nota">${icone('info')}<span>As vendas do mês vêm do Qlik. Premiações e metas do Contrato ficam gravadas nas outras abas.</span></p>`}`;
+}
+
+// Abriu um mês aberto sem consulta (nem na memória, nem gravada): busca sozinho, uma vez por mês nesta sessão.
+// Erro não tenta de novo sozinho: fica o "Tentar de novo".
+const autoBuscado = new Set();
+export function buscarSeFaltar() {
+  if (!s || s.resultado || s.buscando || s.erroQlik || comissoes.fechado(s.mes) || autoBuscado.has(s.mes)) return;
+  autoBuscado.add(s.mes);
+  buscar();
 }
 
 function resultadoHtml(r) {
@@ -51,11 +67,8 @@ function resultadoHtml(r) {
 
     ${tabela('Vendedores CLT', clt, false, t.clt.valor_pagar, colunasFornecedor(r.linhas))}
     ${tabela('Representantes PJ', pj, true, t.pj.valor_pagar, colunasFornecedor(r.linhas))}
-    ${r.consulta.sem_vendedor || r.ignorados.length ? html`<p class="secao-nota cm-rodape">${[
-      r.consulta.sem_vendedor ? `${r$(r.consulta.sem_vendedor)} em vendas sem vendedor no Qlik ficaram de fora.` : '',
-      r.ignorados.length ? `Não comissionam: ${r.ignorados.map(x => `${x.vendedor} (${r$(x.total)})`).join(', ')}. Para mudar, vá em Parâmetros.` : '',
-    ].filter(Boolean).join(' ')}</p>` : ''}
-    ${f ? documentosHtml(r) : faixaFechar(r)}`;
+    ${f ? documentosHtml(r) : faixaFechar(r)}
+    ${naoComissionamHtml(r)}`;
 }
 
 const alertasHtml = l => (l.alertas.length ? html`<small class="cm-alerta-linha">${icone('alerta')}<span>${l.alertas.map(a => a.texto).join(' ')}</span></small>` : '');
@@ -89,7 +102,7 @@ function tabela(titulo, ls, pj, total, cols) {
         ${cols.secundarios.map(x => html`<th scope="col" class="num">${x.nome}</th>`)}${cols.outros ? html`<th scope="col" class="num">Outros</th>` : ''}
         <th scope="col" class="num">Comissão</th><th scope="col" class="num">Prêmios</th><th scope="col" class="num">${pj ? 'Contrato de Resultado' : 'Acordo mínimo'}</th><th scope="col" class="num">A pagar</th></tr></thead>
       <tbody>${ls.map(l => html`<tr>
-        <td data-rotulo="${pj ? 'Representante' : 'Vendedor'}" class="principal"><strong>${l.nome}</strong>
+        <td data-rotulo="${pj ? 'Representante' : 'Vendedor'}" class="principal"><strong>${l.nome} <span class="cm-pagar-nome tabular" aria-hidden="true">${r$(l.valor_pagar)}</span></strong>
           <small class="cm-sub">${regimeTxt(l)}</small>${alertasHtml(l)}
           ${botaoRecibo(l, pj)}</td>
         <td data-rotulo="Venda principal" class="num tabular">${r$(l.venda_principal)}</td>
@@ -152,18 +165,51 @@ function cartao(l, pj) {
 
 async function buscar() {
   if (s.buscando) return;
-  const meu = s;
+  const meu = s, mes = s.mes;
   s.buscando = true; s.erroQlik = null;
   redesenhar();
-  try {
-    const r = await comissoes.apurar(s.mes);
-    if (s === meu) s.resultado = r;
-  } catch (e) {
-    if (s === meu) s.erroQlik = detalhar(e).mensagem;
-  }
+  let r = null, erro = null;
+  try { r = await comissoes.apurar(mes); }
+  catch (e) { erro = detalhar(e).mensagem; }
   if (s !== meu) return;
   s.buscando = false;
+  // Trocou de mês no meio da busca: o resultado é de outro mês (fica na memória para quando voltar).
+  if (s.mes === mes) { if (erro) s.erroQlik = erro; else s.resultado = r; }
   redesenhar();
+}
+
+// ---------- Não comissionam (último bloco) ----------
+// Nomes que não comissionam e vendas sem vendedor: fora da comissão, mostrados de forma discreta.
+function naoComissionamHtml(r) {
+  const semVendedor = Number(r.consulta?.sem_vendedor) || 0;
+  if (!r.ignorados.length && !semVendedor) return '';
+  const total = r.ignorados.reduce((t, x) => t + Math.round(x.total * 100), 0) / 100 + semVendedor;
+  // No celular começa fechado (só o título e o total); no computador, aberto.
+  const aberto = !window.matchMedia('(max-width: 600px)').matches;
+  return html`<section class="painel cm-nao-comissionam" aria-labelledby="cm-t-nao"><details${aberto ? html` open` : ''}>
+    <summary><h2 class="painel-titulo" id="cm-t-nao"><span>Não comissionam</span><span class="tabular">${r$(total)}</span></h2></summary>
+    <ul class="cm-nao-lista">
+      ${r.ignorados.map(x => html`<li><span>${x.vendedor} · <span class="tabular">${r$(x.total)}</span></span>
+        ${r.fechado ? '' : html`<button type="button" class="btn btn-texto btn-pequeno" data-voltar-comissionar="${x.vendedor}" aria-label="Voltar a comissionar ${x.vendedor}">Voltar a comissionar</button>`}</li>`)}
+      ${semVendedor ? html`<li><span>Vendas sem vendedor no Qlik · <span class="tabular">${r$(semVendedor)}</span></span></li>` : ''}
+    </ul>
+  </details></section>`;
+}
+
+export async function voltarAComissionar(nome) {
+  const ok = await confirmar({
+    titulo: `Voltar a comissionar ${nome}?`,
+    descricao: 'O nome sai da lista dos que não comissionam e aparece em "Novos no Qlik" para completar o cadastro.',
+    confirmar: 'Voltar a comissionar',
+  });
+  if (!ok || !s) return false;
+  try {
+    await comissoes.voltarAComissionar(nome);
+    await recalcular();
+    s.ctx.toast(`${nome} volta a comissionar.`, { tom: 'sucesso' });
+    redesenhar();
+    return true;
+  } catch (e) { s.ctx.toast(detalhar(e).mensagem, { tom: 'erro' }); return false; }
 }
 
 // ---------- Novos no Qlik ----------
@@ -312,6 +358,8 @@ async function aplicarLote() {
 export function ligar(el) {
   return [
     ao(el, 'click', '#cm-buscar', buscar),
+    ao(el, 'click', '#cm-tentar-qlik', buscar),
+    ao(el, 'click', '[data-voltar-comissionar]', (e, b) => voltarAComissionar(b.dataset.voltarComissionar)),
     ao(el, 'click', '[data-ignorar]', (e, b) => ignorarNome(b.dataset.ignorar)),
     ao(el, 'click', '[data-completar]', (e, b) => editar(null, b.dataset.completar)),
     ao(el, 'click', '[data-reativar]', (e, b) => reativar(b.dataset.reativar)),
