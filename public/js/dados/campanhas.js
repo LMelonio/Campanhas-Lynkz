@@ -135,6 +135,14 @@ export const campanhas = {
       .order('data_emissao').order('numero')) || [];
   },
 
+  // Relê campanhas que mudaram por fora (ex.: excluir_balconista solta o balconista delas).
+  async reler(ids) {
+    for (const id of ids) {
+      const { linha, nova } = await relerLinha(id);
+      avisar({ tipo: 'linha', id, campanha: linha, nova, origem: 'local' });
+    }
+  },
+
   // Só decide se ainda estiver Pendente. Se outra pessoa decidiu antes,
   // nenhuma linha muda e o erro diz quem foi.
   async decidir(id, status, motivo = null) {

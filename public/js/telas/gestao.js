@@ -1,12 +1,13 @@
 // Gestão: lista de empresas (#/gestao) e ficha da empresa (#/gestao/empresas/:id) com seus balconistas.
 // Empresas vêm do Qlik; aqui só se cadastram balconistas (limite por empresa, contando desativados).
+// Para liberar a vaga, o administrador exclui o cadastro (excluir_balconista, migração 18).
 import { html, pintar, $, ao, debounce } from '../lib/dom.js';
 import { calc, brl, dataBR, contem, maskCNPJ, maskCPF, maskTelefone, STATUS, LIMITES } from '../lib/regras.js';
 import { icone } from '../ui/icones.js';
 import { cartao, vazio, seloNeutro } from '../ui/pecas.js';
-import { confirmar } from '../ui/avisos.js';
+import { confirmar, abrirDialogo, erroNoDialogo } from '../ui/avisos.js';
 import { estadoLista } from '../ui/estado.js';
-import { campoBusca, ligarBusca } from '../ui/campos.js';
+import { campoBusca, ligarBusca, areaTexto, aplicarErros } from '../ui/campos.js';
 import { dialogoEmpresa, dialogoBalconista, totalBalconistas, empresaCheia } from '../ui/cadastro-dialogos.js';
 import { CHAVE_EMPRESA_SUGERIDA } from './nova.js';
 import { ehDoQlik, textoBuscaEmpresa } from '../dados/cadastros.js';
@@ -160,7 +161,7 @@ function desenharFicha() {
             aria-describedby="fx-vagas">${icone('mais')} Cadastrar</button>
         </h3>
         <p class="painel-corpo campo-dica" id="fx-vagas">${!e.ativo ? 'Empresa desativada não recebe balconista novo.'
-          : cheia ? `Limite de ${max} balconistas atingido (contando os desativados). Para trocar a pessoa, edite um dos cadastros.`
+          : cheia ? `Limite de ${max} balconistas atingido (contando os desativados). ${ctx.ehAprovador ? 'Para trocar a pessoa, exclua um dos cadastros (precisa ser administrador).' : 'Peça a um administrador para excluir um dos cadastros.'}`
           : `Cabe${max - total === 1 ? '' : 'm'} mais ${max - total} ${max - total === 1 ? 'balconista' : 'balconistas'}. Eles aparecem para escolha na Nova campanha.`}</p>
         ${balcs.length ? html`<ul class="balconistas">${balcs.map(b => html`<li class="balconista${b.ativo ? '' : ' inativo'}">
           <div class="balconista-dados">
@@ -171,6 +172,7 @@ function desenharFicha() {
           <div class="acoes">
             <button type="button" class="btn btn-fantasma btn-pequeno" data-editar-balc="${b.id}" aria-label="Editar ${b.nome_completo}">${icone('editar')} Editar</button>
             <button type="button" class="btn ${b.ativo ? 'btn-perigo' : 'btn-fantasma'} btn-pequeno" data-ativo-balc="${b.id}" aria-label="${b.ativo ? 'Desativar' : 'Reativar'} ${b.nome_completo}">${b.ativo ? 'Desativar' : 'Reativar'}</button>
+            ${ctx.ehAprovador ? html`<button type="button" class="btn btn-texto btn-texto-perigo btn-pequeno" data-excluir-balc="${b.id}" aria-label="Excluir ${b.nome_completo}">${icone('lixeira')} Excluir</button>` : ''}
           </div>
         </li>`)}</ul>` : html`<p class="painel-corpo campo-dica">Nenhum balconista ${filtros.balcInativos ? '' : 'ativo '}cadastrado.</p>`}
         ${nInativos ? html`<div class="painel-corpo"><label class="interruptor sem-caixa" for="fx-balc-inativos">
@@ -222,6 +224,36 @@ async function alternarBalconista(ctx, b) {
   } catch (err) { ctx.toast(err.message, { tom: 'erro' }); }
 }
 
+// Exclusão (só administrador; o banco confere de novo, barra campanha pendente e guarda a cópia).
+async function excluirBalconista(ctx, b) {
+  const ids = ctx.campanhas.todas().filter(c => String(c.balconista_id) === String(b.id)).map(c => c.id);
+  let excluido = false;
+  await abrirDialogo({
+    titulo: `Excluir ${b.nome_completo}?`,
+    descricao: 'Libera a vaga na empresa. As campanhas já decididas guardam quem recebeu. Não dá para desfazer pelo app; a cópia fica no histórico de exclusões.'
+      + (ids.length ? ` Está em ${ids.length} ${ids.length === 1 ? 'campanha' : 'campanhas'}.` : ''),
+    corpo: areaTexto({ id: 'xb-motivo', rotulo: 'Motivo', obrigatorio: true, dica: 'Ex.: saiu da loja, cadastro em duplicidade.', atributos: { maxlength: 500 } }),
+    acoes: [
+      { rotulo: 'Voltar', valor: null, tipo: 'fantasma' },
+      { rotulo: 'Excluir balconista', valor: 'excluir', tipo: 'perigo', principal: true },
+    ],
+    aoAbrir: d => $('#xb-motivo', d).focus(),
+    antesDeFechar: async (_v, d) => {
+      erroNoDialogo(d, '');
+      const motivo = $('#xb-motivo', d).value.trim();
+      if (motivo.length < 3) { aplicarErros(d, { 'xb-motivo': 'Escreva o motivo (pelo menos 3 letras).' }); return false; }
+      try { await ctx.cadastros.excluirBalconista(b.id, motivo); }
+      catch (err) { erroNoDialogo(d, err.message); return false; }
+      excluido = true;
+      return true;
+    },
+  });
+  if (!excluido) return;
+  ctx.toast(`${b.nome_completo} excluído. A vaga está livre.`, { tom: 'sucesso' });
+  // As campanhas dele mudaram no banco (balconista_id nulo, dados de quem recebeu): relê da view.
+  try { await ctx.campanhas.reler(ids); } catch (e) { console.warn('Não consegui reler as campanhas do balconista excluído', e); }
+}
+
 function montarFicha() {
   const { el, ctx } = s;
   const empresaAtual = () => ctx.cadastros.empresa(s.params.empresa);
@@ -240,6 +272,7 @@ function montarFicha() {
       if (b) ctx.toast('Dados do balconista salvos.', { tom: 'sucesso' });
     }),
     ao(el, 'click', '[data-ativo-balc]', (ev, btn) => alternarBalconista(ctx, ctx.cadastros.balconista(btn.dataset.ativoBalc))),
+    ao(el, 'click', '[data-excluir-balc]', (ev, btn) => { const b = ctx.cadastros.balconista(btn.dataset.excluirBalc); if (b && ctx.ehAprovador) excluirBalconista(ctx, b); }),
     ao(el, 'click', '[data-nova-empresa]', (ev, a) => {
       try { sessionStorage.setItem(CHAVE_EMPRESA_SUGERIDA, a.dataset.novaEmpresa); } catch { /* segue sem sugestão */ }
     }),

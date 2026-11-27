@@ -693,6 +693,56 @@ teste('gestão: ficha edita empresa, cadastra/edita/desativa balconista e desati
   afirma(await page.locator('#fx-novo-balc').isDisabled(), 'empresa desativada não recebe balconista');
 });
 
+teste('gestão: administrador exclui balconista desativado, a vaga abre e a campanha aprovada mantém quem recebe; coordenador não vê Excluir; balconista com campanha pendente é barrado', async ({ page }) => {
+  // Pet Center (empresa 2): João (2) com a campanha Swile pendente; Ana (3) desativada, com uma aprovada Swile sem os dados de quem recebe.
+  const preparar = () => page.evaluate(() => {
+    const d = JSON.parse(sessionStorage.getItem('simulado-db-v3'));
+    d.balconistas.find(b => b.id === 3).ativo = false;
+    d.campanhas.push({ ...d.campanhas.find(c => c.id === 2), id: 99, codigo: 'C26119999', campanha: 'Balconista do mês passado', balconista_id: 3, status: 'Aprovada',
+      aprovador_nome: 'Ana Aprovadora', data_decisao: '2026-10-31', swile_nome_completo: null, swile_cpf: null, swile_data_nascimento: null, swile_email: null, swile_telefone: null });
+    sessionStorage.setItem('simulado-db-v3', JSON.stringify(d));
+  });
+  await abrir(page, { papel: 'coordenador', rota: '#/gestao/empresas/2' });
+  await preparar();
+  await page.goto(`${BASE}/?papel=coordenador#/gestao/empresas/2`);
+  await page.locator('#fx-vagas').waitFor();
+  igual(await page.locator('[data-excluir-balc]').count(), 0, 'coordenador não vê Excluir');
+  afirma((await page.locator('#fx-vagas').innerText()).includes('Peça a um administrador'), 'coordenador é orientado a pedir ao administrador');
+
+  await abrir(page, { rota: '#/gestao/empresas/2' });
+  await preparar();
+  await page.goto(`${BASE}/?papel=aprovador#/gestao/empresas/2`);
+  await page.locator('#fx-vagas').waitFor();
+  afirma((await page.locator('#fx-vagas').innerText()).includes('exclua um dos cadastros'), 'administrador vê como liberar a vaga');
+  afirma(await page.locator('#fx-novo-balc').isDisabled(), 'empresa cheia');
+
+  await page.click('[data-excluir-balc="2"]');
+  let d = page.locator('dialog.dialogo'); await d.waitFor();
+  await d.locator('#xb-motivo').fill('Saiu da loja'); await d.locator('button[type="submit"]').click();
+  await d.locator('text=1 campanha(s) pendente(s)').waitFor({ timeout: 5000 });
+  await page.keyboard.press('Escape'); await d.waitFor({ state: 'detached' });
+  afirma((await db(page)).balconistas.some(b => b.id === 2), 'balconista com campanha pendente continua cadastrado');
+
+  await page.click('label[for="fx-balc-inativos"]');
+  await page.click('[data-excluir-balc="3"]');
+  d = page.locator('dialog.dialogo'); await d.waitFor();
+  afirma(/Excluir Ana Beatriz Costa\?/.test(await d.innerText()) && /Está em 1 campanha/.test(await d.innerText()), 'diálogo com o nome e as campanhas');
+  await d.locator('button[type="submit"]').click();
+  afirma((await erroDo(page, 'xb-motivo').innerText()).includes('motivo'), 'motivo é obrigatório');
+  await d.locator('#xb-motivo').fill('Saiu da loja'); await d.locator('button[type="submit"]').click(); await d.waitFor({ state: 'detached' });
+  await toastCom(page, 'Ana Beatriz Costa excluído');
+  const banco = await db(page);
+  afirma(!banco.balconistas.some(b => b.id === 3), 'cadastro apagado');
+  const c = banco.campanhas.find(x => x.id === 99);
+  afirma(c.balconista_id === null && c.swile_nome_completo === 'Ana Beatriz Costa' && c.swile_cpf === '39053344705', 'campanha aprovada guarda quem recebeu');
+  igual(banco.balconistas_excluidos?.length, 1, 'cópia no histórico de exclusões');
+  await page.waitForFunction(() => !document.querySelector('#fx-novo-balc').disabled, null, { timeout: 5000 });
+  afirma((await page.locator('.vagas').innerText()).includes('1 de 2'), 'a vaga abriu');
+
+  await page.goto(`${BASE}/?papel=aprovador#/campanhas/99`);
+  await page.locator('#conteudo', { hasText: 'Ana Beatriz Costa' }).waitFor({ timeout: 5000 });
+});
+
 teste('usuários: administrador libera conta, muda papel com confirmação e não se rebaixa', async ({ page }) => {
   await abrir(page, { rota: '#/inicio' });
   await page.locator('#menu a[data-nav="usuarios"]').first().waitFor({ state: 'attached' });

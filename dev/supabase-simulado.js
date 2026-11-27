@@ -245,7 +245,7 @@ function inserir(tabela, d) {
   }
   if (tabela === 'balconistas') {
     // Migração 12: no máximo 2 por empresa, contando os desativados.
-    if (db.balconistas.filter(b => b.empresa_id == d.empresa_id).length >= 2) return { error: erro('Esta empresa já tem 2 balconistas cadastrados, que é o limite. Edite um deles na ficha da empresa.') };
+    if (db.balconistas.filter(b => b.empresa_id == d.empresa_id).length >= 2) return { error: erro('Esta empresa já tem 2 balconistas cadastrados, que é o limite. Para trocar a pessoa, um administrador exclui um deles na ficha da empresa.') };
     if (!cpfValido(d.cpf)) return { error: erro('violates check constraint "balconistas_cpf_valido"', '23514') };
     if (db.balconistas.some(b => b.empresa_id == d.empresa_id && b.cpf === d.cpf)) return { error: erro('duplicate key value violates unique constraint "balconistas_empresa_cpf_unico"', '23505') };
     const r = { ativo: true, ...d, empresa_id: +d.empresa_id, id: ++db.seq.balconistas, criado_em: new Date().toISOString(), criado_por: u.id };
@@ -414,6 +414,35 @@ function excluirCampanha({ p_id: id, p_motivo: motivo = '' }) {
   return { data: { id: c.id, codigo: c.codigo }, error: null };
 }
 
+// excluir_balconista(p_id, p_motivo): só administrador ativo; motivo de 3 a 500 letras; barra campanha
+// pendente; campanha Swile decidida sem quem recebe ganha os dados do cadastro; balconista_id vira null.
+function excluirBalconista({ p_id: id, p_motivo: motivo = '' }) {
+  const u = usuario();
+  if (!u) return { data: null, error: erro('JWT expired', 'PGRST301') };
+  if (!(u.papel === 'aprovador' && u.ativo)) return { data: null, error: erro('Só um administrador exclui balconistas.', '42501') };
+  const m = String(motivo ?? '').trim().replace(/\s+/g, ' ');
+  if (m.length < 3 || m.length > 500) return { data: null, error: erro('Escreva o motivo da exclusão (de 3 a 500 caracteres).') };
+  const i = db.balconistas.findIndex(b => b.id == id);
+  if (i < 0) return { data: null, error: erro('Balconista não encontrado. Talvez outra pessoa já tenha excluído.') };
+  const b = db.balconistas[i];
+  const dele = db.campanhas.filter(c => c.balconista_id == b.id);
+  const pend = dele.filter(c => c.status === 'Pendente').length;
+  if (pend) return { data: null, error: erro(`Este balconista está em ${pend} campanha(s) pendente(s). Decida ou troque o balconista antes de excluir.`) };
+  for (const c of dele) {
+    if (c.forma_pagamento === 'Swile' && c.swile_nome_completo == null) {
+      Object.assign(c, { swile_nome_completo: b.nome_completo, swile_cpf: b.cpf, swile_data_nascimento: b.data_nascimento, swile_email: b.email, swile_telefone: b.telefone });
+    }
+    c.balconista_id = null;
+  }
+  db.balconistas.splice(i, 1);
+  (db.balconistas_excluidos ||= []).push({ balconista_id: b.id, empresa_id: b.empresa_id, nome_completo: b.nome_completo, motivo: m, excluido_por: u.id,
+    dados: { balconista: b, campanhas: dele.map(c => c.id) } });
+  gravarDb();
+  dele.forEach(c => emitir('campanhas', 'UPDATE', c));
+  emitir('balconistas', 'DELETE', b);
+  return { data: { id: b.id, campanhas: dele.length }, error: null };
+}
+
 // ---------- tempo real ----------
 const canais = new Set();
 function emitir(tabela, eventType, row) {
@@ -527,6 +556,7 @@ export const sb = {
     const rodar = () => {
       if (nome === 'definir_perfil') return definirPerfil(args);
       if (nome === 'excluir_campanha') return excluirCampanha(args);
+      if (nome === 'excluir_balconista') return excluirBalconista(args);
       if (nome !== 'enviar_campanha') return { data: null, error: erro(`Could not find the function public.${nome} in the schema cache`, 'PGRST202') };
       const r = enviarCampanha(args);
       return r.error ? { data: null, error: r.error } : r;

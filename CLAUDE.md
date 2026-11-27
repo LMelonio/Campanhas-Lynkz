@@ -64,7 +64,9 @@ Tela: `export function montar(el, ctx, params) → desmontar`. `ctx`: `perfil`, 
   Com 2 ou mais, a divisão opcional grava `fornecedores` (`[{nome, meta, investimento_industria}]`) e os totais em `meta` e
   `investimento_industria`. Rebate com um % e um teto; `partilha()` reparte pela meta de cada fornecedor.
 - Marcas da consulta do Qlik: até 10 (`MAX_MARCAS`), gravadas em `compras_marca` separadas por "; ".
-- Até 2 balconistas por empresa, contando desativados. Empresas vêm do Qlik (o app só edita telefone e observações).
+- Até 2 balconistas por empresa, contando desativados. Para liberar vaga, administrador exclui pela ficha: `excluir_balconista()`
+  (migração 18) barra campanha pendente, grava quem recebe nas Swile decididas e guarda a cópia em `balconistas_excluidos`.
+  Empresas vêm do Qlik (o app só edita telefone e observações).
 - Decisão: `ui/decisao.js` é a única lógica de aprovar/recusar (aprovação com 5 s para desfazer).
 - Exclusão: só administrador, pelo detalhe, com motivo. `campanhas.excluir()` → função `excluir_campanha()` (migração 15),
   que guarda a campanha e as notas em `campanhas_excluidas` antes de apagar. O app não tem DELETE direto em nenhuma tabela.
