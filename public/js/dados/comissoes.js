@@ -3,7 +3,8 @@
 // este módulo junta banco + Qlik + cálculo para a tela pedir só "apure este mês".
 import { sb } from '../lib/supabase.js';
 import { exigir, ErroApp } from './erros.js';
-import { PARAMETROS_PADRAO, periodoApuracao, mesAnteriorFechado, nomeQlik, chaveNome, apurarMes, cadastroDaCopia } from '../lib/comissoes.js';
+import { PARAMETROS_PADRAO, periodoApuracao, mesAnteriorFechado, nomeQlik, chaveNome, apurarMes, cadastroDaCopia,
+  regrasFornecedores, regrasDaCopia, excecoesLegado, pctSecundario, pctPadrao, nomeLegivel, juntarVendas } from '../lib/comissoes.js';
 
 const NUMEROS_PARAMETROS = Object.keys(PARAMETROS_PADRAO).filter(k => typeof PARAMETROS_PADRAO[k] === 'number');
 const NUMEROS_CADASTRO = ['pct_principal', 'pct_farelo', 'acordo_minimo', 'meta_faturamento', 'meta_positivacao'];
@@ -13,9 +14,14 @@ const CAMPOS = ['nome', 'regime', 'equipe', 'pct_principal', 'pct_farelo', 'nome
 
 // numeric do Postgres pode chegar como texto: tudo vira número aqui.
 const numero = v => (v === null || v === undefined || v === '' ? null : Number(v));
+const NUMEROS_OUTROS = ['pct_outros_clt', 'pct_outros_televendas', 'pct_outros_pj'];
+const NUMEROS_FORNECEDOR = ['pct_clt', 'pct_televendas', 'pct_pj'];
+const lerFornecedor = f => { const r = { ...f }; for (const k of NUMEROS_FORNECEDOR) r[k] = numero(r[k]); return r; };
 function lerParametros(linha) {
   const p = { ...PARAMETROS_PADRAO, ...(linha || {}) };
   for (const k of NUMEROS_PARAMETROS) p[k] = Number(p[k]);
+  for (const k of NUMEROS_OUTROS) p[k] = numero(p[k]);
+  p.principal_modo = p.principal_modo === 'lista' ? 'lista' : 'todos';
   p.cod_farelo = String(p.cod_farelo);
   p.nomes_ignorados = Array.isArray(p.nomes_ignorados) ? p.nomes_ignorados : [];
   return p;
@@ -41,8 +47,11 @@ export function camposComissionado(d) {
 const porNome = (a, b) => a.nome.localeCompare(b.nome, 'pt-BR', { sensitivity: 'base' });
 let lista = null;            // cadastro em memória
 let params = null;           // parâmetros em memória
+let fornecedores = null;     // comissao_fornecedores (migração 21); null = ainda sem a tabela (vale o Farelo dos Parâmetros)
+let excecoes = [];           // comissao_excecoes, com o código do fornecedor: [{ id, comissionado_id, fornecedor_id, codigo, pct }]
 const consultas = new Map(); // mês → resposta do Qlik desta sessão (a tela recalcula sem consultar de novo)
 const doMes = new Map();     // mês → { premiacoes: [], ajustes: [], mesPj: [], fechamento, consulta } do banco
+let ultima;                  // consulta gravada do mês mais recente (undefined = ainda não lida; null = nenhuma)
 
 const lerPremiacao = r => ({ ...r, valor: Number(r.valor) });
 const lerMesPj = r => {
@@ -81,15 +90,15 @@ async function postarQlik(corpo, sinal) {
 async function pedirAoQlik(mes, sinal) {
   const ap = periodoApuracao(mes, params.dia_corte);
   const ct = mesAnteriorFechado(mes);
-  const corpo = await postarQlik({ apuracao_inicio: ap.inicio, apuracao_fim: ap.fim, contrato_inicio: ct.inicio, contrato_fim: ct.fim, cod_farelo: params.cod_farelo }, sinal);
-  const q = { ...corpo, cod_farelo: params.cod_farelo, dia_corte: params.dia_corte };
+  const corpo = await postarQlik({ apuracao_inicio: ap.inicio, apuracao_fim: ap.fim, contrato_inicio: ct.inicio, contrato_fim: ct.fim }, sinal);
+  const q = { ...corpo, dia_corte: params.dia_corte };
   const gravada = await gravarConsulta(mes, q);
   return gravada ? { ...q, consultado_em: gravada.consultado_em, gravada: true } : q;
 }
 
 // Grava a consulta do mês (uma linha por mês). Se não der, a apuração segue com a da memória.
 async function gravarConsulta(mes, q) {
-  const dados = { apuracao: q.apuracao, contrato: q.contrato, cod_farelo: q.cod_farelo, dia_corte: q.dia_corte };
+  const dados = { formato: q.formato || 1, apuracao: q.apuracao, contrato: q.contrato, dia_corte: q.dia_corte, ...(q.cod_farelo ? { cod_farelo: q.cod_farelo } : {}) };
   const atual = doMes.get(mes)?.consulta;
   const tabela = () => sb.from('comissao_consultas');
   let r = atual
@@ -101,24 +110,86 @@ async function gravarConsulta(mes, q) {
     return null;
   }
   doMesOuNovo(mes).consulta = r.data;
+  if (ultima !== undefined && (!ultima || r.data.mes >= ultima.mes)) ultima = r.data;
   return r.data;
 }
 
 export const comissoes = {
   // Cadastro e parâmetros do banco para a memória. Chamar ao abrir a tela.
   async carregar() {
-    const [linhas, p] = await Promise.all([
+    const [linhas, p, f, e] = await Promise.all([
       sb.from('comissionados').select('*').order('nome'),
       sb.from('comissao_parametros').select('*').eq('id', 1).maybeSingle(),
+      sb.from('comissao_fornecedores').select('*').order('id'),
+      sb.from('comissao_excecoes').select('*').order('id'),
     ]);
     lista = (exigir(linhas) || []).map(lerComissionado).sort(porNome);
     params = lerParametros(exigir(p));
+    // Sem a migração 21, o app segue com o Farelo dos Parâmetros e o pct_farelo de cada pessoa.
+    if (f.error && !semTabela(f.error)) exigir(f);
+    fornecedores = f.error ? null : (f.data || []).map(lerFornecedor);
+    const codigoDe = new Map((fornecedores || []).map(x => [x.id, x.codigo]));
+    excecoes = e.error ? [] : (e.data || []).map(x => ({ ...x, pct: Number(x.pct), codigo: codigoDe.get(x.fornecedor_id) }));
   },
   cadastro: () => lista || [],
   parametros: () => params || lerParametros(null),
+  // Tem a tabela de fornecedores (migração 21)? Sem ela, a tela de Parâmetros mostra o Farelo antigo.
+  temFornecedores: () => fornecedores != null,
+  fornecedores: () => fornecedores || [],
+  // Exceções de uma pessoa (ou de todas): [{ comissionado_id, fornecedor_id, codigo, pct }].
+  excecoes: (comissionadoId = null) => (comissionadoId == null ? excecoes : excecoes.filter(x => String(x.comissionado_id) === String(comissionadoId))),
+  // Regras de fornecedor de hoje para um mês (vale_de <= mês).
+  regras(mes) { return regrasFornecedores(this.parametros(), fornecedores, mes); },
+  // Exceções que valem no cálculo: as da tabela (21) ou, sem ela, o pct_farelo de cada pessoa.
+  excecoesDoCalculo(cadastro = lista || []) {
+    return fornecedores == null ? excecoesLegado(cadastro, this.parametros().cod_farelo) : excecoes;
+  },
+
+  // Secundário novo ou alterado. dados: { codigo, nome, grupo, pct_clt, pct_televendas, pct_pj, vale_de, ativo }.
+  async salvarFornecedor(dados, id = null) {
+    const campos = {};
+    for (const k of ['nome', 'grupo', 'pct_clt', 'pct_televendas', 'pct_pj', 'vale_de', 'ativo']) if (k in dados) campos[k] = dados[k];
+    if (id == null) campos.codigo = String(dados.codigo).trim();
+    const linha = lerFornecedor(exigir(id == null
+      ? await sb.from('comissao_fornecedores').insert(campos).select('*').single()
+      : await sb.from('comissao_fornecedores').update(campos).eq('id', id).select('*').single()));
+    fornecedores = [...(fornecedores || []).filter(x => x.id !== linha.id), linha].sort((a, b) => a.id - b.id);
+    return linha;
+  },
+  // Lista do principal ("só estes fornecedores"): liga os códigos da lista e desliga os que saíram.
+  async salvarListaPrincipal(codigos) {
+    const quero = new Set(codigos.map(x => String(x).trim()).filter(Boolean));
+    for (const f of this.fornecedores().filter(x => x.grupo === 'principal')) {
+      if (quero.has(f.codigo) !== (f.ativo !== false)) await this.salvarFornecedor({ ativo: quero.has(f.codigo) }, f.id);
+      quero.delete(f.codigo);
+    }
+    for (const codigo of quero) {
+      const outro = this.fornecedores().find(x => x.codigo === codigo);
+      if (outro) throw new ErroApp(`O fornecedor ${codigo} já é secundário (${outro.nome}). Tire-o dos secundários antes.`);
+      await this.salvarFornecedor({ codigo, nome: `Fornecedor ${codigo}`, grupo: 'principal' });
+    }
+  },
+  // % de um secundário só para uma pessoa. pct null = volta ao padrão do regime (ninguém apaga: grava o padrão).
+  async salvarExcecao(comissionadoId, fornecedorId, pct) {
+    const c = (lista || []).find(x => String(x.id) === String(comissionadoId));
+    const f = this.fornecedores().find(x => x.id === fornecedorId);
+    const atual = excecoes.find(x => String(x.comissionado_id) === String(comissionadoId) && x.fornecedor_id === fornecedorId);
+    const padrao = c && f ? pctSecundario(c, regrasFornecedores(this.parametros(), [f]).secundarios[0], []) : null;
+    const valor = pct == null ? padrao : pct;
+    if (valor == null || (!atual && pct == null)) return null;
+    if (atual && Number(atual.pct) === Number(valor)) return atual;
+    const r = exigir(atual
+      ? await sb.from('comissao_excecoes').update({ pct: valor }).eq('id', atual.id).select('*').single()
+      : await sb.from('comissao_excecoes').insert({ comissionado_id: Number(comissionadoId), fornecedor_id: fornecedorId, pct: valor }).select('*').single());
+    const linha = { ...r, pct: Number(r.pct), codigo: f?.codigo };
+    excecoes = [...excecoes.filter(x => x.id !== linha.id), linha];
+    return linha;
+  },
 
   async salvar(dados, id = null) {
     const campos = camposComissionado(dados);
+    // pct_farelo é obsoleto desde a 21, mas é obrigatório no banco e o rollback lê dele: grava o % efetivo do Farelo.
+    if (fornecedores != null && !('pct_farelo' in dados)) campos.pct_farelo = this.pctFareloEfetivo({ ...(lista || []).find(x => x.id === id), ...dados, id });
     const linha = lerComissionado(exigir(id == null
       ? await sb.from('comissionados').insert(campos).select('*').single()
       : await sb.from('comissionados').update(campos).eq('id', id).select('*').single()));
@@ -126,9 +197,17 @@ export const comissoes = {
     return linha;
   },
 
+  // % do Farelo de uma pessoa (exceção, senão o padrão do regime): vai para a coluna obsoleta pct_farelo.
+  pctFareloEfetivo(c) {
+    const p = this.parametros();
+    const f = this.fornecedores().find(x => x.codigo === p.cod_farelo && x.grupo === 'secundario');
+    const pct = f ? pctSecundario(c, regrasFornecedores(p, [f]).secundarios[0], c.id == null ? [] : excecoes) : null;
+    return pct ?? pctPadrao(c.regime, p).farelo;
+  },
+
   async salvarParametros(dados) {
     const campos = {};
-    for (const k of [...NUMEROS_PARAMETROS, 'cod_farelo', 'nomes_ignorados']) if (k in dados) campos[k] = dados[k];
+    for (const k of [...NUMEROS_PARAMETROS, ...NUMEROS_OUTROS, 'principal_modo', 'cod_farelo', 'nomes_ignorados']) if (k in dados) campos[k] = dados[k];
     params = lerParametros(exigir(await sb.from('comissao_parametros').update(campos).eq('id', 1).select('*').single()));
     return params;
   },
@@ -141,6 +220,11 @@ export const comissoes = {
     return this.salvarParametros({ nomes_ignorados: lista });
   },
   ignorarNome(nome) { return this.ignorarNomes([nome]); },
+  // Tira o nome dos que não comissionam (ele volta a aparecer em "Novos no Qlik").
+  voltarAComissionar(nome) {
+    const lista = this.parametros().nomes_ignorados.filter(x => chaveNome(x) !== chaveNome(nome));
+    return this.salvarParametros({ nomes_ignorados: lista });
+  },
 
   // ---------- o mês: premiações e dados do PJ (metas, realizado informado, NF) ----------
   // Lê do banco as premiações e os dados do PJ do mês. A tela chama ao trocar de mês.
@@ -157,6 +241,32 @@ export const comissoes = {
       mesPj: (exigir(m) || []).map(lerMesPj), fechamento: lerFechamento(exigir(f)), consulta: q.error ? null : q.data });
     return doMes.get(mes);
   },
+  // Nome do fornecedor nas consultas do Qlik já lidas (formato 2), para sugerir no diálogo do secundário.
+  nomeFornecedorNaConsulta(codigo) {
+    if (!/^\d{1,10}$/.test(String(codigo || ''))) return '';
+    const fontes = [...consultas.values(), ...[...doMes.values()].map(m => m.consulta?.dados).filter(Boolean)];
+    for (const q of fontes) {
+      const v = (q.apuracao?.vendas || []).find(x => String(x.cod_fornecedor) === String(codigo) && x.fornecedor);
+      if (v) return nomeLegivel(v.fornecedor);
+    }
+    return '';
+  },
+  // Consulta gravada do mês mais recente (para o Cadastro mostrar todos os vendedores do Qlik). Lida uma vez.
+  async ultimaConsulta() {
+    if (ultima !== undefined) return ultima;
+    const r = await sb.from('comissao_consultas').select('mes,dados,consultado_em').order('mes', { ascending: false }).limit(1).maybeSingle();
+    if (r.error && !semTabela(r.error)) console.warn('Última consulta do Qlik não foi lida', r.error);
+    ultima = r.error ? null : r.data || null;
+    return ultima;
+  },
+  // Quem vendeu na última consulta e não tem cadastro (sem quem não comissiona e sem desativados).
+  // → { mes, consultado_em, lista: [{ vendedor, total }] } ou null (sem consulta, ou ainda não lida).
+  semCadastroDaUltima() {
+    if (!ultima?.dados?.apuracao) return null;
+    const regras = this.regras(ultima.mes);
+    const { semCadastro } = juntarVendas(ultima.dados.apuracao.vendas, this.cadastro(), this.parametros().nomes_ignorados, regras);
+    return { mes: ultima.mes, consultado_em: ultima.consultado_em, lista: semCadastro };
+  },
   // Consulta ao Qlik gravada do mês (migração 19) ou null: { consultado_em, conferido_em, … }.
   consulta: mes => doMes.get(mes)?.consulta || null,
   // Mês reaberto calcula com o cadastro de quando foi fechado (mudanças de % depois não voltam no tempo).
@@ -167,6 +277,17 @@ export const comissoes = {
   cadastroDoMes(mes) {
     if (!this.usaCadastroDaCopia(mes)) return lista || [];
     return cadastroDaCopia(this.fechamento(mes).dados.cadastro.map(lerComissionado), lista || []).sort(porNome);
+  },
+  // Regras de fornecedor e exceções do mês: as de hoje; no mês reaberto, as da cópia do fechamento
+  // (cópia de antes da 3.6: o Farelo dos parâmetros e o pct_farelo do cadastro copiados).
+  calculoDoMes(mes) {
+    if (this.usaCadastroDaCopia(mes)) {
+      const d = this.fechamento(mes).dados;
+      if (d.resultado?.regras) return { regras: regrasDaCopia(d.resultado.regras), excecoes: d.excecoes || [] };
+      const p = { ...PARAMETROS_PADRAO, ...(d.parametros || {}) };
+      return { regras: regrasFornecedores(p, null, mes), excecoes: excecoesLegado(this.cadastroDoMes(mes), p.cod_farelo) };
+    }
+    return { regras: this.regras(mes), excecoes: this.excecoesDoCalculo(this.cadastroDoMes(mes)) };
   },
   premiacoes: mes => (doMes.get(mes)?.premiacoes || []).filter(x => x.ativo !== false),
   ajustes: mes => (doMes.get(mes)?.ajustes || []).filter(x => x.ativo !== false),
@@ -239,6 +360,8 @@ export const comissoes = {
       resultado, parametros: this.parametros(),
       cadastro: this.cadastroDoMes(mes).filter(c => ids.has(c.id)),
       premiacoes: this.premiacoes(mes), ajustes: this.ajustes(mes),
+      // Regras de fornecedor usadas (também em resultado.regras) e as exceções: reabrir calcula com elas.
+      fornecedores: this.fornecedores(), excecoes: this.calculoDoMes(mes).excecoes.filter(x => ids.has(x.comissionado_id)),
     };
     const campos = { status: 'fechado', dados, total: resultado.totais.geral.valor_pagar, total_clt: resultado.totais.clt.valor_pagar, total_pj: resultado.totais.pj.valor_pagar };
     const atual = this.fechamento(mes);
@@ -269,7 +392,8 @@ export const comissoes = {
   // Mês fechado: devolve a cópia do histórico (não consulta o Qlik nem recalcula).
   // Mês reaberto: cadastro da cópia do fechamento (cadastroDoMes), completado com quem é novo.
   // buscar: true consulta o Qlik (e grava); false reaproveita a última consulta do mês, da memória ou a
-  // gravada no banco (null se não houver). Uma consulta feita com outro código de Farelo ou outro corte não é reaproveitada.
+  // gravada no banco (null se não houver). Consulta com outro corte (ou antiga, com outro código de Farelo) não é reaproveitada.
+  // Fornecedores: a consulta vem por fornecedor (formato 2); quem é principal ou secundário é de lib/comissoes.js.
   // → resultado de apurarMes + { consulta: { consultado_em, total, sem_vendedor, gravada } }
   async apurar(mes, { buscar = true, sinal } = {}) {
     if (!params) await this.carregar();
@@ -277,12 +401,14 @@ export const comissoes = {
     const f = this.fechamento(mes);
     if (f?.status === 'fechado' && f.dados?.resultado) return { ...f.dados.resultado, fechado: f };
     let q = consultas.get(mes) || daConsultaGravada(this.consulta(mes));
-    if (q && (q.cod_farelo !== params.cod_farelo || q.dia_corte !== params.dia_corte)) q = null;
+    // Consulta antiga (formato 1) só serve com o mesmo código do Farelo; a do formato 2 é por fornecedor.
+    if (q && (q.dia_corte !== params.dia_corte || (q.formato !== 2 && q.cod_farelo !== params.cod_farelo))) q = null;
     if (buscar) { q = await pedirAoQlik(mes, sinal); consultas.set(mes, q); }
     if (!q) return null;
     const m = doMes.get(mes);
+    const { regras, excecoes: exc } = this.calculoDoMes(mes);
     const r = apurarMes({ mes, comissionados: this.cadastroDoMes(mes), parametros: params, vendas: q.apuracao.vendas, contratoLinhas: q.contrato.linhas,
-      premiacoes: m.premiacoes, ajustes: m.ajustes, mesPj: m.mesPj });
+      premiacoes: m.premiacoes, ajustes: m.ajustes, mesPj: m.mesPj, regras, excecoes: exc });
     return { ...r, consulta: { consultado_em: q.consultado_em, total: q.apuracao.total, sem_vendedor: Number(q.apuracao.sem_vendedor) || 0, gravada: !!q.gravada } };
   },
 };

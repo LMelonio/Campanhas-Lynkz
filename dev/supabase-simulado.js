@@ -105,6 +105,14 @@ if (!db.comissao_premiacoes) {
   db.seq.comissao_premiacoes = 1; db.seq.comissao_mes_pj = 1;
 }
 db.comissao_ajustes ||= []; db.comissao_fechamentos ||= []; db.comissao_consultas ||= [];
+// Migração 21: o Farelo vira o 1º secundário; ninguém da semente tem % diferente do padrão (sem exceções).
+if (!db.comissao_fornecedores) {
+  db.comissao_fornecedores = [{ id: 1, codigo: '6610', nome: 'Farelo', grupo: 'secundario', pct_clt: 1, pct_televendas: 1, pct_pj: 2,
+    vale_de: '2000-01', ativo: true, atualizado_em: new Date().toISOString(), atualizado_por: null }];
+  db.comissao_excecoes = [];
+  db.seq.comissao_fornecedores = 1; db.seq.comissao_excecoes = 0;
+  Object.assign(db.comissao_parametros[0], { principal_modo: 'todos', pct_outros_clt: null, pct_outros_televendas: null, pct_outros_pj: null });
+}
 db.perfis ||= JSON.parse(JSON.stringify(USUARIOS));
 const gravarDb = () => { try { sessionStorage.setItem(CHAVE, JSON.stringify(db)); } catch { /* cheio */ } };
 gravarDb();
@@ -133,7 +141,8 @@ function verView(c) {
 // ---------- comissões (migração 16) ----------
 const nomeQlikSim = t => String(t ?? '').replace(/\s+/g, ' ').trim().toUpperCase();
 const TABELAS_MES = ['comissao_premiacoes', 'comissao_ajustes', 'comissao_mes_pj', 'comissao_fechamentos', 'comissao_consultas'];
-const TABELAS_COMISSAO = ['comissionados', 'comissao_parametros', 'comissao_auditoria', ...TABELAS_MES];
+const TABELAS_FORN = ['comissao_fornecedores', 'comissao_excecoes'];
+const TABELAS_COMISSAO = ['comissionados', 'comissao_parametros', 'comissao_auditoria', ...TABELAS_MES, ...TABELAS_FORN];
 const mesFechado = mes => db.comissao_fechamentos.some(f => f.mes === mes && f.status === 'fechado');
 // Fechar, reabrir e fechar de novo (trigger preparar_comissao_fechamento).
 function prepararFechamento(r, antigo) {
@@ -220,6 +229,36 @@ function prepararMes(tabela, r, antigo) {
   if (antigo || tabela === 'comissao_mes_pj') { r.atualizado_em = new Date().toISOString(); r.atualizado_por = u.id; }
   return null;
 }
+// Migração 21: constraints e gatilhos de comissao_fornecedores e comissao_excecoes.
+const pctOk = v => v != null && v !== '' && Number(v) >= 0 && Number(v) <= 20;
+function prepararForn(tabela, r, antigo) {
+  const u = usuario(), agora = new Date().toISOString();
+  if (tabela === 'comissao_fornecedores') {
+    r.nome = String(r.nome || '').replace(/\s+/g, ' ').trim();
+    r.codigo = antigo ? antigo.codigo : String(r.codigo || '').trim();
+    if (!/^\d{1,10}$/.test(r.codigo)) return erro('violates check constraint "comissao_fornecedores_codigo"', '23514');
+    if (!r.nome || r.nome.length > 80) return erro('violates check constraint "comissao_fornecedores_nome"', '23514');
+    if (!['principal', 'secundario'].includes(r.grupo)) return erro('violates check constraint "comissao_fornecedores_grupo"', '23514');
+    if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(r.vale_de || '')) return erro('violates check constraint "comissao_fornecedores_vale"', '23514');
+    if (r.grupo === 'principal') Object.assign(r, { pct_clt: null, pct_televendas: null, pct_pj: null });
+    else if (!(pctOk(r.pct_clt) && pctOk(r.pct_televendas) && pctOk(r.pct_pj))) return erro('violates check constraint "comissao_fornecedores_pct"', '23514');
+    if (db.comissao_fornecedores.some(f => f.codigo === r.codigo && f.id !== r.id)) return erro('duplicate key value violates unique constraint "comissao_fornecedores_codigo_unico"', '23505');
+  } else {
+    if (antigo) { r.comissionado_id = antigo.comissionado_id; r.fornecedor_id = antigo.fornecedor_id; }
+    if (!db.comissao_fornecedores.some(f => f.id == r.fornecedor_id && f.grupo === 'secundario')) return erro('Exceção de % só vale para fornecedor secundário.');
+    if (!pctOk(r.pct)) return erro('violates check constraint "comissao_excecoes_pct"', '23514');
+    if (!antigo && db.comissao_excecoes.some(x => x.comissionado_id == r.comissionado_id && x.fornecedor_id == r.fornecedor_id)) return erro('duplicate key value violates unique constraint "comissao_excecoes_unica"', '23505');
+    r.pct = Number(r.pct);
+  }
+  Object.assign(r, { atualizado_em: agora, atualizado_por: u.id });
+  return null;
+}
+function cnpjValidoSim(d) {
+  if (!/^\d{14}$/.test(d) || /^(\d)\1{13}$/.test(d)) return false;
+  const n = d.split('').map(Number);
+  const dv = tam => { let soma = 0, peso = tam - 7; for (let i = 0; i < tam; i++) { soma += n[i] * peso--; if (peso < 2) peso = 9; } const r = soma % 11; return r < 2 ? 0 : 11 - r; };
+  return dv(12) === n[12] && dv(13) === n[13];
+}
 function prepararComissionado(r, antigo) {
   const u = usuario();
   r.nome = String(r.nome || '').replace(/\s+/g, ' ').trim();
@@ -230,6 +269,14 @@ function prepararComissionado(r, antigo) {
   if (!r.nomes_qlik.length) return erro('violates check constraint "comissionados_nomes_qlik_valido"', '23514');
   if (!r.acordo_minimo) { r.acordo_minimo = null; r.acordo_inicio = null; r.acordo_fim = null; }
   if (r.acordo_minimo && (r.regime === 'PJ' || !r.acordo_inicio)) return erro('violates check constraint "comissionados_acordo_valido"', '23514');
+  // Migração 22: PJ ativo precisa dos dados de pagamento (mesmas mensagens da tela).
+  if (r.regime === 'PJ' && r.ativo !== false) {
+    const doc = String(r.pj_documento || '').replace(/\D/g, '');
+    if (!String(r.pj_razao_social || '').trim()) return erro('Informe a razão social.');
+    if (!(cpfValido(doc) || cnpjValidoSim(doc))) return erro('CNPJ ou CPF inválido.');
+    if (!String(r.pj_pix || '').trim()) return erro('Informe a chave PIX.');
+    if (!String(r.pj_banco || '').trim()) return erro('Informe o banco.');
+  }
   if (r.ativo !== false) {
     const outro = db.comissionados.find(c => c.ativo && c.id !== r.id && c.nomes_qlik.some(n => r.nomes_qlik.includes(n)));
     if (outro) return erro(`"${outro.nomes_qlik.find(n => r.nomes_qlik.includes(n))}" já está ligado a ${outro.nome}. Cada nome do Qlik pode estar em uma pessoa só.`);
@@ -254,6 +301,15 @@ function inserir(tabela, d) {
     const e = prepararComissionado(r, null);
     if (e) { db.seq.comissionados--; return { error: e }; }
     db.comissionados.push(r); return { row: r };
+  }
+  if (TABELAS_FORN.includes(tabela)) {
+    if (!ehAprovador()) return { error: erro(`new row violates row-level security policy for table "${tabela}"`, '42501') };
+    const base = tabela === 'comissao_fornecedores' ? { pct_clt: null, pct_televendas: null, pct_pj: null, vale_de: '2000-01', ativo: true } : {};
+    const r = { ...base, ...d, id: (db.seq[tabela] || 0) + 1 };
+    const e = prepararForn(tabela, r, null);
+    if (e) return { error: e };
+    db.seq[tabela] = r.id;
+    db[tabela].push(r); return { row: r };
   }
   if (TABELAS_MES.includes(tabela)) {
     if (!ehAprovador()) return { error: erro(`new row violates row-level security policy for table "${tabela}"`, '42501') };
@@ -333,6 +389,12 @@ function atualizar(tabela, linhas, d) {
     if (tabela === 'comissao_parametros') {
       if (d.cod_farelo != null && !/^\d{1,10}$/.test(d.cod_farelo)) return { error: erro('violates check constraint "comissao_parametros_farelo"', '23514') };
       if (d.dia_corte != null && !(d.dia_corte >= 1 && d.dia_corte <= 28)) return { error: erro('violates check constraint "comissao_parametros_corte"', '23514') };
+      const depois = { ...linhas[0], ...d };
+      const outrosOk = ['pct_outros_clt', 'pct_outros_televendas', 'pct_outros_pj'].every(k => depois[k] == null || pctOk(depois[k]));
+      if (!['todos', 'lista'].includes(depois.principal_modo ?? 'todos') || !outrosOk
+        || (depois.principal_modo === 'lista' && !['pct_outros_clt', 'pct_outros_televendas', 'pct_outros_pj'].every(k => pctOk(depois[k])))) {
+        return { error: erro('violates check constraint "comissao_parametros_principal"', '23514') };
+      }
       const ign = d.nomes_ignorados ? { nomes_ignorados: [...new Set(d.nomes_ignorados.map(nomeQlikSim).filter(Boolean))] } : {};
       linhas.forEach(r => Object.assign(r, d, ign, { id: 1, atualizado_em: new Date().toISOString(), atualizado_por: u.id }));
       return { rows: linhas };
@@ -340,7 +402,7 @@ function atualizar(tabela, linhas, d) {
     const prontas = [];
     for (const atual of linhas) {
       const r = { ...atual, ...d, id: atual.id };
-      const e = tabela === 'comissionados' ? prepararComissionado(r, atual) : prepararMes(tabela, r, atual);
+      const e = tabela === 'comissionados' ? prepararComissionado(r, atual) : TABELAS_FORN.includes(tabela) ? prepararForn(tabela, r, atual) : prepararMes(tabela, r, atual);
       if (e) return { error: e };
       prontas.push([atual, r]);
     }

@@ -135,12 +135,12 @@ function desenharFicha() {
 
     <div class="det-paineis">
       <section class="painel">
-        <h3 class="painel-titulo">Dados da empresa
+        <div class="cm-titulo-acao"><h3 class="painel-titulo">Dados da empresa</h3>
           <span class="acoes">
             <button type="button" class="btn btn-fantasma btn-pequeno" id="fx-editar">${icone('editar')} Editar</button>
             <button type="button" class="btn ${e.ativo ? 'btn-perigo' : 'btn-fantasma'} btn-pequeno" id="fx-ativo">${e.ativo ? 'Desativar' : 'Reativar'}</button>
           </span>
-        </h3>
+        </div>
         ${ehDoQlik(e) ? html`<p class="painel-corpo nota">${icone('info')}<span>Nome, CNPJ e cidade vêm do Qlik${e.sincronizado_em ? ` (atualizado em ${dataBR(e.sincronizado_em)})` : ''}. Aqui você edita telefone e observações.</span></p>` : ''}
         <dl class="linhas">
           ${e.codigo_cliente ? html`<div><dt>Código do cliente</dt><dd>${e.codigo_cliente}</dd></div>` : ''}
@@ -156,10 +156,10 @@ function desenharFicha() {
       </section>
 
       <section class="painel">
-        <h3 class="painel-titulo"><span>Balconistas <span class="vagas">${total} de ${max}</span></span>
+        <div class="cm-titulo-acao"><h3 class="painel-titulo">Balconistas <span class="vagas">${total} de ${max}</span></h3>
           <button type="button" class="btn btn-fantasma btn-pequeno" id="fx-novo-balc"${e.ativo && !cheia ? '' : html` disabled`}
             aria-describedby="fx-vagas">${icone('mais')} Cadastrar</button>
-        </h3>
+        </div>
         <p class="painel-corpo campo-dica" id="fx-vagas">${!e.ativo ? 'Empresa desativada não recebe balconista novo.'
           : cheia ? `Limite de ${max} balconistas atingido (contando os desativados). ${ctx.ehAprovador ? 'Para trocar a pessoa, exclua um dos cadastros (precisa ser administrador).' : 'Peça a um administrador para excluir um dos cadastros.'}`
           : `Cabe${max - total === 1 ? '' : 'm'} mais ${max - total} ${max - total === 1 ? 'balconista' : 'balconistas'}. Eles aparecem para escolha na Nova campanha.`}</p>

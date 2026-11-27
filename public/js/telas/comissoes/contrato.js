@@ -1,7 +1,7 @@
 // Comissões → Contrato PJ: metas do mês anterior e realizado (do Qlik ou informado à mão, com motivo).
 import { html, $, ao } from '../../lib/dom.js';
 import { lerValor, valorCampo } from '../../lib/regras.js';
-import { ehPJ, mesAnteriorFechado, entradaContrato, avaliarContrato } from '../../lib/comissoes.js';
+import { ehPJ, mesAnteriorFechado, entradaContrato, avaliarContrato, textoContrato } from '../../lib/comissoes.js';
 import { comissoes } from '../../dados/comissoes.js';
 import { detalhar } from '../../dados/erros.js';
 import { icone } from '../../ui/icones.js';
@@ -23,9 +23,11 @@ export function desenhar() {
   const pjs = travado ? (s.resultado?.linhas || []).filter(ehPJ) : ativos().filter(ehPJ);
   const origem = c => (c.meta_origem === 'cadastro' ? html`<small class="cm-sub">Meta do cadastro</small>`
     : c.meta_origem === 'misto' ? html`<small class="cm-sub">Parte da meta vem do cadastro</small>` : '');
+  const tc = textoContrato(s.mes);
   return html`
     ${travado ? avisoFechado() : ''}
-    <p class="nota">${icone('info')}<span>Metas e realizado de ${mesMinusculo(ct.mes)}, pagos na comissão de ${mesMinusculo(s.mes)}.
+    <h2 class="secao-titulo" id="cm-t-contrato">Metas e realizado de ${tc.mes} (mês anterior fechado, ${tc.periodo})</h2>
+    <p class="nota">${icone('info')}<span>Pagos na comissão de ${mesMinusculo(s.mes)}.
       ${s.resultado ? 'O realizado vem do Qlik; informe à mão só quando o Qlik não servir.' : 'Busque as vendas para ver o realizado do Qlik.'}</span></p>
     ${pjs.length ? html`<div class="tabela-caixa"><table class="tabela cm-tabela">
       <thead><tr><th scope="col">Representante</th><th scope="col" class="num">Meta de faturamento</th><th scope="col" class="num">Realizado</th>

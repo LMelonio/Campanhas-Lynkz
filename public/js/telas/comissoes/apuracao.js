@@ -2,8 +2,9 @@
 // e "Desativados com venda no Qlik" (reativar).
 // Os documentos e o fechamento do mês ficam em documentos.js.
 import { html, pintar, $, $$, ao } from '../../lib/dom.js';
-import { dataBR, horaBR } from '../../lib/regras.js';
-import { REGIMES, ROTULO_REGIME, ehPJ, pctPadrao, errosComissionado, novoDoQlik } from '../../lib/comissoes.js';
+import { dataBR, horaBR, dataCivil, hojeCivil } from '../../lib/regras.js';
+import { periodoApuracao, textoContrato, diasConsultaAntiga } from '../../lib/comissoes.js';
+import { REGIMES, ROTULO_REGIME, ehPJ, pctPadrao, errosComissionado, novoDoQlik, secundariosDaLinha } from '../../lib/comissoes.js';
 import { comissoes } from '../../dados/comissoes.js';
 import { detalhar } from '../../dados/erros.js';
 import { icone } from '../../ui/icones.js';
@@ -14,11 +15,33 @@ import { s, r$, pctTxt, pct1, mesMinusculo, quemFechou, redesenhar, recalcular, 
 import { documentosHtml, faixaFechar, antesDeFechar } from './documentos.js';
 import { editar } from './cadastro.js';
 
+// Dias da consulta, quando ela é antiga e o mês ainda está em andamento (null = sem aviso). index.js usa para
+// pôr "Atualizar do Qlik" em destaque.
+export function consultaAntiga(r = s.resultado) {
+  if (!r || r.fechado || !r.consulta?.consultado_em) return null;
+  return diasConsultaAntiga(r.mes, comissoes.parametros().dia_corte, dataCivil(r.consulta.consultado_em), hojeCivil());
+}
+
 export function desenhar() {
   const r = s.resultado;
+  const p = periodoApuracao(s.mes, comissoes.parametros().dia_corte);
+  const dm = d => dataBR(d).slice(0, 5);
   return html`
-    ${s.erroQlik ? html`<p class="nota nota-alerta" role="alert">${icone('alerta')}<span>${s.erroQlik}</span></p>` : ''}
-    ${s.buscando && !r ? carregando(2) : r ? resultadoHtml(r) : html`<p class="nota">${icone('info')}<span>Escolha o mês e busque as vendas. As pessoas vêm do Qlik; premiações e metas do Contrato ficam gravadas nas outras abas.</span></p>`}`;
+    ${s.erroQlik ? html`<div class="nota nota-alerta cm-erro-qlik" role="alert">${icone('alerta')}<span>${s.erroQlik}</span>
+      <button type="button" class="btn btn-fantasma btn-pequeno" id="cm-tentar-qlik"${s.buscando ? html` disabled` : ''}>${icone('repetir')} Tentar de novo</button></div>` : ''}
+    ${s.buscando && !r ? html`<section class="destaque cm-destaque cm-buscando" aria-busy="true">
+        <p class="destaque-rotulo" role="status" aria-live="polite">Buscando as vendas de ${dm(p.inicio)} a ${dm(p.fim)} no Qlik…</p>
+      </section>${carregando(2)}`
+      : r ? resultadoHtml(r) : s.erroQlik ? '' : html`<p class="nota">${icone('info')}<span>As vendas do mês vêm do Qlik. Premiações e metas do Contrato ficam gravadas nas outras abas.</span></p>`}`;
+}
+
+// Abriu um mês aberto sem consulta (nem na memória, nem gravada): busca sozinho, uma vez por mês nesta sessão.
+// Erro não tenta de novo sozinho: fica o "Tentar de novo".
+const autoBuscado = new Set();
+export function buscarSeFaltar() {
+  if (!s || s.resultado || s.buscando || s.erroQlik || comissoes.fechado(s.mes) || autoBuscado.has(s.mes)) return;
+  autoBuscado.add(s.mes);
+  buscar();
 }
 
 function resultadoHtml(r) {
@@ -27,6 +50,7 @@ function resultadoHtml(r) {
   const f = r.fechado;
   const reaberto = !f && comissoes.fechamento(r.mes);
   const n = f ? 0 : antesDeFechar(r).filter(i => !i.ok).length;
+  const antiga = consultaAntiga(r);
   const clt = r.linhas.filter(l => !ehPJ(l));
   const pj = r.linhas.filter(ehPJ);
   // Ordem: o total (fixo no topo no celular), o que está pendente, as pessoas e, no fim, documentos e "Fechar mês".
@@ -38,7 +62,7 @@ function resultadoHtml(r) {
       <p class="destaque-rotulo" id="cm-total-t">${f ? 'Pago' : 'A pagar'} em ${mesMinusculo(r.mes)}</p>
       <p class="cm-total num-display">${r$(t.geral.valor_pagar)}</p>
       <p class="cm-pendencias${n ? ' cm-pendencias-falta' : ''}">${f ? 'Mês fechado' : n ? `${n} ${n === 1 ? 'pendência' : 'pendências'}` : 'Nada pendente'}</p>
-      <p class="destaque-sub" id="cm-consultado">${f ? `Consulta ao Qlik de ${dataBR(r.consulta.consultado_em)} às ${horaBR(r.consulta.consultado_em)}, gravada no fechamento.` : `Consulta ao Qlik de ${dataBR(r.consulta.consultado_em)} às ${horaBR(r.consulta.consultado_em)}. Premiações, ajustes e metas vêm do que está gravado.`}</p>
+      <p class="destaque-sub${antiga ? ' cm-com-aviso' : ''}" id="cm-consultado">${f ? `Consulta ao Qlik de ${dataBR(r.consulta.consultado_em)} às ${horaBR(r.consulta.consultado_em)}, gravada no fechamento.` : html`Consulta ao Qlik de ${dataBR(r.consulta.consultado_em)} às ${horaBR(r.consulta.consultado_em)}.${antiga ? html` <strong class="cm-consulta-antiga">Consulta de ${antiga} dias atrás.</strong>` : ''} Premiações, ajustes e metas vêm do que está gravado.`}</p>
     </section>
     <dl class="numeros numeros-3 cm-numeros">
       <div class="numero"><dt>CLT (folha)</dt><dd class="num-display">${r$(t.clt.valor_pagar)}</dd></div>
@@ -49,20 +73,18 @@ function resultadoHtml(r) {
     ${r.semCadastro.length ? novosHtml(r) : ''}
     ${desativadosHtml(r)}
 
-    ${tabela('Vendedores CLT', clt, false, t.clt.valor_pagar)}
-    ${tabela('Representantes PJ', pj, true, t.pj.valor_pagar)}
-    ${r.consulta.sem_vendedor || r.ignorados.length ? html`<p class="secao-nota cm-rodape">${[
-      r.consulta.sem_vendedor ? `${r$(r.consulta.sem_vendedor)} em vendas sem vendedor no Qlik ficaram de fora.` : '',
-      r.ignorados.length ? `Não comissionam: ${r.ignorados.map(x => `${x.vendedor} (${r$(x.total)})`).join(', ')}. Para mudar, vá em Parâmetros.` : '',
-    ].filter(Boolean).join(' ')}</p>` : ''}
-    ${f ? documentosHtml(r) : faixaFechar(r)}`;
+    ${tabela('Vendedores CLT', clt, false, t.clt.valor_pagar, colunasFornecedor(r.linhas))}
+    ${tabela('Representantes PJ', pj, true, t.pj.valor_pagar, colunasFornecedor(r.linhas))}
+    ${f ? documentosHtml(r) : faixaFechar(r)}
+    ${naoComissionamHtml(r)}`;
 }
 
 const alertasHtml = l => (l.alertas.length ? html`<small class="cm-alerta-linha">${icone('alerta')}<span>${l.alertas.map(a => a.texto).join(' ')}</span></small>` : '');
 
+// "01/10 a 31/10 · faturamento 105,9% · positivação 37 de 40": o contrato olha o mês anterior de calendário.
 function contratoHtml(c) {
   if (!c || c.motivo === 'Sem meta cadastrada') return html`<span class="cm-sub">Sem meta</span>`;
-  const conta = `Faturamento ${pct1(c.pct_faturamento)}, positivação ${c.positivados} de ${c.meta_positivacao}${c.informado ? ' (informado)' : ''}`;
+  const conta = `${textoContrato(s.mes).periodo} · faturamento ${pct1(c.pct_faturamento)} · positivação ${c.positivados} de ${c.meta_positivacao}${c.informado ? ' (informado)' : ''}`;
   return c.atingiu
     ? html`${r$(c.valor)}<small class="cm-sub">${conta}: ${pctTxt(c.pct_premio)}</small>`
     : html`<span class="cm-sub cm-nao">Não atingiu</span><small class="cm-sub">${conta}</small>`;
@@ -70,23 +92,34 @@ function contratoHtml(c) {
 
 // Até 600 px a tabela dá lugar a um cartão por pessoa (o CSS mostra um ou outro):
 // nome, regime e "A pagar" à vista; "Ver conta" abre as linhas; alertas sempre visíveis.
-function tabela(titulo, ls, pj, total) {
+// Colunas de venda além da principal: um secundário por coluna (só os que tiveram venda no mês) e "Outros".
+// As mesmas colunas nas duas tabelas (CLT e PJ), na ordem das regras.
+function colunasFornecedor(linhas) {
+  const sec = new Map();
+  for (const l of linhas) for (const x of secundariosDaLinha(l)) if (x.venda && !sec.has(x.codigo)) sec.set(x.codigo, x.nome);
+  return { secundarios: [...sec].map(([codigo, nome]) => ({ codigo, nome })), outros: linhas.some(l => l.venda_outros) };
+}
+const vendaSec = (l, codigo) => secundariosDaLinha(l).find(x => x.codigo === codigo)?.venda || 0;
+
+function tabela(titulo, ls, pj, total, cols) {
   if (!ls.length) return '';
   const id = pj ? 'cm-t-pj' : 'cm-t-clt';
   return html`<section aria-labelledby="${id}">
     <h2 class="secao-titulo cm-grupo" id="${id}"><span>${titulo} <span class="contador-texto">${ls.length}</span></span><span class="cm-grupo-total tabular">${r$(total)}</span></h2>
     <div class="tabela-caixa cm-caixa-pessoas"><table class="tabela cm-tabela">
-      <thead><tr><th scope="col">${pj ? 'Representante' : 'Vendedor'}</th><th scope="col" class="num">Venda principal</th><th scope="col" class="num">Farelo</th>
-        <th scope="col" class="num">Comissão</th><th scope="col" class="num">Prêmios</th><th scope="col" class="num">${pj ? 'Contrato de Resultado' : 'Acordo mínimo'}</th><th scope="col" class="num">A pagar</th></tr></thead>
+      <thead><tr><th scope="col">${pj ? 'Representante' : 'Vendedor'}</th><th scope="col" class="num">Venda principal</th>
+        ${cols.secundarios.map(x => html`<th scope="col" class="num">${x.nome}</th>`)}${cols.outros ? html`<th scope="col" class="num">Outros</th>` : ''}
+        <th scope="col" class="num">Comissão</th><th scope="col" class="num">Prêmios</th><th scope="col" class="num">${pj ? `Contrato (${textoContrato(s.mes).curto})` : 'Acordo mínimo'}</th><th scope="col" class="num">A pagar</th></tr></thead>
       <tbody>${ls.map(l => html`<tr>
-        <td data-rotulo="${pj ? 'Representante' : 'Vendedor'}" class="principal"><strong>${l.nome}</strong>
+        <td data-rotulo="${pj ? 'Representante' : 'Vendedor'}" class="principal"><strong>${l.nome} <span class="cm-pagar-nome tabular" aria-hidden="true">${r$(l.valor_pagar)}</span></strong>
           <small class="cm-sub">${regimeTxt(l)}</small>${alertasHtml(l)}
           ${botaoRecibo(l, pj)}</td>
         <td data-rotulo="Venda principal" class="num tabular">${r$(l.venda_principal)}</td>
-        <td data-rotulo="Farelo" class="num tabular">${r$(l.venda_farelo)}</td>
+        ${cols.secundarios.map(x => html`<td data-rotulo="${x.nome}" class="num tabular">${r$(vendaSec(l, x.codigo))}</td>`)}
+        ${cols.outros ? html`<td data-rotulo="Outros" class="num tabular">${r$(l.venda_outros || 0)}</td>` : ''}
         <td data-rotulo="Comissão" class="num tabular">${r$(l.comissao_total)}</td>
         <td data-rotulo="Prêmios" class="num tabular">${l.premiacoes ? r$(l.premiacoes) : '—'}${l.ajustes ? html`<small class="cm-sub">Ajustes ${sinal(l.ajustes)}</small>` : ''}</td>
-        <td data-rotulo="${pj ? 'Contrato de Resultado' : 'Acordo mínimo'}" class="num tabular">${pj ? contratoHtml(l.contrato)
+        <td data-rotulo="${pj ? `Contrato (${textoContrato(s.mes).curto})` : 'Acordo mínimo'}" class="num tabular">${pj ? contratoHtml(l.contrato)
           : l.acordo ? html`${r$(l.acordo.valor)}${l.piso_aplicado ? html`<small class="cm-sub">Paga o acordo</small>` : ''}` : '—'}</td>
         <td data-rotulo="A pagar" class="num tabular cm-pagar">${r$(l.valor_pagar)}</td>
       </tr>`)}</tbody>
@@ -95,7 +128,14 @@ function tabela(titulo, ls, pj, total) {
 }
 
 const sinal = v => `${v > 0 ? '+' : '−'}${r$(Math.abs(v))}`;
-const regimeTxt = l => `${l.regime === 'TELEVENDAS' ? 'Televendas, ' : ''}${pctTxt(l.pct_principal)} e ${pctTxt(l.pct_farelo)} no Farelo${l.equipe ? `, ${l.equipe}` : ''}`;
+// "2,5% no principal e 1% no Farelo": só os secundários com venda no mês (e Outros, se houver).
+function regimeTxt(l) {
+  const pcts = [`${pctTxt(l.pct_principal)} no principal`,
+    ...secundariosDaLinha(l).filter(x => x.venda).map(x => (x.pct == null ? `${x.nome} sem %` : `${pctTxt(x.pct)} no ${x.nome}`)),
+    ...(l.venda_outros ? [l.pct_outros == null ? 'Outros sem %' : `${pctTxt(l.pct_outros)} em Outros`] : [])];
+  const lista = pcts.length > 1 ? `${pcts.slice(0, -1).join(', ')} e ${pcts.at(-1)}` : pcts[0];
+  return `${l.regime === 'TELEVENDAS' ? 'Televendas, ' : ''}${lista}${l.equipe ? `, ${l.equipe}` : ''}`;
+}
 const botaoRecibo = (l, pj) => (pj && l.valor_pagar > 0
   ? html`<button type="button" class="btn btn-texto btn-pequeno cm-recibo" data-recibo="${l.id}" aria-label="Baixar recibo de ${l.nome}">${icone('baixar')} Recibo</button>` : '');
 
@@ -118,11 +158,12 @@ function cartao(l, pj) {
       <dl class="cm-conta">
         ${linha('Regime', regimeTxt(l))}
         ${linha('Venda principal', r$(l.venda_principal))}
-        ${linha('Farelo', r$(l.venda_farelo))}
+        ${secundariosDaLinha(l).filter(x => x.venda).map(x => linha(x.nome, r$(x.venda)))}
+        ${l.venda_outros ? linha('Outros', r$(l.venda_outros)) : ''}
         ${linha('Comissão', r$(l.comissao_total))}
         ${linha('Prêmios', l.premiacoes ? r$(l.premiacoes) : '—')}
         ${l.ajustes ? linha('Ajustes', sinal(l.ajustes)) : ''}
-        ${pj ? linha('Contrato de Resultado', contratoHtml(l.contrato)) : linha('Acordo mínimo', l.acordo ? `${r$(l.acordo.valor)}${l.piso_aplicado ? ' (paga o acordo)' : ''}` : '—')}
+        ${pj ? linha(`Contrato (${textoContrato(s.mes).curto})`, contratoHtml(l.contrato)) : linha('Acordo mínimo', l.acordo ? `${r$(l.acordo.valor)}${l.piso_aplicado ? ' (paga o acordo)' : ''}` : '—')}
         ${linha('A pagar', r$(l.valor_pagar))}
       </dl>
       ${botaoRecibo(l, pj)}
@@ -133,18 +174,51 @@ function cartao(l, pj) {
 
 async function buscar() {
   if (s.buscando) return;
-  const meu = s;
+  const meu = s, mes = s.mes;
   s.buscando = true; s.erroQlik = null;
   redesenhar();
-  try {
-    const r = await comissoes.apurar(s.mes);
-    if (s === meu) s.resultado = r;
-  } catch (e) {
-    if (s === meu) s.erroQlik = detalhar(e).mensagem;
-  }
+  let r = null, erro = null;
+  try { r = await comissoes.apurar(mes); }
+  catch (e) { erro = detalhar(e).mensagem; }
   if (s !== meu) return;
   s.buscando = false;
+  // Trocou de mês no meio da busca: o resultado é de outro mês (fica na memória para quando voltar).
+  if (s.mes === mes) { if (erro) s.erroQlik = erro; else s.resultado = r; }
   redesenhar();
+}
+
+// ---------- Não comissionam (último bloco) ----------
+// Nomes que não comissionam e vendas sem vendedor: fora da comissão, mostrados de forma discreta.
+function naoComissionamHtml(r) {
+  const semVendedor = Number(r.consulta?.sem_vendedor) || 0;
+  if (!r.ignorados.length && !semVendedor) return '';
+  const total = r.ignorados.reduce((t, x) => t + Math.round(x.total * 100), 0) / 100 + semVendedor;
+  // No celular começa fechado (só o título e o total); no computador, aberto.
+  const aberto = !window.matchMedia('(max-width: 600px)').matches;
+  return html`<section class="painel cm-nao-comissionam" aria-labelledby="cm-t-nao"><details${aberto ? html` open` : ''}>
+    <summary><h2 class="painel-titulo" id="cm-t-nao"><span>Não comissionam</span><span class="tabular">${r$(total)}</span></h2></summary>
+    <ul class="cm-nao-lista">
+      ${r.ignorados.map(x => html`<li><span>${x.vendedor} · <span class="tabular">${r$(x.total)}</span></span>
+        ${r.fechado ? '' : html`<button type="button" class="btn btn-texto btn-pequeno" data-voltar-comissionar="${x.vendedor}" aria-label="Voltar a comissionar ${x.vendedor}">Voltar a comissionar</button>`}</li>`)}
+      ${semVendedor ? html`<li><span>Vendas sem vendedor no Qlik · <span class="tabular">${r$(semVendedor)}</span></span></li>` : ''}
+    </ul>
+  </details></section>`;
+}
+
+export async function voltarAComissionar(nome) {
+  const ok = await confirmar({
+    titulo: `Voltar a comissionar ${nome}?`,
+    descricao: 'O nome sai da lista dos que não comissionam e aparece em "Novos no Qlik" para completar o cadastro.',
+    confirmar: 'Voltar a comissionar',
+  });
+  if (!ok || !s) return false;
+  try {
+    await comissoes.voltarAComissionar(nome);
+    await recalcular();
+    s.ctx.toast(`${nome} volta a comissionar.`, { tom: 'sucesso' });
+    redesenhar();
+    return true;
+  } catch (e) { s.ctx.toast(detalhar(e).mensagem, { tom: 'erro' }); return false; }
 }
 
 // ---------- Novos no Qlik ----------
@@ -209,7 +283,7 @@ async function reativar(id) {
   } catch (e) { s.ctx.toast(detalhar(e).mensagem, { tom: 'erro' }); }
 }
 
-async function ignorarNome(nome) {
+export async function ignorarNome(nome) {
   const ok = await confirmar({
     titulo: `${nome} não comissiona?`,
     descricao: 'As vendas com este nome no Qlik deixam de aparecer como novas. Dá para desfazer em Parâmetros.',
@@ -261,10 +335,20 @@ async function aplicarLote() {
   if (!nomes.length) { s.ctx.toast('Marque pelo menos um vendedor.', { tom: 'erro' }); return; }
   if (!acao) { aplicarErros(s.el, { 'cm-lote-acao': 'Escolha o que fazer.' }); return; }
   const lista = nomes.length === 1 ? nomes[0] : `${nomes.length} vendedores`;
+  // PJ precisa de razão social, documento, PIX e banco: não dá em lote. Abre o cadastro do primeiro marcado.
+  if (acao === 'PJ') {
+    const ok = await confirmar({
+      titulo: 'PJ precisa dos dados de pagamento',
+      descricao: `Complete um por vez: razão social, CNPJ ou CPF, chave PIX e banco. Começando por ${nomes[0]}.`,
+      confirmar: 'Completar cadastro',
+    });
+    if (ok && s) await editar(null, nomes[0], { regime: 'PJ' });
+    return;
+  }
   const p = pctPadrao(acao, comissoes.parametros());
   const ok = await confirmar(acao === 'ignorar'
     ? { titulo: `${lista} não ${nomes.length === 1 ? 'comissiona' : 'comissionam'}?`, descricao: `${nomes.join(', ')}. As vendas com estes nomes deixam de aparecer como novas. Dá para desfazer em Parâmetros.`, confirmar: 'Não comissiona' }
-    : { titulo: `Cadastrar ${lista} como ${ROTULO_REGIME[acao]}?`, descricao: `${nomes.join(', ')}. Com ${pctTxt(p.principal)} na venda principal e ${pctTxt(p.farelo)} no Farelo.${acao === 'PJ' ? ' Razão social, CNPJ e PIX ficam para completar em Cadastro antes do recibo e da ADP.' : ''}`, confirmar: 'Cadastrar' });
+    : { titulo: `Cadastrar ${lista} como ${ROTULO_REGIME[acao]}?`, descricao: `${nomes.join(', ')}. Com ${pctTxt(p.principal)} na venda principal${comissoes.temFornecedores() ? ' e o % de cada secundário pelo regime' : ` e ${pctTxt(p.farelo)} no Farelo`}.${acao === 'PJ' ? ' Razão social, CNPJ e PIX ficam para completar em Cadastro antes do recibo e da ADP.' : ''}`, confirmar: 'Cadastrar' });
   if (!ok || !s) return;
   const meu = s;
   await ocupar('lote', async () => {
@@ -293,6 +377,8 @@ async function aplicarLote() {
 export function ligar(el) {
   return [
     ao(el, 'click', '#cm-buscar', buscar),
+    ao(el, 'click', '#cm-tentar-qlik', buscar),
+    ao(el, 'click', '[data-voltar-comissionar]', (e, b) => voltarAComissionar(b.dataset.voltarComissionar)),
     ao(el, 'click', '[data-ignorar]', (e, b) => ignorarNome(b.dataset.ignorar)),
     ao(el, 'click', '[data-completar]', (e, b) => editar(null, b.dataset.completar)),
     ao(el, 'click', '[data-reativar]', (e, b) => reativar(b.dataset.reativar)),

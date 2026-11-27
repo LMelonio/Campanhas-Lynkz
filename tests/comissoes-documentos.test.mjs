@@ -7,7 +7,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { apurarMes, entradaContrato, PARAMETROS_PADRAO } from '../public/js/lib/comissoes.js';
 import {
-  pendenciasPj, itensRecibo, recibosDoMes, linhasAdpPj, totalLinhas, modeloExcel, documentoFormatado,
+  pendenciasPj, errosPj, itensRecibo, recibosDoMes, linhasAdpPj, totalLinhas, modeloExcel, documentoFormatado,
   ABA_ANALISE, ABA_AJUSTES, ABA_CONTRATO, ABA_PREMIACOES, abaBase, NF_RE,
 } from '../public/js/lib/comissoes-documentos.js';
 
@@ -84,7 +84,7 @@ test('recibo: comissões, contrato e cada premiação; só PJ com valor a pagar'
   const a = r.linhas.find(l => l.id === 5);
   const itens = itensRecibo(a, { contratoMes: '2026-09' });
   assert.deepEqual(itens.map(i => i.descricao), [
-    'Comissão sobre a venda principal', 'Premiação Contrato de Resultado (meta de setembro 2026)', 'Premiação de campanha: Campanha Farmina',
+    'Comissão sobre a venda principal', 'Contrato de Resultado de setembro/2026 (01/09 a 30/09)', 'Premiação de campanha: Campanha Farmina',
     'Desconto: Desconto de adiantamento']);
   assert.equal(itens.reduce((s, i) => s + i.valor, 0).toFixed(2), a.valor_pagar.toFixed(2), 'itens somam o total');
   assert.deepEqual([itens[0].base, itens[0].pct, itens[0].valor], [118401.89, 5, 5920.09]);
@@ -93,6 +93,18 @@ test('recibo: comissões, contrato e cada premiação; só PJ com valor a pagar'
   assert.equal(recibos[0].cnpj, '26.923.986/0001-65');
   assert.deepEqual(recibos[1].falta, ['razão social', 'CNPJ', 'chave PIX', 'banco']);
   assert.deepEqual(pendenciasPj(ALEX), []);
+});
+
+test('PJ (v3.6): dados de pagamento obrigatórios, CPF e CNPJ pelos dígitos verificadores', () => {
+  assert.deepEqual(errosPj(ALEX), {});
+  assert.deepEqual(errosPj({ ...ALEX, pj_documento: '529.982.247-25' }), {}, 'CPF válido');
+  assert.deepEqual(errosPj({ ...ALEX, pj_documento: '52998224724' }), { pj_documento: 'CNPJ ou CPF inválido.' }, 'CPF com dígito errado');
+  assert.deepEqual(errosPj({ ...ALEX, pj_documento: '26923986000166' }), { pj_documento: 'CNPJ ou CPF inválido.' }, 'CNPJ com dígito errado');
+  assert.deepEqual(errosPj({ ...ALEX, pj_documento: '11111111111111' }), { pj_documento: 'CNPJ ou CPF inválido.' }, 'sequência repetida');
+  assert.deepEqual(errosPj(SEM_DADOS), {
+    pj_razao_social: 'Informe a razão social.', pj_documento: 'CNPJ ou CPF inválido.', pj_pix: 'Informe a chave PIX.', pj_banco: 'Informe o banco.',
+  });
+  assert.deepEqual(pendenciasPj({ ...ALEX, pj_banco: '  ' }), ['banco']);
 });
 
 test('ADP dos PJ: número e valor da NF, digitados vencem os gravados, pendências do cadastro', () => {
@@ -187,6 +199,64 @@ test('Excel: abas da planilha de outubro, fórmulas que recalculam igual à tela
   const linhaAlex = sem.abas[3].linhas.findIndex(l => l?.[2]?.v === 'Alex') + 1;
   assert.equal(v2(ABA_ANALISE, `Q${linhaAlex}`), 8604.77);
   assert.equal(v2(ABA_ANALISE, `P${linhaAlex}`), -50);
+});
+
+// Toda fórmula do modelo recalcula para o valor que a tela mostra.
+function conferirFormulas(m) {
+  const { valor } = avaliar(m.abas);
+  let n = 0;
+  for (const aba of m.abas) aba.linhas.forEach((linha, i) => (linha || []).forEach((c, j) => {
+    if (!c?.f) return;
+    const ref = `${String.fromCharCode(65 + j)}${i + 1}`;
+    const v = valor(aba.nome, ref);
+    if (typeof c.v === 'number') assert.ok(Math.abs(v - c.v) < 0.006, `${aba.nome}!${ref}: ${c.f} = ${v}, esperado ${c.v}`);
+    else assert.equal(v, c.v, `${aba.nome}!${ref}`);
+    n++;
+  }));
+  return n;
+}
+
+test('Excel (v3.6): uma coluna por secundário, com as fórmulas da base', () => {
+  const forn = [
+    { id: 1, codigo: '6610', nome: 'Farelo', grupo: 'secundario', pct_clt: 1, pct_televendas: 1, pct_pj: 2, ativo: true },
+    { id: 2, codigo: '7064', nome: 'Ouro Fino', grupo: 'secundario', pct_clt: 0.5, pct_televendas: 0.5, pct_pj: 3, ativo: true },
+  ];
+  const vendas = [
+    { vendedor: 'ALEX REPRESENTAÇÕES', cod_fornecedor: '7064', fornecedor: 'OURO FINO', total: 18401.89 },
+    { vendedor: 'ALEX REPRESENTAÇÕES', cod_fornecedor: '21610', fornecedor: 'DBM', total: 100000 },
+    { vendedor: 'RAYANE CUNHA DOS ANJOS', cod_fornecedor: '6610', fornecedor: 'FARELO', total: 799.8 },
+    { vendedor: 'RAYANE CUNHA DOS ANJOS', cod_fornecedor: '21610', fornecedor: 'DBM', total: 70927.68 },
+  ];
+  const r = apurar({ vendas, fornecedores: forn, excecoes: [] });
+  const base = vendas.map((v, i) => ({ data: '2026-10-01', cod_fornecedor: v.cod_fornecedor, fornecedor: v.fornecedor, segmento: 'X', marca: 'X', cod_vendedor: String(i), vendedor: v.vendedor, produto: 'P', valor: v.total }));
+  const m = modeloExcel(r, { parametros: P, cadastro: [ALEX, RAYANE, SEM_DADOS], premiacoes: PREM, ajustes: AJUSTES, base });
+  const an = m.abas[3].linhas;
+  const cab = an.find(l => l?.[2]?.v === 'NOME').map(c => c?.v);
+  assert.deepEqual(cab.slice(5, 16), ['% PRINCIPAL', '% FARELO', '% OURO FINO', 'Venda Principal', 'Venda Farelo', 'Venda Ouro Fino', 'Venda Total',
+    'Comissão Principal', 'Comissão Farelo', 'Comissão Ouro Fino', 'Comissão Total']);
+  assert.deepEqual([an[0][6].v, an[0][7].v], [6610, 7064], 'código de cada secundário acima do % dele');
+  assert.ok(conferirFormulas(m) > 30);
+  const alex = an.find(l => l?.[2]?.v === 'Alex');
+  assert.equal(alex[10].v, 18401.89, 'venda Ouro Fino do Alex');
+  assert.equal(alex[14].v, 552.06, 'comissão Ouro Fino: 3% do PJ');
+});
+
+test('Excel e recibo (v3.6): principal em lista tem coluna e linha de Outros', () => {
+  const p = { ...P, principal_modo: 'lista', pct_outros_clt: 0.2, pct_outros_televendas: 0.2, pct_outros_pj: 0.5 };
+  const forn = [{ id: 1, codigo: '6610', nome: 'Farelo', grupo: 'secundario', pct_clt: 1, pct_televendas: 1, pct_pj: 2, ativo: true },
+    { id: 2, codigo: '7064', nome: 'Ouro Fino', grupo: 'principal', ativo: true }];
+  const vendas = [
+    { vendedor: 'ALEX REPRESENTAÇÕES', cod_fornecedor: '7064', fornecedor: 'OURO FINO', total: 18401.89 },
+    { vendedor: 'ALEX REPRESENTAÇÕES', cod_fornecedor: '21610', fornecedor: 'DBM', total: 1000 },
+  ];
+  const r = apurar({ vendas, fornecedores: forn, excecoes: [], parametros: p });
+  const m = modeloExcel(r, { parametros: p, cadastro: [ALEX, RAYANE, SEM_DADOS], premiacoes: PREM, ajustes: AJUSTES, base: null });
+  const cab = m.abas[3].linhas.find(l => l?.[2]?.v === 'NOME').map(c => c?.v);
+  assert.ok(cab.includes('% OUTROS') && cab.includes('Venda Outros') && cab.includes('Comissão Outros'));
+  conferirFormulas(m);
+  const alex = r.linhas.find(l => l.id === 5);
+  const itens = itensRecibo(alex);
+  assert.deepEqual(itens.find(i => i.descricao === 'Comissão sobre outros fornecedores'), { descricao: 'Comissão sobre outros fornecedores', base: 1000, pct: 0.5, valor: 5 });
 });
 
 // ---------- outubro/2026 com as decisões de nov/2026 ----------

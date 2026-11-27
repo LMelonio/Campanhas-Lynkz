@@ -1,6 +1,6 @@
 // Worker do Cloudflare: /api/qlik/compras, /api/qlik/comissoes (só administrador) e /api/usuarios/convidar; o resto do site é estático.
 // Segredos (wrangler secret put): QLIK_API_KEY, SUPABASE_SERVICE_ROLE_KEY. Demais variáveis em wrangler.jsonc.
-import { abrirEngine, consultarCompras, consultarComissoes, consultarBaseComissoes, codigoFornecedorSeguro, ErroQlik, CONFIG_PADRAO, codigoSeguro, padraoSeguro, serialQlik, MAX_PADROES, marcasSeguras } from './qlik-engine.js';
+import { abrirEngine, consultarCompras, consultarComissoes, consultarBaseComissoes, ErroQlik, CONFIG_PADRAO, codigoSeguro, padraoSeguro, serialQlik, MAX_PADROES, marcasSeguras } from './qlik-engine.js';
 
 // Cabeçalhos de segurança também nas respostas da API (o _headers só vale para arquivos estáticos).
 const CABECALHOS = {
@@ -174,7 +174,8 @@ export async function tratarCompras(request, env, { conectar = conectarQlik } = 
 }
 
 // ---------- comissões ----------
-// Pedido: { apuracao_inicio, apuracao_fim, contrato_inicio, contrato_fim, cod_farelo } ou { apuracao_inicio, apuracao_fim, base: true }.
+// Pedido: { apuracao_inicio, apuracao_fim, contrato_inicio, contrato_fim } ou { apuracao_inicio, apuracao_fim, base: true }.
+// cod_farelo (versão antiga do app) é aceito e ignorado: a resposta vem por fornecedor (formato 2).
 // O app calcula os períodos (26 a 25 e o mês anterior fechado); aqui só conferimos o formato.
 const MAX_DIAS_COMISSAO = 62;
 function periodoSeguro(inicio, fim, rotulo) {
@@ -200,12 +201,11 @@ export async function tratarComissoes(request, env, { conectar = conectarQlik } 
     }
   }
   const contrato = periodoSeguro(corpo.contrato_inicio, corpo.contrato_fim, 'Contrato de Resultado');
-  const codFarelo = codigoFornecedorSeguro(corpo.cod_farelo);
   const ws = await conectar(env);
   const engine = abrirEngine(ws, { tempoMs: 40000 });
   try {
-    const r = await consultarComissoes(engine, { appId: env.QLIK_APP_ID, config: configDoEnv(env), apuracao, contrato, codFarelo });
-    return json({ ...r, cod_farelo: codFarelo, consultado_em: new Date().toISOString() });
+    const r = await consultarComissoes(engine, { appId: env.QLIK_APP_ID, config: configDoEnv(env), apuracao, contrato });
+    return json({ ...r, consultado_em: new Date().toISOString() });
   } finally {
     engine.fechar();
   }

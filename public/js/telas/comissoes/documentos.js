@@ -18,7 +18,8 @@ const NF = ['número da NF', 'valor da NF'];
 function botao(id, ic, rotulo, ocupado, tipo = 'btn-fantasma') {
   const [antes, meio, depois] = Array.isArray(rotulo) ? rotulo : ['', rotulo, ''];
   const texto = html`${antes ? html`<span class="cm-so-largo">${antes}</span>` : ''}${meio}${depois ? html`<span class="cm-so-largo">${depois}</span>` : ''}`;
-  return html`<button type="button" class="btn ${tipo}" id="${id}"${s.gerando ? html` disabled` : ''}${ocupado ? html` aria-busy="true"` : ''}>${icone(ic)} ${texto}${ocupado ? '…' : ''}</button>`;
+  // O texto num <span> só: o .btn é flex com gap, e cada pedaço solto virava um item (espaço dobrado).
+  return html`<button type="button" class="btn ${tipo}" id="${id}"${s.gerando ? html` disabled` : ''}${ocupado ? html` aria-busy="true"` : ''}>${icone(ic)}<span>${texto}${ocupado ? '…' : ''}</span></button>`;
 }
 
 // Na Apuração, os documentos ficam no fim, junto de "Fechar mês" (ou sozinhos, com Reabrir, no mês fechado).

@@ -187,7 +187,6 @@ a.det-empresa:hover { text-decoration-color: currentColor; }
 .empresa-texto strong { font-size: var(--t-16); display: flex; align-items: center; gap: var(--e-2); flex-wrap: wrap; }
 .empresa-texto small { font-size: var(--t-13); color: var(--ink-2); }
 
-.ficha .painel-titulo .acoes { text-transform: none; letter-spacing: 0; }
 .balconistas { display: grid; }
 .balconista { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--e-2) var(--e-3); padding: var(--e-3) var(--e-4); border-top: 1px solid var(--line); }
 .balconista-dados { display: grid; gap: 2px; min-width: 0; }
@@ -464,7 +463,7 @@ a.det-empresa:hover { text-decoration-color: currentColor; }
   .cm-caixa-pessoas, .cm-numeros, .cm-destaque .destaque-sub, .cm-fechar .painel-corpo > .campo-dica { display: none; }
   .cm-cartoes { display: grid; gap: var(--e-2); }
   .cm-cartao { background: var(--card); border: 1px solid var(--line); border-radius: var(--r-panel); min-width: 0; }
-  .cm-cartao summary { display: grid; gap: 2px; padding: var(--e-2) var(--e-3); min-height: var(--tap); cursor: pointer; list-style: none; }
+  .cm-cartao summary { display: grid; gap: 0; padding: 6px var(--e-3); min-height: var(--tap); cursor: pointer; list-style: none; }
   .cm-cartao summary::-webkit-details-marker { display: none; }
   .cm-cartao-topo { display: flex; justify-content: space-between; align-items: baseline; gap: var(--e-3); min-width: 0; }
   .cm-cartao-linha { display: block; }
@@ -496,3 +495,35 @@ a.det-empresa:hover { text-decoration-color: currentColor; }
   /* O mês escolhido já se explica: o rótulo fica só para o leitor de tela. */
   .cm-consulta .campo > label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 }
+
+/* Fornecedores (v3.6): linha de cada secundário no cadastro da pessoa. */
+.cm-sec-linha + .cm-sec-linha { border-top: 1px solid var(--line); padding-top: var(--e-3); }
+.cm-sec-padrao { margin: 0 0 var(--e-1); font-size: var(--t-14); }
+#cp-principal .pessoas { margin-bottom: var(--e-3); }
+
+/* Apuração (v3.6): busca sozinha, "Não comissionam" discreto e o valor a pagar ao lado do nome. */
+.cm-erro-qlik { flex-wrap: wrap; align-items: center; }
+.cm-erro-qlik .btn { margin-left: auto; }
+.cm-buscando .destaque-rotulo { margin: 0; }
+.cm-nao-comissionam { background: var(--card-2); box-shadow: none; }
+.cm-nao-comissionam, .cm-nao-comissionam .painel-titulo { color: var(--ink-2); }
+.cm-nao-comissionam .painel-titulo { display: flex; justify-content: space-between; gap: var(--e-3); margin: 0; }
+.cm-nao-comissionam summary { list-style: none; cursor: pointer; min-height: var(--tap); }
+.cm-nao-comissionam summary::-webkit-details-marker { display: none; }
+.cm-nao-comissionam details:not([open]) .painel-titulo span:first-child::after { content: ' ▸'; }
+.cm-nao-lista { margin: 0; padding: 0; list-style: none; }
+.cm-nao-lista li { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--e-1) var(--e-3);
+  padding: var(--e-2) var(--e-4); border-top: 1px solid var(--line); font-size: var(--t-14); }
+.cm-nao-lista .btn-texto { min-height: var(--tap); }
+.cm-pagar-nome { display: none; }
+@media (min-width: 601px) and (max-width: 1024px) { .cm-pagar-nome { display: inline; margin-left: var(--e-2); font-weight: 700; } }
+
+/* Cadastro (v3.6): o que falta no PJ como selo. */
+.selo-falta { background: var(--amber-soft); color: var(--amber); }
+
+/* Abas (v3.6): enquanto há mais abas à direita, a borda direita esmaece (máscara: só a transparência conta). */
+.cm-abas.cm-abas-mais { -webkit-mask-image: linear-gradient(to right, var(--ink) calc(100% - 40px), transparent); mask-image: linear-gradient(to right, var(--ink) calc(100% - 40px), transparent); }
+
+/* Consulta antiga num mês em andamento (v3.6): o aviso fica à vista também no celular. */
+.cm-consulta-antiga { color: var(--amber); }
+@media (max-width: 600px) { .cm-destaque .destaque-sub.cm-com-aviso { display: block; grid-column: 1 / -1; margin: var(--e-1) 0 0; } }

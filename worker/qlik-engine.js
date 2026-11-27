@@ -342,10 +342,10 @@ export async function consultarCompras(engine, { appId, config = CONFIG_PADRAO, 
 //  Mesmo valor (receita menos devolução) e mesmos filtros fixos da consulta de compras.
 // ============================================================
 
-// Código do fornecedor do Farelo: só números (vai entre aspas simples no conjunto).
+// Código de fornecedor: só números (vai entre aspas simples num conjunto).
 export function codigoFornecedorSeguro(v) {
   const s = String(v ?? '').trim();
-  if (!/^\d{1,10}$/.test(s)) throw new ErroQlik('Código do fornecedor do Farelo inválido.', { status: 400 });
+  if (!/^\d{1,10}$/.test(s)) throw new ErroQlik('Código do fornecedor inválido.', { status: 400 });
   return s;
 }
 
@@ -361,27 +361,40 @@ export function conjuntoPeriodo({ config = CONFIG_PADRAO, inicio, fim, extras = 
   return `<${partes.join(', ')}>`;
 }
 
+// Vendedor × fornecedor passa disto: a consulta é recusada com mensagem clara (o normal é ~25 × 300).
+export const MAX_LINHAS_COMISSAO = 20000;
+
 /**
- * @returns {{ apuracao: { inicio, fim, vendas: {vendedor,total,farelo}[], total, sem_vendedor },
+ * Formato 2: uma linha por vendedor e fornecedor. Quem é principal, secundário ou "Outros" é do app
+ * (lib/comissoes.js → classificarVendas), num lugar só; o Worker não recebe as listas de fornecedores.
+ * @returns {{ formato: 2,
+ *             apuracao: { inicio, fim, vendas: {vendedor,cod_fornecedor,fornecedor,total}[], total, sem_vendedor },
  *             contrato: { inicio, fim, linhas: {vendedor,cliente,valor}[] } }}
  */
-export async function consultarComissoes(engine, { appId, config = CONFIG_PADRAO, apuracao, contrato, codFarelo }) {
+export async function consultarComissoes(engine, { appId, config = CONFIG_PADRAO, apuracao, contrato }) {
   const c = config.campos;
-  const farelo = codigoFornecedorSeguro(codFarelo);
   const base = conjuntoPeriodo({ config, ...apuracao });
-  const soFarelo = conjuntoPeriodo({ config, ...apuracao, extras: [`${nomeCampo(c.codigoFornecedor)}={'${farelo}'}`] });
 
   const doc = await engine.rpc(-1, 'OpenDoc', { qDocName: appId });
   const hDoc = doc.qReturn.qHandle;
 
-  // 1) apuração: uma linha por vendedor, com o total e a parte do Farelo.
+  // 1) apuração: vendedor × código e nome do fornecedor, receita menos devolução.
+  //    Fornecedor vazio não some (qNullSuppression false): a venda entra com código ''.
   const v = await criarCubo(engine, hDoc, {
-    qDimensions: [{ qDef: { qFieldDefs: [c.vendedor] }, qNullSuppression: true }],
-    qMeasures: [{ qDef: { qDef: expressao(config, base) } }, { qDef: { qDef: expressao(config, soFarelo) } }],
+    qDimensions: [
+      { qDef: { qFieldDefs: [c.vendedor] }, qNullSuppression: true },
+      { qDef: { qFieldDefs: [c.codigoFornecedor] }, qNullSuppression: false },
+      { qDef: { qFieldDefs: [c.fornecedor] }, qNullSuppression: false },
+    ],
+    qMeasures: [{ qDef: { qDef: expressao(config, base) } }],
     qSuppressZero: true, qInitialDataFetch: [],
-  }, 'vendedor');
-  const vendas = (await lerLinhas(engine, v.h, v.cubo.qSize.qcy, 3))
-    .map(l => ({ vendedor: limpa(l[0].qText), total: arredonda(l[1].qNum), farelo: arredonda(l[2].qNum) }))
+  }, 'vendedor ou fornecedor');
+  const n = v.cubo.qSize.qcy;
+  if (n > MAX_LINHAS_COMISSAO) {
+    throw new ErroQlik(`A consulta das comissões tem ${n} linhas (vendedor × fornecedor); o máximo é ${MAX_LINHAS_COMISSAO}. Fale com o TI.`, { status: 422 });
+  }
+  const vendas = (await lerLinhas(engine, v.h, n, 4))
+    .map(l => ({ vendedor: limpa(l[0].qText), cod_fornecedor: limpa(l[1].qText), fornecedor: limpa(l[2].qText), total: arredonda(l[3].qNum) }))
     .filter(x => x.vendedor);
   const total = arredonda(v.cubo.qGrandTotalRow?.[0]?.qNum);
   // Vendas sem vendedor somem da lista (qNullSuppression): a diferença aparece na tela.
@@ -402,6 +415,7 @@ export async function consultarComissoes(engine, { appId, config = CONFIG_PADRAO
     .filter(x => x.vendedor && x.cliente);
 
   return {
+    formato: 2,
     apuracao: { ...apuracao, vendas, total, sem_vendedor: semVendedor },
     contrato: { ...contrato, linhas },
   };

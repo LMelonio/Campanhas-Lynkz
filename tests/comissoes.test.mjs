@@ -10,6 +10,7 @@ import {
   periodoApuracao, mesAnteriorFechado, somaMes, rotuloMesComissao, chaveNome, nomeQlik, centavos, arred,
   acordoVigente, juntarVendas, realizadosContrato, avaliarContrato, calcularLinha, apurarMes,
   errosComissionado, pctPadrao, PARAMETROS_PADRAO, nomeLegivel, novoDoQlik, cadastroDaCopia,
+  textoContrato, diasConsultaAntiga, regrasFornecedores, classificarVendas, pctSecundario, vendasFormato2, regrasParaCopia, regrasDaCopia, secundariosDaLinha,
 } from '../public/js/lib/comissoes.js';
 
 test('novos no Qlik (v3.4): cadastro com o regime e os % padrão, nome legível', () => {
@@ -34,6 +35,22 @@ test('períodos: apuração 26 a 25 e mês anterior fechado', () => {
   assert.equal(somaMes('2026-12', 1), '2027-01');
   assert.equal(rotuloMesComissao('2026-10'), 'Outubro 2026');
   assert.throws(() => periodoApuracao('2026-13'));
+});
+
+test('contrato (v3.6): textos com o mês anterior de calendário, inclusive na virada do ano', () => {
+  assert.deepEqual(textoContrato('2026-11'), { mes: 'outubro de 2026', barra: 'outubro/2026', curto: 'outubro', periodo: '01/10 a 31/10' });
+  assert.deepEqual(textoContrato('2027-01'), { mes: 'dezembro de 2026', barra: 'dezembro/2026', curto: 'dezembro', periodo: '01/12 a 31/12' });
+  assert.equal(textoContrato('2028-03').periodo, '01/02 a 29/02', 'fevereiro bissexto');
+});
+
+test('consulta antiga (v3.6): avisa só no mês em andamento e com mais de 1 dia', () => {
+  // Apuração de novembro/2026: 26/10 a 25/11.
+  assert.equal(diasConsultaAntiga('2026-11', 25, '2026-11-20', '2026-11-25'), 5, 'cinco dias, no último dia do período');
+  assert.equal(diasConsultaAntiga('2026-11', 25, '2026-11-24', '2026-11-25'), null, '1 dia ainda não avisa');
+  assert.equal(diasConsultaAntiga('2026-11', 25, '2026-11-23', '2026-11-25'), 2, '2 dias avisa');
+  assert.equal(diasConsultaAntiga('2026-11', 25, '2026-11-20', '2026-11-26'), null, 'período terminado: a consulta é a do mês fechado de vendas');
+  assert.equal(diasConsultaAntiga('2027-01', 25, '2026-12-28', '2027-01-03'), 6, 'na virada do ano');
+  assert.equal(diasConsultaAntiga('2026-11', 25, '', '2026-11-25'), null, 'sem consulta');
 });
 
 test('dinheiro: centavos arredondam meio centavo para longe do zero', () => {
@@ -75,7 +92,7 @@ test('vendas: soma os nomes da mesma pessoa e lista quem não tem cadastro', () 
     { vendedor: 'SAIU', total: 50, farelo: 0 },
     { vendedor: 'TERRAZOO', total: 9000, farelo: 0 },
   ], CAD.filter(c => c.ativo !== false), ['terrazoo']);
-  assert.deepEqual(r.porId.get(1), { totalC: 100000, fareloC: 10000, nomes: ['Ana Silva'] });
+  assert.deepEqual(r.porId.get(1), { principalC: 90000, secundarios: { 6610: 10000 }, outrosC: 0, totalC: 100000, nomes: ['Ana Silva'] });
   assert.equal(r.porId.get(2).totalC, 50030);
   assert.deepEqual(r.semCadastro.map(x => x.vendedor), ['SAIU']);   // desativado não recebe
   assert.deepEqual(r.ignorados.map(x => x.vendedor), ['TERRAZOO']);
@@ -122,6 +139,84 @@ test('mês reaberto (v3.5): usa o % do cadastro da cópia; gente nova vem do cad
   assert.equal(r.linhas.find(l => l.id === 1).comissao_principal, 25, '2,5% de quando o mês foi fechado, não os 4% de hoje');
   assert.equal(r.linhas.find(l => l.id === 8).comissao_principal, 1, 'quem é novo entra com o cadastro de hoje');
   assert.equal(cadastroDaCopia(undefined, hoje), hoje, 'sem cópia: cadastro de hoje');
+});
+
+
+// ---------- fornecedores (v3.6): principal, secundários e "Outros" ----------
+const FARELO = { id: 1, codigo: '6610', nome: 'Farelo', grupo: 'secundario', pct_clt: 1, pct_televendas: 1, pct_pj: 2, vale_de: '2000-01', ativo: true };
+const OURO = { id: 2, codigo: '7064', nome: 'Ouro Fino', grupo: 'secundario', pct_clt: 0.5, pct_televendas: 0.25, pct_pj: 3, vale_de: '2026-10', ativo: true };
+const V2 = [   // formato 2
+  { vendedor: 'ANA SILVA', cod_fornecedor: '7064', fornecedor: 'OURO FINO', total: 1000 },
+  { vendedor: 'ANA SILVA', cod_fornecedor: '6610', fornecedor: 'FARELO', total: 100 },
+  { vendedor: 'ANA SILVA', cod_fornecedor: '21610', fornecedor: 'DBM', total: 500 },
+  { vendedor: 'B REPRESENTAÇÕES', cod_fornecedor: '21610', fornecedor: 'DBM', total: 2000 },
+];
+
+test('fornecedores (v3.6): só o Farelo dá o mesmo que antes, na tabela ou nos Parâmetros', () => {
+  const v1 = [{ vendedor: 'ANA SILVA', total: 1600, farelo: 100 }, { vendedor: 'B REPRESENTAÇÕES', total: 2000, farelo: 0 }];
+  const antes = apurarMes({ mes: '2026-10', comissionados: CAD, vendas: v1 });
+  const tabela = apurarMes({ mes: '2026-10', comissionados: CAD, vendas: V2, fornecedores: [FARELO], excecoes: [] });
+  for (const k of ['venda_principal', 'venda_farelo', 'comissao_principal', 'comissao_farelo', 'comissao_total', 'valor_pagar', 'pct_farelo']) {
+    assert.deepEqual(tabela.linhas.map(l => l[k]), antes.linhas.map(l => l[k]), k);
+  }
+  assert.equal(antes.linhas[0].comissao_farelo, 1, '1% de R$ 100');
+  assert.deepEqual(antes.linhas[0].secundarios, [{ codigo: '6610', nome: 'Farelo', venda: 100, pct: 1, comissao: 1 }]);
+});
+
+test('fornecedores (v3.6): consulta antiga (formato 1) vira o formato 2 na entrada', () => {
+  assert.deepEqual(vendasFormato2([{ vendedor: 'X', total: 110, farelo: 10 }], '6610'), [
+    { vendedor: 'X', cod_fornecedor: null, fornecedor: '', total: 100, principal: true },
+    { vendedor: 'X', cod_fornecedor: '6610', fornecedor: 'Farelo', total: 10 },
+  ]);
+  const r = regrasFornecedores({ ...P, principal_modo: 'lista', pct_outros_clt: 0, pct_outros_televendas: 0, pct_outros_pj: 0 }, [FARELO], '2026-10');
+  const [x] = classificarVendas([{ vendedor: 'X', total: 110, farelo: 10 }], r);
+  assert.deepEqual([x.principalC, x.secundarios['6610'], x.outrosC], [10000, 1000, 0], 'o principal antigo continua principal mesmo com lista');
+});
+
+test('fornecedores (v3.6): secundário novo com % por regime e exceção da pessoa', () => {
+  const r = apurarMes({ mes: '2026-10', comissionados: CAD, vendas: V2, fornecedores: [FARELO, OURO],
+    excecoes: [{ comissionado_id: 1, codigo: '7064', pct: 0.75 }] });
+  const ana = r.linhas.find(l => l.id === 1);
+  assert.deepEqual(ana.secundarios.map(x => [x.codigo, x.venda, x.pct, x.comissao]), [['6610', 100, 1, 1], ['7064', 1000, 0.75, 7.5]]);
+  assert.equal(ana.venda_principal, 500, 'DBM fica no principal (todos menos os secundários)');
+  assert.equal(ana.comissao_principal, 12.5);
+  assert.equal(ana.comissao_total, 21, '12,50 + 1 + 7,50');
+  assert.equal(pctSecundario(CAD[1], regrasFornecedores(P, [OURO], '2026-10').secundarios[0], []), 3, 'sem exceção: o % do regime (PJ)');
+});
+
+test('fornecedores (v3.6): principal em lista manda o resto para "Outros", com % por regime', () => {
+  const p = { ...P, principal_modo: 'lista', pct_outros_clt: 0.2, pct_outros_televendas: 0.1, pct_outros_pj: 0.4 };
+  const r = apurarMes({ mes: '2026-10', comissionados: CAD, parametros: p, vendas: V2, excecoes: [],
+    fornecedores: [FARELO, { id: 3, codigo: '7064', nome: 'Ouro Fino', grupo: 'principal', ativo: true }] });
+  const ana = r.linhas.find(l => l.id === 1), bruno = r.linhas.find(l => l.id === 2);
+  assert.deepEqual([ana.venda_principal, ana.venda_farelo, ana.venda_outros, ana.comissao_outros], [1000, 100, 500, 1]);
+  assert.deepEqual([bruno.venda_principal, bruno.venda_outros, bruno.comissao_outros], [0, 2000, 8]);
+  assert.equal(r.totais.geral.venda_outros, 2500);
+});
+
+test('fornecedores (v3.6): falta de % vira alerta, nunca 0% em silêncio', () => {
+  const semTv = { ...OURO, vale_de: '2000-01', pct_televendas: null };
+  const tv = { id: 7, nome: 'Tele', regime: 'TELEVENDAS', pct_principal: 1, nomes_qlik: ['TELE'] };
+  const r = apurarMes({ mes: '2026-10', comissionados: [tv], vendas: [{ vendedor: 'TELE', cod_fornecedor: '7064', fornecedor: 'OURO', total: 100 }],
+    fornecedores: [semTv], excecoes: [] });
+  assert.ok(r.linhas[0].alertas.some(a => a.texto === 'Fornecedor Ouro Fino sem % para Televendas: a venda dele ficou sem comissão.'));
+  const lista = apurarMes({ mes: '2026-10', comissionados: [tv], parametros: { ...P, principal_modo: 'lista' }, vendas: [{ vendedor: 'TELE', cod_fornecedor: '1', fornecedor: 'X', total: 100 }], fornecedores: [], excecoes: [] });
+  assert.ok(lista.linhas[0].alertas.some(a => /Outros fornecedores sem % para Televendas/.test(a.texto)));
+});
+
+test('fornecedores (v3.6): vale_de no futuro não vale; reaberto usa as regras da cópia', () => {
+  const futuro = regrasFornecedores(P, [FARELO, { ...OURO, vale_de: '2026-11' }], '2026-10');
+  assert.deepEqual(futuro.secundarios.map(x => x.codigo), ['6610'], 'Ouro Fino só a partir de novembro');
+  const r = apurarMes({ mes: '2026-10', comissionados: CAD, vendas: V2, fornecedores: [FARELO, OURO], excecoes: [] });
+  const copia = JSON.parse(JSON.stringify(r.regras));
+  const reaberto = apurarMes({ mes: '2026-10', comissionados: CAD, vendas: V2, fornecedores: [FARELO], excecoes: [], regras: regrasDaCopia(copia) });
+  assert.equal(reaberto.linhas[0].comissao_total, r.linhas[0].comissao_total, 'com a regra de hoje (sem Ouro Fino) daria outro valor');
+  assert.deepEqual(regrasDaCopia(regrasParaCopia(futuro)).principal, futuro.principal);
+});
+
+test('fornecedores (v3.6): cópia de mês fechado antes da 3.6 mostra o Farelo como secundário', () => {
+  assert.deepEqual(secundariosDaLinha({ venda_farelo: 10, pct_farelo: 1, comissao_farelo: 0.1 }), [{ codigo: '6610', nome: 'Farelo', venda: 10, pct: 1, comissao: 0.1 }]);
+  assert.deepEqual(secundariosDaLinha({ venda_farelo: 0, comissao_farelo: 0 }), []);
 });
 
 test('contrato: realizados e positivação líquida por pessoa', () => {

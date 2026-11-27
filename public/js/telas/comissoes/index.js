@@ -4,7 +4,7 @@
 //   ?aba=premiacoes   lancamentos.js premiações de campanha e ajustes (com motivo) do mês
 //   ?aba=contrato     contrato.js   Contrato de Resultado dos PJ: metas do mês anterior e realizado
 //   ?aba=cadastro     cadastro.js   comissionados: as pessoas vêm do Qlik; aqui só se completa regime, %, acordo e dados da PJ
-//   ?aba=parametros   parametros.js código do Farelo, dia de corte, % padrão, Contrato de Resultado, nomes que não comissionam
+//   ?aba=parametros   parametros.js dia de corte, fornecedor principal e secundários, % padrão, Contrato de Resultado, nomes que não comissionam
 //   ?aba=historico    historico.js  meses fechados (cópia do que foi pago)
 //   &mes=AAAA-MM      mês das abas do mês (Apuração, Premiações e Contrato)
 //   ?aba=previa é o nome antigo da Apuração: links antigos continuam abrindo.
@@ -71,6 +71,31 @@ function desenhar() {
     </div>
     <div id="cm-conteudo">${ABAS_DO_MES.includes(s.aba) ? seletorMes() : ''}${aba.tela.desenhar()}</div>
   </div>`);
+  ajustarAbas();
+}
+
+// Abas no celular: a ativa fica à vista (ex.: abrir em ?aba=historico) e a borda direita esmaece enquanto há mais abas.
+function ajustarAbas() {
+  const faixa = s.el.querySelector('.cm-abas');
+  if (!faixa) return;
+  const ativa = faixa.querySelector('[aria-pressed="true"]');
+  if (ativa && faixa.scrollWidth > faixa.clientWidth) {
+    const fim = ativa.offsetLeft + ativa.offsetWidth;
+    if (ativa.offsetLeft < faixa.scrollLeft || fim > faixa.scrollLeft + faixa.clientWidth) ativa.scrollIntoView({ inline: 'nearest', block: 'nearest' });
+  }
+  marcarMaisAbas(faixa);
+}
+// Esmaece enquanto a última aba não está inteira à vista.
+const marcarMaisAbas = faixa => {
+  const ultima = faixa.lastElementChild;
+  faixa.classList.toggle('cm-abas-mais', !!ultima && ultima.getBoundingClientRect().right > faixa.getBoundingClientRect().right + 1);
+};
+
+// "Secundários: Farelo (6610)." e, com o principal em lista, que o resto vai para Outros.
+function textoFornecedores() {
+  const r = comissoes.regras(s.mes);
+  const sec = r.secundarios.map(x => `${x.nome} (${x.codigo})`);
+  return `${sec.length ? `Secundário${sec.length > 1 ? 's' : ''}: ${sec.join(', ')}.` : 'Sem fornecedor secundário.'}${r.principalModo === 'lista' ? ' Fornecedor fora das listas vai para Outros.' : ''}`;
 }
 
 function seletorMes() {
@@ -84,10 +109,10 @@ function seletorMes() {
   const naApuracao = s.aba === 'apuracao';
   return html`<div class="cm-cabeca"><div class="cm-consulta">
       ${selecao({ id: 'cm-mes', rotulo: 'Mês da apuração', opcoes: meses.map(m => ({ valor: m, rotulo: rotuloMesComissao(m) })), valor: s.mes, vazio: 'Escolha o mês' })}
-      ${fechado() || !naApuracao ? '' : html`<button type="button" class="btn ${r ? 'btn-fantasma' : 'btn-primario'}" id="cm-buscar"${s.buscando ? html` aria-busy="true" disabled` : ''}>${icone('repetir')} ${s.buscando ? 'Buscando no Qlik…' : r ? 'Atualizar do Qlik' : 'Buscar vendas no Qlik'}</button>`}
+      ${fechado() || !naApuracao ? '' : html`<button type="button" class="btn ${!r || apuracao.consultaAntiga(r) ? 'btn-primario' : 'btn-fantasma'}" id="cm-buscar"${s.buscando ? html` aria-busy="true" disabled` : ''}>${icone('repetir')} ${s.buscando ? 'Buscando no Qlik…' : 'Atualizar do Qlik'}</button>`}
     </div>
-    ${naApuracao ? html`<p class="secao-nota cm-periodo">Vendas de ${dataBR(ap.inicio)} a ${dataBR(ap.fim)}<span class="cm-so-largo">, receita menos devolução, atacado regular</span>. Farelo é o fornecedor ${p.cod_farelo}.
-      O Contrato de Resultado olha ${mesMinusculo(ct.mes)} inteiro.</p>` : ''}</div>`;
+    ${naApuracao ? html`<p class="secao-nota cm-periodo">Vendas de ${dataBR(ap.inicio)} a ${dataBR(ap.fim)}<span class="cm-so-largo">, receita menos devolução, atacado regular</span>. ${textoFornecedores()}
+      <span class="cm-so-largo">O Contrato de Resultado olha ${mesMinusculo(ct.mes)} inteiro.</span></p>` : ''}</div>`;
 }
 
 const abaDe = params => {
@@ -99,6 +124,9 @@ const rotaDe = (aba, mes) => `#/comissoes?aba=${aba}${mes ? `&mes=${mes}` : ''}`
 // Põe o mês no endereço sem criar entrada no histórico do navegador.
 const marcarEndereco = () => { if (s?.mes) s.ctx.navegar(rotaDe(s.aba, s.mes), { substituir: true }); };
 
+// Nas abas do mês, mês aberto sem consulta busca no Qlik sozinho (uma vez por mês na sessão).
+const buscarSeFaltar = () => { if (ABAS_DO_MES.includes(s?.aba)) apuracao.buscarSeFaltar(); };
+
 async function trocarMes(mes) {
   const meu = s;
   s.mes = mesLembrado = mes; s.erroQlik = null;
@@ -107,7 +135,7 @@ async function trocarMes(mes) {
     if (s !== meu) return;
     s.resultado = await comissoes.apurar(mes, { buscar: false });
   } catch (e) { if (s === meu) s.ctx.toast(detalhar(e).mensagem, { tom: 'erro' }); }
-  if (s === meu) { marcarEndereco(); desenhar(); }
+  if (s === meu) { marcarEndereco(); desenhar(); buscarSeFaltar(); }
 }
 
 async function carregar() {
@@ -122,7 +150,16 @@ async function carregar() {
     s.resultado = await comissoes.apurar(s.mes, { buscar: false });
     s.pronto = true;
   } catch (e) { if (s === meu) s.erro = detalhar(e).mensagem; }
-  if (s === meu) desenhar();
+  if (s === meu) { desenhar(); if (s.pronto) buscarSeFaltar(); }
+}
+
+// "scroll" não sobe pelo DOM: escuta na captura, e também quando a janela muda de largura.
+function ouvirRolagemAbas(el) {
+  const rolou = e => { if (e.target?.classList?.contains('cm-abas')) marcarMaisAbas(e.target); };
+  const mudou = () => { const f = el.querySelector('.cm-abas'); if (f) marcarMaisAbas(f); };
+  el.addEventListener('scroll', rolou, true);
+  window.addEventListener('resize', mudou);
+  return () => { el.removeEventListener('scroll', rolou, true); window.removeEventListener('resize', mudou); };
 }
 
 export function montar(el, ctx, params) {
@@ -136,6 +173,7 @@ export function montar(el, ctx, params) {
     ao(el, 'click', '[data-aba]', (e, b) => ctx.navegar(rotaDe(b.dataset.aba, s.mes), { substituir: true })),
     ao(el, 'click', '#cm-tentar', () => { s.erro = null; desenhar(); carregar(); }),
     ao(el, 'change', '#cm-mes', (e, sel) => { if (sel.value) trocarMes(sel.value); }),
+    ouvirRolagemAbas(el),
     ...ABAS.flatMap(a => a.tela.ligar(el)),
     ...documentos.ligar(el),
     ligarBusca(el),
@@ -155,4 +193,5 @@ export function atualizar(params) {
     s.mes = mesLembrado = mes;
   }
   desenhar();
+  if (s.pronto) buscarSeFaltar();
 }

@@ -24,7 +24,7 @@ import * as telaComissoes from './telas/comissoes/index.js';
 const C = window.CONFIG;
 
 // Igual à VERSAO de config.js e sw.js. Se o config.js chegar mais novo que os módulos em cache, recarrega uma vez.
-export const VERSAO_APP = '3.5.0';
+export const VERSAO_APP = '3.6.0';
 const CHAVE_RECARGA = 'lynkz-recarregou-para';
 
 const TELAS = {

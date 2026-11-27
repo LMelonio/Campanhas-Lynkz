@@ -47,7 +47,8 @@ select t16.ok((select pj_documento = '60736160000125' and meta_atualizada_em is 
 -- ---------- 2. regras ----------
 select t16.falha($$insert into comissionados (nome, regime, pct_principal, pct_farelo, nomes_qlik) values ('Outro', 'CLT', 2.5, 1, array['seldiana araujo  barros'])$$,
   'já está ligado a Seldiana', 'nome do Qlik repetido em outro ativo é recusado');
-select t16.falha($$insert into comissionados (nome, regime, pct_principal, pct_farelo, nomes_qlik, acordo_minimo, acordo_inicio) values ('Pj', 'PJ', 5, 2, array['PJ X'], 1000, '2026-10-01')$$,
+select t16.falha($$insert into comissionados (nome, regime, pct_principal, pct_farelo, nomes_qlik, acordo_minimo, acordo_inicio, pj_razao_social, pj_documento, pj_pix, pj_banco)
+  values ('Pj', 'PJ', 5, 2, array['PJ X'], 1000, '2026-10-01', 'Pj Ltda', '11222333000181', 'pix', 'Banco')$$,
   'comissionados_acordo_valido', 'acordo mínimo em PJ é recusado');
 select t16.falha($$insert into comissionados (nome, regime, pct_principal, pct_farelo, nomes_qlik, acordo_minimo) values ('Clt', 'CLT', 2.5, 1, array['CLT X'], 1000)$$,
   'comissionados_acordo_valido', 'acordo sem início da vigência é recusado');

@@ -85,8 +85,18 @@ Tela: `export function montar(el, ctx, params) → desmontar`. `ctx`: `perfil`, 
 ## Comissões (só administrador)
 
 - Cálculo puro em `lib/comissoes.js`; a interface que importa é `apurarMes()` (o resto é usado por ela e pelos testes).
-  Vendas do dia 26 ao 25 (`periodoApuracao`), receita menos devolução; Farelo = fornecedor do parâmetro (6610);
-  % do cadastro de cada pessoa; premiações do mês; Contrato de Resultado só PJ, do mês anterior fechado
+  Vendas do dia 26 ao 25 (`periodoApuracao`), receita menos devolução, por vendedor × fornecedor. Fornecedores
+  (migração 21, `regrasFornecedores()` / `classificarVendas()` / `pctSecundario()`): o **principal** é "todos menos os
+  secundários" (padrão) ou uma lista (`principal_modo = 'lista'`); os **secundários** (`comissao_fornecedores`, hoje só o
+  Farelo 6610) têm % por regime e `vale_de`; uma pessoa pode ter % próprio num secundário (`comissao_excecoes`; para tirar,
+  grava o % do padrão: ninguém apaga). Com a lista, venda fora das listas vai para **Outros** (`pct_outros_*` por regime).
+  Principal × `pct_principal` do cadastro; falta de % vira alerta (nunca 0% em silêncio). Consulta antiga (formato 1,
+  `{ total, farelo }`) é convertida na entrada (`vendasFormato2`). A linha mantém `venda_farelo`, `pct_farelo` e
+  `comissao_farelo` (o secundário Farelo) para o Excel e as cópias antigas; `secundariosDaLinha()` lê os dois formatos.
+  Regra de ouro: com os parâmetros padrão, outubro/2026 não muda nenhum centavo (testes com `dados-privados`).
+  Obsoletos desde a 21 (o app não lê; saem numa migração futura): `comissao_parametros.cod_farelo` e `pct_*_farelo`,
+  `comissionados.pct_farelo` (o app grava nele o % efetivo do Farelo, para o rollback).
+  Premiações do mês; Contrato de Resultado só PJ, do mês anterior fechado
   (`mesAnteriorFechado`): faturamento ≥ 100% e positivação ≥ 80% da meta → 1,0% do realizado, 1,2% acima de 105%.
   Metas do mês na aba Contrato (`comissao_mes_pj`; sem elas, as do cadastro); realizado do Qlik ou informado à mão com
   motivo (`entradaContrato`). Positivado = cliente com receita líquida > 0 no mês. Acordo mínimo só CLT, na vigência:
@@ -96,7 +106,9 @@ Tela: `export function montar(el, ctx, params) → desmontar`. `ctx`: `perfil`, 
   com "Completar cadastro" (regime, %, acordo, dados da PJ) ou "Não comissiona". Nome de cadastro desativado vai para
   "Desativados com venda no Qlik" (com Reativar), nunca para os novos; premiação ou ajuste dele fica fora do total e avisa. Com 2 ou mais, dá para marcar vários e
   aplicar de uma vez ("Não comissiona" ou cadastrar como CLT, Televendas ou PJ com os % padrão: `novoDoQlik()`). Não há botão de cadastro novo nem
-  "ligar a alguém"; o nome do Qlik não se edita.
+  "ligar a alguém"; o nome do Qlik não se edita. O Cadastro mostra todos os vendedores em cinco grupos: CLT, PJ (selo
+  "Falta: …"), Sem cadastro no Qlik (da última consulta gravada, `ultimaConsulta()` / `semCadastroDaUltima()`), Não
+  comissionam e Desativados (atrás do interruptor); a busca vale para todos.
 - `dados/comissoes.js` junta banco + Qlik + cálculo: `carregar()`, `carregarMes(mes)`, `apurar(mes, { buscar })`,
   `salvar()`, `salvarParametros()`, `ignorarNome()`/`ignorarNomes()`, `lancarPremiacao()`/`lancarAjuste()` e `removerPremiacao()`/`removerAjuste()`
   (desativam), `salvarMesPj(mes, id, campos)` (metas, realizado informado, número e valor da NF), `buscarBase(mes)` (vendas linha
@@ -110,6 +122,10 @@ Tela: `export function montar(el, ctx, params) → desmontar`. `ctx`: `perfil`, 
 - Apuração: o total (fixo no topo até 600 px, com as pendências), Novos e Desativados, as pessoas (tabela; até 600 px um
   cartão por pessoa com "Ver conta") e, no fim, documentos junto de "Fechar mês". Buscar no Qlik e o período só na Apuração.
   Premiações até 600 px: lista primeiro e "Lançar premiação / ajuste" num diálogo.
+  Nas abas do mês, mês aberto sem consulta busca no Qlik sozinho (uma vez por mês na sessão; erro mostra "Tentar de novo"
+  e não repete). Consulta com mais de 1 dia num mês em andamento (`diasConsultaAntiga()`) avisa "Consulta de N dias
+  atrás." e destaca "Atualizar do Qlik", sem buscar sozinho. Premiações e ajustes valem para todos do Qlik: quem vendeu sem cadastro aparece em "Sem cadastro"
+  (`qlik:NOME`) e lançar completa o cadastro antes; o aviso mostra o efeito no valor a pagar. O último bloco é "Não comissionam" (nomes ignorados com "Voltar a comissionar" e vendas sem vendedor).
 - Histórico: "Fechar mês" fica numa faixa própria no fim da Apuração, com o que falta (Novos no Qlik, cadastro dos PJ,
   NF de todos pela ADP); o botão só fica em destaque quando nada falta. Grava em `comissao_fechamentos` a cópia (cálculo, cadastro usado, premiações, ajustes, parâmetros).
   Mês fechado trava premiações, ajustes, contrato e NF (trigger no banco); documentos saem da cópia (o Excel sem a aba
@@ -121,9 +137,13 @@ Tela: `export function montar(el, ctx, params) → desmontar`. `ctx`: `perfil`, 
   gravado no mês com o valor da NF (aviso quando não bate com o valor a pagar). Textos fixos em `config.js` → `COMISSOES` (empresa pagadora e CNPJ = tomador das NF dos PJ; a loja vem de `ADP`).
   Nomes de arquivo sem acento (alguns navegadores trocam por "download").
 - Banco: migração 16 (`comissionados`, `comissao_parametros`, `comissao_auditoria`), 17 (`comissao_premiacoes`,
-  `comissao_ajustes`, `comissao_mes_pj`, `comissao_fechamentos`) e 19 (`comissao_consultas`). RLS `eh_aprovador()` em todas; ninguém apaga (premiação sai desativada); tudo na auditoria.
-- Worker: `/api/qlik/comissoes` só para `papel = 'aprovador'` (`ROTAS_QLIK[...].soAdmin`). Cubos `[Vendedor B2B]` (total e
-  Farelo) e `[Vendedor B2B] × [Cód. Cliente]` (contrato), com os mesmos `{1<…>}`, filtros e medida das compras.
+  `comissao_ajustes`, `comissao_mes_pj`, `comissao_fechamentos`), 19 (`comissao_consultas`) e 21 (`comissao_fornecedores`,
+  `comissao_excecoes`) e 22 (PJ ativo exige razão social, CNPJ ou CPF válido, PIX e banco; mesma regra de `errosPj()` /
+  `pendenciasPj()` em `lib/comissoes-documentos.js`; PJ não se cadastra em lote). O fechamento grava as regras usadas (`resultado.regras`, `fornecedores`, `excecoes`); reabrir calcula com elas. RLS `eh_aprovador()` em todas; ninguém apaga (premiação sai desativada); tudo na auditoria.
+- Worker: `/api/qlik/comissoes` só para `papel = 'aprovador'` (`ROTAS_QLIK[...].soAdmin`). Cubos `[Vendedor B2B] × [Cód.
+  Fornecedor] × [Nome Fantasia Fornecedor]` (formato 2, até `MAX_LINHAS_COMISSAO`) e `[Vendedor B2B] × [Cód. Cliente]`
+  (contrato), com os mesmos `{1<…>}`, filtros e medida das compras. O Worker não sabe quem é secundário: `cod_farelo` no
+  pedido é ignorado.
   Com `{ base: true }`, devolve só a base linha a linha (campos `segmento`, `codigoVendedor` e `produto` em `QLIK_CAMPOS`).
 - O teste "outubro/2026" refaz a planilha real com `dados-privados/comissoes-outubro-2026.json` (fora do Git; sem ele, é pulado).
   `npm run qlik:comissoes -- --mes AAAA-MM --planilha arquivo.xlsx` compara o Qlik com a planilha do mês.
