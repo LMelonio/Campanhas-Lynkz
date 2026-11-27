@@ -123,7 +123,8 @@ Tela: `export function montar(el, ctx, params) → desmontar`. `ctx`: `perfil`, 
   cartão por pessoa com "Ver conta") e, no fim, documentos junto de "Fechar mês". Buscar no Qlik e o período só na Apuração.
   Premiações até 600 px: lista primeiro e "Lançar premiação / ajuste" num diálogo.
   Nas abas do mês, mês aberto sem consulta busca no Qlik sozinho (uma vez por mês na sessão; erro mostra "Tentar de novo"
-  e não repete). Premiações e ajustes valem para todos do Qlik: quem vendeu sem cadastro aparece em "Sem cadastro"
+  e não repete). Consulta com mais de 1 dia num mês em andamento (`diasConsultaAntiga()`) avisa "Consulta de N dias
+  atrás." e destaca "Atualizar do Qlik", sem buscar sozinho. Premiações e ajustes valem para todos do Qlik: quem vendeu sem cadastro aparece em "Sem cadastro"
   (`qlik:NOME`) e lançar completa o cadastro antes; o aviso mostra o efeito no valor a pagar. O último bloco é "Não comissionam" (nomes ignorados com "Voltar a comissionar" e vendas sem vendedor).
 - Histórico: "Fechar mês" fica numa faixa própria no fim da Apuração, com o que falta (Novos no Qlik, cadastro dos PJ,
   NF de todos pela ADP); o botão só fica em destaque quando nada falta. Grava em `comissao_fechamentos` a cópia (cálculo, cadastro usado, premiações, ajustes, parâmetros).

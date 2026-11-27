@@ -10,7 +10,7 @@ import {
   periodoApuracao, mesAnteriorFechado, somaMes, rotuloMesComissao, chaveNome, nomeQlik, centavos, arred,
   acordoVigente, juntarVendas, realizadosContrato, avaliarContrato, calcularLinha, apurarMes,
   errosComissionado, pctPadrao, PARAMETROS_PADRAO, nomeLegivel, novoDoQlik, cadastroDaCopia,
-  textoContrato, regrasFornecedores, classificarVendas, pctSecundario, vendasFormato2, regrasParaCopia, regrasDaCopia, secundariosDaLinha,
+  textoContrato, diasConsultaAntiga, regrasFornecedores, classificarVendas, pctSecundario, vendasFormato2, regrasParaCopia, regrasDaCopia, secundariosDaLinha,
 } from '../public/js/lib/comissoes.js';
 
 test('novos no Qlik (v3.4): cadastro com o regime e os % padrão, nome legível', () => {
@@ -41,6 +41,16 @@ test('contrato (v3.6): textos com o mês anterior de calendário, inclusive na v
   assert.deepEqual(textoContrato('2026-11'), { mes: 'outubro de 2026', barra: 'outubro/2026', curto: 'outubro', periodo: '01/10 a 31/10' });
   assert.deepEqual(textoContrato('2027-01'), { mes: 'dezembro de 2026', barra: 'dezembro/2026', curto: 'dezembro', periodo: '01/12 a 31/12' });
   assert.equal(textoContrato('2028-03').periodo, '01/02 a 29/02', 'fevereiro bissexto');
+});
+
+test('consulta antiga (v3.6): avisa só no mês em andamento e com mais de 1 dia', () => {
+  // Apuração de novembro/2026: 26/10 a 25/11.
+  assert.equal(diasConsultaAntiga('2026-11', 25, '2026-11-20', '2026-11-25'), 5, 'cinco dias, no último dia do período');
+  assert.equal(diasConsultaAntiga('2026-11', 25, '2026-11-24', '2026-11-25'), null, '1 dia ainda não avisa');
+  assert.equal(diasConsultaAntiga('2026-11', 25, '2026-11-23', '2026-11-25'), 2, '2 dias avisa');
+  assert.equal(diasConsultaAntiga('2026-11', 25, '2026-11-20', '2026-11-26'), null, 'período terminado: a consulta é a do mês fechado de vendas');
+  assert.equal(diasConsultaAntiga('2027-01', 25, '2026-12-28', '2027-01-03'), 6, 'na virada do ano');
+  assert.equal(diasConsultaAntiga('2026-11', 25, '', '2026-11-25'), null, 'sem consulta');
 });
 
 test('dinheiro: centavos arredondam meio centavo para longe do zero', () => {

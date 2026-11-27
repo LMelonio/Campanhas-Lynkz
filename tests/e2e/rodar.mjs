@@ -3323,6 +3323,40 @@ teste('v3.6: tabela de secundários (1280 px) — títulos e valores de % alinha
   for (const c of r) afirma(c.alinhado === 'right' && c.borda <= 1, `${c.titulo}: ${JSON.stringify(c)}`);
 }, { largura: 1280, altura: 800 });
 
+teste('v3.6: comissões — consulta antiga num mês em andamento avisa os dias e destaca "Atualizar do Qlik", sem buscar sozinho', async ({ page }) => {
+  // O mês em andamento hoje (corte no dia 25): até o dia 25 é o próprio mês; depois, o seguinte.
+  const hoje = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Fortaleza' }).format(new Date());
+  const [a, m, d] = hoje.split('-').map(Number);
+  const mesData = new Date(Date.UTC(a, m - 1 + (d > 25 ? 1 : 0), 1));
+  const mes = mesData.toISOString().slice(0, 7);
+  await abrir(page, { rota: '#/comissoes?aba=parametros' });
+  await page.evaluate(({ mes }) => {
+    const db = JSON.parse(sessionStorage.getItem('simulado-db-v3'));
+    db.comissao_consultas.push({ id: 90, mes, consultado_em: new Date(Date.now() - 5 * 864e5).toISOString(), consultado_por: 'u-aprov', conferido_em: null, conferido_por: null,
+      dados: { formato: 2, dia_corte: 25, apuracao: { vendas: [{ vendedor: 'ELIELSON SERPA MENDES', cod_fornecedor: '7064', fornecedor: 'OURO FINO', total: 1000 }], total: 1000, sem_vendedor: 0 }, contrato: { linhas: [] } } });
+    sessionStorage.setItem('simulado-db-v3', JSON.stringify(db));
+  }, { mes });
+  let chamadas = 0;
+  page.on('request', rq => { if (rq.url().includes('/api/qlik/comissoes')) chamadas++; });
+  await page.goto(`${BASE}/?papel=aprovador#/comissoes?aba=apuracao&mes=${mes}`);
+  await page.locator('.cm-total').waitFor();
+  afirma((await page.locator('#cm-consultado').innerText()).includes('Consulta de 5 dias atrás.'), 'aviso ao lado da hora da consulta');
+  afirma(await page.locator('#cm-buscar').evaluate(b => b.classList.contains('btn-primario')), '"Atualizar do Qlik" em destaque');
+  await page.waitForTimeout(800);
+  igual(chamadas, 0, 'não busca sozinho');
+  // Consulta de 1 dia: sem aviso e sem destaque. (Sem clicar: o Qlik simulado falha de propósito em dezembro.)
+  await page.evaluate(() => {
+    const db = JSON.parse(sessionStorage.getItem('simulado-db-v3'));
+    db.comissao_consultas.find(c => c.id === 90).consultado_em = new Date(Date.now() - 864e5).toISOString();
+    sessionStorage.setItem('simulado-db-v3', JSON.stringify(db));
+  });
+  await page.reload();
+  await page.locator('.cm-total').waitFor();
+  afirma(!(await page.locator('#cm-consultado').innerText()).includes('dias atrás'), 'consulta de 1 dia não avisa');
+  afirma(await page.locator('#cm-buscar').evaluate(b => b.classList.contains('btn-fantasma')), 'botão sem destaque');
+  igual(chamadas, 0, 'continua sem buscar sozinho');
+});
+
 teste('v3.3: comissões — cadastro só edita quem veio do Qlik e avisa o que falta no PJ', async ({ page }) => {
   await abrir(page, { rota: '#/comissoes?aba=cadastro' });
   await page.locator('.usuarios-lista').first().waitFor();

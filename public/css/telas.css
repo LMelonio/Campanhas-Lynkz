@@ -523,3 +523,7 @@ a.det-empresa:hover { text-decoration-color: currentColor; }
 
 /* Abas (v3.6): enquanto há mais abas à direita, a borda direita esmaece (máscara: só a transparência conta). */
 .cm-abas.cm-abas-mais { -webkit-mask-image: linear-gradient(to right, var(--ink) calc(100% - 40px), transparent); mask-image: linear-gradient(to right, var(--ink) calc(100% - 40px), transparent); }
+
+/* Consulta antiga num mês em andamento (v3.6): o aviso fica à vista também no celular. */
+.cm-consulta-antiga { color: var(--amber); }
+@media (max-width: 600px) { .cm-destaque .destaque-sub.cm-com-aviso { display: block; grid-column: 1 / -1; margin: var(--e-1) 0 0; } }

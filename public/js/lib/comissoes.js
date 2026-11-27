@@ -118,6 +118,16 @@ export function textoContrato(mesApuracao) {
   return { mes: `${nome} de ${a}`, barra: `${nome}/${a}`, curto: nome, periodo: `${dm(ct.inicio)} a ${dm(ct.fim)}` };
 }
 
+// Consulta antiga num mês em andamento: enquanto o período de apuração não terminou (hoje <= fim) e a
+// consulta tem mais de 1 dia, devolve quantos dias ela tem (para o aviso); senão, null. Não busca sozinho.
+// diaConsulta e hoje: datas civis "AAAA-MM-DD" (fuso America/Fortaleza, quem chama converte).
+export function diasConsultaAntiga(mes, diaCorte, diaConsulta, hoje) {
+  if (!diaConsulta || !hoje) return null;
+  if (hoje > periodoApuracao(mes, diaCorte).fim) return null;
+  const dias = Math.round((Date.parse(`${hoje}T00:00:00Z`) - Date.parse(`${diaConsulta}T00:00:00Z`)) / 864e5);
+  return dias > 1 ? dias : null;
+}
+
 export const mesDe = civil => String(civil || '').slice(0, 7);
 // "2026-10" → mês anterior / seguinte.
 export function somaMes(mes, n) {

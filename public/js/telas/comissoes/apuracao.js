@@ -2,8 +2,8 @@
 // e "Desativados com venda no Qlik" (reativar).
 // Os documentos e o fechamento do mês ficam em documentos.js.
 import { html, pintar, $, $$, ao } from '../../lib/dom.js';
-import { dataBR, horaBR } from '../../lib/regras.js';
-import { periodoApuracao, textoContrato } from '../../lib/comissoes.js';
+import { dataBR, horaBR, dataCivil, hojeCivil } from '../../lib/regras.js';
+import { periodoApuracao, textoContrato, diasConsultaAntiga } from '../../lib/comissoes.js';
 import { REGIMES, ROTULO_REGIME, ehPJ, pctPadrao, errosComissionado, novoDoQlik, secundariosDaLinha } from '../../lib/comissoes.js';
 import { comissoes } from '../../dados/comissoes.js';
 import { detalhar } from '../../dados/erros.js';
@@ -14,6 +14,13 @@ import { selecao, aplicarErros } from '../../ui/campos.js';
 import { s, r$, pctTxt, pct1, mesMinusculo, quemFechou, redesenhar, recalcular, ocupar } from './comum.js';
 import { documentosHtml, faixaFechar, antesDeFechar } from './documentos.js';
 import { editar } from './cadastro.js';
+
+// Dias da consulta, quando ela é antiga e o mês ainda está em andamento (null = sem aviso). index.js usa para
+// pôr "Atualizar do Qlik" em destaque.
+export function consultaAntiga(r = s.resultado) {
+  if (!r || r.fechado || !r.consulta?.consultado_em) return null;
+  return diasConsultaAntiga(r.mes, comissoes.parametros().dia_corte, dataCivil(r.consulta.consultado_em), hojeCivil());
+}
 
 export function desenhar() {
   const r = s.resultado;
@@ -43,6 +50,7 @@ function resultadoHtml(r) {
   const f = r.fechado;
   const reaberto = !f && comissoes.fechamento(r.mes);
   const n = f ? 0 : antesDeFechar(r).filter(i => !i.ok).length;
+  const antiga = consultaAntiga(r);
   const clt = r.linhas.filter(l => !ehPJ(l));
   const pj = r.linhas.filter(ehPJ);
   // Ordem: o total (fixo no topo no celular), o que está pendente, as pessoas e, no fim, documentos e "Fechar mês".
@@ -54,7 +62,7 @@ function resultadoHtml(r) {
       <p class="destaque-rotulo" id="cm-total-t">${f ? 'Pago' : 'A pagar'} em ${mesMinusculo(r.mes)}</p>
       <p class="cm-total num-display">${r$(t.geral.valor_pagar)}</p>
       <p class="cm-pendencias${n ? ' cm-pendencias-falta' : ''}">${f ? 'Mês fechado' : n ? `${n} ${n === 1 ? 'pendência' : 'pendências'}` : 'Nada pendente'}</p>
-      <p class="destaque-sub" id="cm-consultado">${f ? `Consulta ao Qlik de ${dataBR(r.consulta.consultado_em)} às ${horaBR(r.consulta.consultado_em)}, gravada no fechamento.` : `Consulta ao Qlik de ${dataBR(r.consulta.consultado_em)} às ${horaBR(r.consulta.consultado_em)}. Premiações, ajustes e metas vêm do que está gravado.`}</p>
+      <p class="destaque-sub${antiga ? ' cm-com-aviso' : ''}" id="cm-consultado">${f ? `Consulta ao Qlik de ${dataBR(r.consulta.consultado_em)} às ${horaBR(r.consulta.consultado_em)}, gravada no fechamento.` : html`Consulta ao Qlik de ${dataBR(r.consulta.consultado_em)} às ${horaBR(r.consulta.consultado_em)}.${antiga ? html` <strong class="cm-consulta-antiga">Consulta de ${antiga} dias atrás.</strong>` : ''} Premiações, ajustes e metas vêm do que está gravado.`}</p>
     </section>
     <dl class="numeros numeros-3 cm-numeros">
       <div class="numero"><dt>CLT (folha)</dt><dd class="num-display">${r$(t.clt.valor_pagar)}</dd></div>

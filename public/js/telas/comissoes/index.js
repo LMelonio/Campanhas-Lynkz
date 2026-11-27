@@ -109,7 +109,7 @@ function seletorMes() {
   const naApuracao = s.aba === 'apuracao';
   return html`<div class="cm-cabeca"><div class="cm-consulta">
       ${selecao({ id: 'cm-mes', rotulo: 'Mês da apuração', opcoes: meses.map(m => ({ valor: m, rotulo: rotuloMesComissao(m) })), valor: s.mes, vazio: 'Escolha o mês' })}
-      ${fechado() || !naApuracao ? '' : html`<button type="button" class="btn ${r ? 'btn-fantasma' : 'btn-primario'}" id="cm-buscar"${s.buscando ? html` aria-busy="true" disabled` : ''}>${icone('repetir')} ${s.buscando ? 'Buscando no Qlik…' : 'Atualizar do Qlik'}</button>`}
+      ${fechado() || !naApuracao ? '' : html`<button type="button" class="btn ${!r || apuracao.consultaAntiga(r) ? 'btn-primario' : 'btn-fantasma'}" id="cm-buscar"${s.buscando ? html` aria-busy="true" disabled` : ''}>${icone('repetir')} ${s.buscando ? 'Buscando no Qlik…' : 'Atualizar do Qlik'}</button>`}
     </div>
     ${naApuracao ? html`<p class="secao-nota cm-periodo">Vendas de ${dataBR(ap.inicio)} a ${dataBR(ap.fim)}<span class="cm-so-largo">, receita menos devolução, atacado regular</span>. ${textoFornecedores()}
       <span class="cm-so-largo">O Contrato de Resultado olha ${mesMinusculo(ct.mes)} inteiro.</span></p>` : ''}</div>`;
