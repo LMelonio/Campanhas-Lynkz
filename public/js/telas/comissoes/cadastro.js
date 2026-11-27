@@ -1,5 +1,7 @@
-// Comissões → Cadastro: as pessoas vêm do Qlik; aqui só se completa regime, %, acordo e dados da PJ.
-// editar() também atende "Completar cadastro" de quem está em Novos no Qlik (apuracao.js).
+// Comissões → Cadastro: todos os vendedores do Qlik em cinco grupos (CLT, PJ, Sem cadastro no Qlik da última
+// consulta, Não comissionam e Desativados). Aqui se completa regime, %, acordo e dados da PJ.
+// editar() também atende "Completar cadastro" da Apuração e das Premiações. "Completar cadastro", "Não comissiona"
+// e "Voltar a comissionar" deste grupo usam os mesmos ouvintes da Apuração (apuracao.js → ligar).
 import { html, pintar, $, $$, ao } from '../../lib/dom.js';
 import { dataBR, lerValor, valorCampo, contem } from '../../lib/regras.js';
 import { REGIMES, ROTULO_REGIME, ehPJ, pctPadrao, errosComissionado, novoDoQlik } from '../../lib/comissoes.js';
@@ -14,35 +16,60 @@ import { s, r$, pctTxt, valorPct, sufixo, redesenhar, recalcular } from './comum
 
 export function desenhar() {
   const nInativos = comissoes.cadastro().filter(c => c.ativo === false).length;
+  // A última consulta gravada é lida uma vez, ao abrir; depois a tela redesenha com os "Sem cadastro".
+  if (s.ultimaLida !== true) {
+    s.ultimaLida = true;
+    const meu = s;
+    comissoes.ultimaConsulta().then(() => { if (s === meu && s.aba === 'cadastro') redesenhar(); }).catch(() => {});
+  }
+  const ultima = comissoes.semCadastroDaUltima();
+  const nota = ultima
+    ? `Todos os vendedores do Qlik da última consulta (${mesPorExtenso(ultima.mes)}). Busque um mês na Apuração para atualizar.`
+    : 'Busque um mês na Apuração para ver aqui todos os vendedores do Qlik.';
   return html`
     <div class="cm-cad-topo">
       ${campoBusca({ id: 'cm-busca', rotulo: 'Buscar comissionado', valor: s.busca, placeholder: 'Nome, equipe ou nome no Qlik' })}
     </div>
-    <p class="secao-nota">As pessoas vêm do Qlik (Vendedor B2B). Quem aparece pela primeira vez fica em "Novos no Qlik", na Apuração, para completar o cadastro.</p>
+    <p class="secao-nota" id="cm-cad-nota">${nota}</p>
     ${nInativos ? interruptor({ id: 'cm-inativos', rotulo: `Mostrar desativados (${nInativos})`, marcado: s.inativos }) : ''}
     <div id="cm-lista">${listaCadastro()}</div>`;
 }
 
+const MESES = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'];
+const mesPorExtenso = mes => `${MESES[Number(mes.slice(5, 7)) - 1]} de ${mes.slice(0, 4)}`;
+
+// Cinco grupos, nesta ordem: CLT, PJ, Sem cadastro no Qlik, Não comissionam e (com o interruptor) Desativados.
+// A busca vale para todos.
 function listaCadastro() {
-  const lista = comissoes.cadastro()
-    .filter(c => s.inativos || c.ativo !== false)
-    .filter(c => !s.busca || contem(s.busca, `${c.nome} ${c.equipe || ''} ${c.nomes_qlik.join(' ')} ${c.pj_razao_social || ''} ${ROTULO_REGIME[c.regime]}`));
-  const grupo = (titulo, ls) => (ls.length ? html`<section class="painel" aria-label="${titulo}">
+  const busca = t => !s.busca || contem(s.busca, t);
+  const doCadastro = comissoes.cadastro()
+    .filter(c => busca(`${c.nome} ${c.equipe || ''} ${c.nomes_qlik.join(' ')} ${c.pj_razao_social || ''} ${ROTULO_REGIME[c.regime]}`));
+  const ativosL = doCadastro.filter(c => c.ativo !== false);
+  const ultima = comissoes.semCadastroDaUltima();
+  const semCadastro = (ultima?.lista || []).filter(x => busca(x.vendedor));
+  const ignorados = comissoes.parametros().nomes_ignorados.filter(n => busca(n));
+  const desativados = s.inativos ? doCadastro.filter(c => c.ativo === false) : [];
+  const grupo = (titulo, ls, item, classe = '') => (ls.length ? html`<section class="painel ${classe}" aria-label="${titulo}">
     <h2 class="painel-titulo">${titulo} <span class="contador-texto">${ls.length}</span></h2>
-    <ul class="usuarios-lista">${ls.map(itemCadastro)}</ul></section>` : '');
-  return lista.length ? html`${grupo('CLT', lista.filter(c => !ehPJ(c)))}${grupo('PJ', lista.filter(ehPJ))}`
-    : vazio({ icone: 'pessoa', titulo: s.busca ? 'Ninguém com esse nome' : 'Ninguém cadastrado ainda', texto: s.busca ? 'Busque pelo nome, pela equipe ou pelo nome no Qlik.' : 'Busque as vendas de um mês na Apuração: quem vendeu aparece em "Novos no Qlik" para completar.' });
+    <ul class="usuarios-lista">${ls.map(item)}</ul></section>` : '');
+  const algo = ativosL.length + semCadastro.length + ignorados.length + desativados.length;
+  return algo ? html`
+    ${grupo('CLT', ativosL.filter(c => !ehPJ(c)), itemCadastro)}
+    ${grupo('PJ', ativosL.filter(ehPJ), itemCadastro)}
+    ${grupo('Sem cadastro no Qlik', semCadastro, x => itemSemCadastro(x, ultima.mes), 'cm-cad-sem')}
+    ${grupo('Não comissionam', ignorados, itemIgnorado, 'cm-nao-comissionam')}
+    ${grupo('Desativados', desativados, itemCadastro)}`
+    : vazio({ icone: 'pessoa', titulo: s.busca ? 'Ninguém com esse nome' : 'Ninguém cadastrado ainda', texto: s.busca ? 'Busque pelo nome, pela equipe ou pelo nome no Qlik.' : 'Busque as vendas de um mês na Apuração: quem vendeu aparece aqui para completar.' });
 }
 
 function itemCadastro(c) {
-  const falta = ehPJ(c) ? pendenciasPj(c) : [];
-  const linhaExtra = ehPJ(c)
-    ? (falta.length ? html`<small class="cm-falta">${icone('alerta')}<span>Falta para o recibo e a ADP: ${falta.join(', ')}</span></small>` : '')
-    : c.acordo_minimo ? html`<small>Acordo mínimo de ${r$(c.acordo_minimo)}, de ${dataBR(c.acordo_inicio)} a ${c.acordo_fim ? dataBR(c.acordo_fim) : 'sem fim'}</small>` : '';
+  const falta = ehPJ(c) && c.ativo !== false ? pendenciasPj(c) : [];
+  const linhaExtra = !ehPJ(c) && c.acordo_minimo
+    ? html`<small>Acordo mínimo de ${r$(c.acordo_minimo)}, de ${dataBR(c.acordo_inicio)} a ${c.acordo_fim ? dataBR(c.acordo_fim) : 'sem fim'}</small>` : '';
   return html`<li class="usuario${c.ativo === false ? ' inativo' : ''}">
     <div class="usuario-avatar" aria-hidden="true">${c.nome.trim().charAt(0).toUpperCase()}</div>
     <div class="usuario-dados">
-      <strong>${c.nome}${c.regime === 'TELEVENDAS' ? html` ${seloNeutro('Televendas')}` : ''}${c.ativo === false ? html` ${seloNeutro('Desativado')}` : ''}</strong>
+      <strong>${c.nome}${c.regime === 'TELEVENDAS' ? html` ${seloNeutro('Televendas')}` : ''}${c.ativo === false ? html` ${seloNeutro('Desativado')}` : ''}${falta.length ? html` <span class="selo selo-falta">Falta: ${falta.join(', ')}</span>` : ''}</strong>
       <small>${textoPcts(c)}${c.equipe ? `, ${c.equipe}` : ''}${ehPJ(c) && c.pj_razao_social ? `. Recebe como ${c.pj_razao_social}` : ''}</small>
       <small>No Qlik: ${c.nomes_qlik.join(', ')}</small>
       ${linhaExtra}
@@ -50,6 +77,20 @@ function itemCadastro(c) {
     <div class="acoes"><button type="button" class="btn btn-fantasma btn-pequeno" data-editar="${c.id}" aria-label="Editar ${c.nome}">${icone('editar')} Editar</button></div>
   </li>`;
 }
+
+const itemSemCadastro = (x, mes) => html`<li class="usuario">
+    <div class="usuario-avatar" aria-hidden="true">${x.vendedor.trim().charAt(0)}</div>
+    <div class="usuario-dados"><strong>${x.vendedor}</strong><small class="tabular">Vendeu ${r$(x.total)} em ${mesPorExtenso(mes)}</small></div>
+    <div class="acoes">
+      <button type="button" class="btn btn-fantasma btn-pequeno" data-completar="${x.vendedor}" aria-label="Completar cadastro: ${x.vendedor}">${icone('pessoa')} Completar cadastro</button>
+      <button type="button" class="btn btn-texto btn-pequeno" data-ignorar="${x.vendedor}" aria-label="Não comissiona: ${x.vendedor}">Não comissiona</button>
+    </div>
+  </li>`;
+
+const itemIgnorado = n => html`<li class="usuario">
+    <div class="usuario-dados"><strong>${n}</strong></div>
+    <div class="acoes"><button type="button" class="btn btn-texto btn-pequeno" data-voltar-comissionar="${n}" aria-label="Voltar a comissionar ${n}">Voltar a comissionar</button></div>
+  </li>`;
 
 // "2,5% no principal" e, quando a pessoa tem % próprio em algum secundário, "Farelo 1,5% (só desta pessoa)".
 // Sem a tabela de fornecedores (migração 21), o pct_farelo do cadastro, como antes.

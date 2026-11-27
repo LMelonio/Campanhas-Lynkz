@@ -106,7 +106,9 @@ Tela: `export function montar(el, ctx, params) → desmontar`. `ctx`: `perfil`, 
   com "Completar cadastro" (regime, %, acordo, dados da PJ) ou "Não comissiona". Nome de cadastro desativado vai para
   "Desativados com venda no Qlik" (com Reativar), nunca para os novos; premiação ou ajuste dele fica fora do total e avisa. Com 2 ou mais, dá para marcar vários e
   aplicar de uma vez ("Não comissiona" ou cadastrar como CLT, Televendas ou PJ com os % padrão: `novoDoQlik()`). Não há botão de cadastro novo nem
-  "ligar a alguém"; o nome do Qlik não se edita.
+  "ligar a alguém"; o nome do Qlik não se edita. O Cadastro mostra todos os vendedores em cinco grupos: CLT, PJ (selo
+  "Falta: …"), Sem cadastro no Qlik (da última consulta gravada, `ultimaConsulta()` / `semCadastroDaUltima()`), Não
+  comissionam e Desativados (atrás do interruptor); a busca vale para todos.
 - `dados/comissoes.js` junta banco + Qlik + cálculo: `carregar()`, `carregarMes(mes)`, `apurar(mes, { buscar })`,
   `salvar()`, `salvarParametros()`, `ignorarNome()`/`ignorarNomes()`, `lancarPremiacao()`/`lancarAjuste()` e `removerPremiacao()`/`removerAjuste()`
   (desativam), `salvarMesPj(mes, id, campos)` (metas, realizado informado, número e valor da NF), `buscarBase(mes)` (vendas linha

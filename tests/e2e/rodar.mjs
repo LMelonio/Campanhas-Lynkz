@@ -3226,6 +3226,38 @@ teste('v3.6: comissões — no celular, premiar quem não tem cadastro e cancela
   igual(await d.locator('#pr-pessoa').inputValue(), 'qlik:SEM CADASTRO LTDA', 'com a pessoa escolhida');
 }, { largura: 390, altura: 844, toque: true });
 
+teste('v3.6: comissões — Cadastro com todos os vendedores: CLT, PJ, Sem cadastro, Não comissionam e Desativados', async ({ page }) => {
+  await previaOutubro(page);   // grava a consulta de outubro
+  // Seldiana ficou sem banco (cadastro de antes da 22): aparece com o selo do que falta.
+  await page.evaluate(() => {
+    const d = JSON.parse(sessionStorage.getItem('simulado-db-v3'));
+    d.comissionados.find(c => c.id === 6).pj_banco = null;
+    sessionStorage.setItem('simulado-db-v3', JSON.stringify(d));
+  });
+  await page.goto(`${BASE}/?papel=aprovador#/comissoes?aba=cadastro`);
+  await page.locator('.cm-cad-sem').waitFor();
+  const titulos = await page.locator('#cm-lista .painel-titulo').allInnerTexts();
+  igual(titulos.map(t => t.replace(/\s*\d+$/, '').toLowerCase()).join(' | '), 'clt | pj | sem cadastro no qlik | não comissionam', 'os grupos, em ordem');
+  afirma((await page.locator('#cm-cad-nota').innerText()).includes('última consulta (outubro de 2026)'), 'diz de qual consulta');
+  const sem = await page.locator('.cm-cad-sem').innerText();
+  afirma(sem.includes('SEM CADASTRO LTDA') && sem.includes('R$ 1.530,40') && !sem.includes('TERRAZOO'), 'sem cadastro: ' + sem);
+  afirma((await page.locator('#cm-lista .cm-nao-comissionam').innerText()).includes('TERRAZOO'), 'não comissionam');
+  afirma((await page.locator('#cm-lista').innerText()).includes('Falta: banco'), 'selo do que falta no PJ');
+  await page.click('label[for="cm-inativos"]');
+  afirma((await page.locator('#cm-lista .painel-titulo').allInnerTexts()).some(t => /^desativados/i.test(t)), 'desativados atrás do interruptor');
+  await page.fill('#cm-busca', 'terra');
+  igual((await page.locator('#cm-lista .painel-titulo').allInnerTexts()).map(t => t.replace(/\s*\d+$/, '').toLowerCase()).join(), 'não comissionam', 'a busca vale para todos os grupos');
+  await page.fill('#cm-busca', '');
+  const vio = (await axe(page, 'Comissões cadastro 5 grupos')).filter(x => ['critical', 'serious'].includes(x.impacto));
+  afirma(!vio.length, 'acessibilidade: ' + JSON.stringify(vio));
+  // Completar cadastro daqui tira a pessoa de "Sem cadastro".
+  await page.click('.cm-cad-sem [data-completar="SEM CADASTRO LTDA"]');
+  const d = page.locator('dialog', { hasText: 'Completar cadastro' }); await d.waitFor();
+  await d.locator('button[type="submit"]').click(); await d.waitFor({ state: 'detached' });
+  await page.locator('.cm-cad-sem').waitFor({ state: 'detached' });
+  afirma((await page.locator('#cm-lista').innerText()).includes('Sem Cadastro Ltda'), 'entrou no grupo CLT');
+});
+
 teste('v3.3: comissões — cadastro só edita quem veio do Qlik e avisa o que falta no PJ', async ({ page }) => {
   await abrir(page, { rota: '#/comissoes?aba=cadastro' });
   await page.locator('.usuarios-lista').first().waitFor();

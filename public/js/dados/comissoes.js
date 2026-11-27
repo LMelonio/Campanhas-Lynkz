@@ -4,7 +4,7 @@
 import { sb } from '../lib/supabase.js';
 import { exigir, ErroApp } from './erros.js';
 import { PARAMETROS_PADRAO, periodoApuracao, mesAnteriorFechado, nomeQlik, chaveNome, apurarMes, cadastroDaCopia,
-  regrasFornecedores, regrasDaCopia, excecoesLegado, pctSecundario, pctPadrao, nomeLegivel } from '../lib/comissoes.js';
+  regrasFornecedores, regrasDaCopia, excecoesLegado, pctSecundario, pctPadrao, nomeLegivel, juntarVendas } from '../lib/comissoes.js';
 
 const NUMEROS_PARAMETROS = Object.keys(PARAMETROS_PADRAO).filter(k => typeof PARAMETROS_PADRAO[k] === 'number');
 const NUMEROS_CADASTRO = ['pct_principal', 'pct_farelo', 'acordo_minimo', 'meta_faturamento', 'meta_positivacao'];
@@ -51,6 +51,7 @@ let fornecedores = null;     // comissao_fornecedores (migração 21); null = ai
 let excecoes = [];           // comissao_excecoes, com o código do fornecedor: [{ id, comissionado_id, fornecedor_id, codigo, pct }]
 const consultas = new Map(); // mês → resposta do Qlik desta sessão (a tela recalcula sem consultar de novo)
 const doMes = new Map();     // mês → { premiacoes: [], ajustes: [], mesPj: [], fechamento, consulta } do banco
+let ultima;                  // consulta gravada do mês mais recente (undefined = ainda não lida; null = nenhuma)
 
 const lerPremiacao = r => ({ ...r, valor: Number(r.valor) });
 const lerMesPj = r => {
@@ -109,6 +110,7 @@ async function gravarConsulta(mes, q) {
     return null;
   }
   doMesOuNovo(mes).consulta = r.data;
+  if (ultima !== undefined && (!ultima || r.data.mes >= ultima.mes)) ultima = r.data;
   return r.data;
 }
 
@@ -248,6 +250,22 @@ export const comissoes = {
       if (v) return nomeLegivel(v.fornecedor);
     }
     return '';
+  },
+  // Consulta gravada do mês mais recente (para o Cadastro mostrar todos os vendedores do Qlik). Lida uma vez.
+  async ultimaConsulta() {
+    if (ultima !== undefined) return ultima;
+    const r = await sb.from('comissao_consultas').select('mes,dados,consultado_em').order('mes', { ascending: false }).limit(1).maybeSingle();
+    if (r.error && !semTabela(r.error)) console.warn('Última consulta do Qlik não foi lida', r.error);
+    ultima = r.error ? null : r.data || null;
+    return ultima;
+  },
+  // Quem vendeu na última consulta e não tem cadastro (sem quem não comissiona e sem desativados).
+  // → { mes, consultado_em, lista: [{ vendedor, total }] } ou null (sem consulta, ou ainda não lida).
+  semCadastroDaUltima() {
+    if (!ultima?.dados?.apuracao) return null;
+    const regras = this.regras(ultima.mes);
+    const { semCadastro } = juntarVendas(ultima.dados.apuracao.vendas, this.cadastro(), this.parametros().nomes_ignorados, regras);
+    return { mes: ultima.mes, consultado_em: ultima.consultado_em, lista: semCadastro };
   },
   // Consulta ao Qlik gravada do mês (migração 19) ou null: { consultado_em, conferido_em, … }.
   consulta: mes => doMes.get(mes)?.consulta || null,

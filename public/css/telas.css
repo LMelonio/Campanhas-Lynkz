@@ -518,3 +518,6 @@ a.det-empresa:hover { text-decoration-color: currentColor; }
 .cm-nao-lista .btn-texto { min-height: var(--tap); }
 .cm-pagar-nome { display: none; }
 @media (min-width: 601px) and (max-width: 1024px) { .cm-pagar-nome { display: inline; margin-left: var(--e-2); font-weight: 700; } }
+
+/* Cadastro (v3.6): o que falta no PJ como selo. */
+.selo-falta { background: var(--amber-soft); color: var(--amber); }

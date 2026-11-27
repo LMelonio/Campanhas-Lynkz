@@ -274,7 +274,7 @@ async function reativar(id) {
   } catch (e) { s.ctx.toast(detalhar(e).mensagem, { tom: 'erro' }); }
 }
 
-async function ignorarNome(nome) {
+export async function ignorarNome(nome) {
   const ok = await confirmar({
     titulo: `${nome} não comissiona?`,
     descricao: 'As vendas com este nome no Qlik deixam de aparecer como novas. Dá para desfazer em Parâmetros.',
