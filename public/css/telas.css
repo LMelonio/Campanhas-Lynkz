@@ -187,7 +187,6 @@ a.det-empresa:hover { text-decoration-color: currentColor; }
 .empresa-texto strong { font-size: var(--t-16); display: flex; align-items: center; gap: var(--e-2); flex-wrap: wrap; }
 .empresa-texto small { font-size: var(--t-13); color: var(--ink-2); }
 
-.ficha .painel-titulo .acoes { text-transform: none; letter-spacing: 0; }
 .balconistas { display: grid; }
 .balconista { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--e-2) var(--e-3); padding: var(--e-3) var(--e-4); border-top: 1px solid var(--line); }
 .balconista-dados { display: grid; gap: 2px; min-width: 0; }

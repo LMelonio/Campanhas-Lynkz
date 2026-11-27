@@ -3291,6 +3291,27 @@ teste('v3.6: comissões no celular (390 px) — a aba ativa fica à vista e a bo
   afirma(semEsmaecer, 'no fim da faixa, sem esmaecer');
 }, { largura: 390, altura: 844, toque: true });
 
+teste('v3.6: título com botão (390 px) — "Fornecedores secundários" numa linha, nome acessível só do título, sem rolagem lateral', async ({ page }) => {
+  await abrir(page, { rota: '#/comissoes?aba=parametros' });
+  const h2 = page.locator('#cp-t-sec');
+  await h2.waitFor();
+  const t = await h2.evaluate(e => {
+    const r = document.createRange(); r.selectNodeContents(e);
+    return { linhas: new Set([...r.getClientRects()].map(x => Math.round(x.top))).size, botao: !!e.querySelector('button') };
+  });
+  igual(t.linhas, 1, 'título numa linha só');
+  igual(t.botao, false, 'o botão não fica dentro do título');
+  igual((await page.getByRole('heading', { name: 'Fornecedores secundários', exact: true }).count()), 1, 'nome acessível do h2 é só o título');
+  const [rt, rb] = await Promise.all([h2.boundingBox(), page.locator('#cp-novo-sec').boundingBox()]);
+  afirma(rb.y >= rt.y + rt.height - 1, 'o botão fica abaixo do título');
+  afirma(await semOverflow(page, 'Parâmetros 390 px'), 'sem rolagem lateral');
+  // Mesmo padrão na ficha da empresa (Gestão).
+  await page.goto(`${BASE}/?papel=aprovador#/gestao/empresas/1`);
+  await page.locator('#fx-novo-balc').waitFor();
+  igual(await page.locator('.painel-titulo button, .painel-titulo .acoes').count(), 0, 'nenhum botão dentro de título na ficha');
+  afirma(await semOverflow(page, 'Ficha da empresa 390 px'), 'ficha sem rolagem lateral');
+}, { largura: 390, altura: 844, toque: true });
+
 teste('v3.3: comissões — cadastro só edita quem veio do Qlik e avisa o que falta no PJ', async ({ page }) => {
   await abrir(page, { rota: '#/comissoes?aba=cadastro' });
   await page.locator('.usuarios-lista').first().waitFor();

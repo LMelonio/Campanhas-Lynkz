@@ -21,8 +21,9 @@ const pctOuTraco = v => (v == null ? '—' : pctTxt(v));
 
 function secundariosHtml() {
   const lista = comissoes.fornecedores().filter(f => f.grupo === 'secundario');
-  return html`<section class="painel" aria-labelledby="cp-t-sec"><h2 class="painel-titulo" id="cp-t-sec">Fornecedores secundários
-      <button type="button" class="btn btn-fantasma btn-pequeno" id="cp-novo-sec">${icone('mais')} Adicionar fornecedor secundário</button></h2>
+  return html`<section class="painel" aria-labelledby="cp-t-sec">
+    <div class="cm-titulo-acao"><h2 class="painel-titulo" id="cp-t-sec">Fornecedores secundários</h2>
+      <button type="button" class="btn btn-fantasma btn-pequeno" id="cp-novo-sec">${icone('mais')} Adicionar fornecedor secundário</button></div>
     <div class="painel-corpo">
       <p class="campo-dica">Cada secundário tem o seu % por regime. Um % diferente para uma pessoa fica no Cadastro dela.</p>
     </div>

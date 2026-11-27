@@ -126,6 +126,11 @@
   color: var(--ink-2); padding: var(--e-4) var(--e-4) var(--e-2);
 }
 .painel-corpo { padding: 0 var(--e-4) var(--e-4); }
+/* Título do painel com botão: o botão fica fora do título (o leitor de tela anuncia só o texto do título). */
+.cm-titulo-acao { display: flex; flex-wrap: wrap; gap: var(--e-2); justify-content: space-between; align-items: center; padding: var(--e-4) var(--e-4) var(--e-2); }
+.cm-titulo-acao > .painel-titulo { padding: 0; margin: 0; }
+.cm-titulo-acao > .acoes { text-transform: none; letter-spacing: 0; }
+@media (max-width: 600px) { .cm-titulo-acao > .btn, .cm-titulo-acao > .acoes { flex: 1 0 100%; } }
 .linhas > div {
   display: flex; justify-content: space-between; align-items: baseline; gap: var(--e-4);
   padding: var(--e-3) var(--e-4); border-top: 1px solid var(--line);
