@@ -45,7 +45,8 @@ create table if not exists public.comissao_fornecedores (
   constraint comissao_fornecedores_vale   check (vale_de ~ '^[0-9]{4}-(0[1-9]|1[0-2])$'),
   constraint comissao_fornecedores_pct    check (
     grupo = 'principal'
-    or (pct_clt between 0 and 20 and pct_televendas between 0 and 20 and pct_pj between 0 and 20))
+    or (pct_clt is not null and pct_televendas is not null and pct_pj is not null
+        and pct_clt between 0 and 20 and pct_televendas between 0 and 20 and pct_pj between 0 and 20))
 );
 
 -- ---------- 2. exceções por pessoa ----------
