@@ -3312,6 +3312,17 @@ teste('v3.6: título com botão (390 px) — "Fornecedores secundários" numa li
   afirma(await semOverflow(page, 'Ficha da empresa 390 px'), 'ficha sem rolagem lateral');
 }, { largura: 390, altura: 844, toque: true });
 
+teste('v3.6: tabela de secundários (1280 px) — títulos e valores de % alinhados à direita', async ({ page }) => {
+  await abrir(page, { rota: '#/comissoes?aba=parametros' });
+  await page.locator('.cm-tabela-forn').waitFor();
+  const r = await page.locator('.cm-tabela-forn').evaluate(t => [1, 2, 3].map(i => {
+    const th = t.tHead.rows[0].cells[i], td = t.tBodies[0].rows[0].cells[i];
+    const dir = e => { const r = document.createRange(); r.selectNodeContents(e); return Math.round(r.getBoundingClientRect().right); };
+    return { titulo: th.textContent, alinhado: getComputedStyle(th).textAlign, borda: Math.abs(dir(th) - dir(td)) };
+  }));
+  for (const c of r) afirma(c.alinhado === 'right' && c.borda <= 1, `${c.titulo}: ${JSON.stringify(c)}`);
+}, { largura: 1280, altura: 800 });
+
 teste('v3.3: comissões — cadastro só edita quem veio do Qlik e avisa o que falta no PJ', async ({ page }) => {
   await abrir(page, { rota: '#/comissoes?aba=cadastro' });
   await page.locator('.usuarios-lista').first().waitFor();
