@@ -12,7 +12,7 @@ window.CONFIG = {
   SUBMARCA: "Campanhas",
   DOMINIO: "lynkz.com.br",
   // Igual a VERSAO do sw.js e VERSAO_APP do js/app.js.
-  VERSAO: "3.4.1",
+  VERSAO: "3.5.0",
 
   // Faixas do custo sobre a meta (0.08 = 8%).
   FAIXA_VERDE: 0.08,   // até aqui, dentro do padrão
